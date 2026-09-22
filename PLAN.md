@@ -3,7 +3,7 @@
 A CLAP instrument plugin, written in Rust, that synthesizes bowed string instruments by physical modeling.
 
 - **Long-term scope:** violin, viola, cello and double bass, each playable as a **solo** instrument or as a **section** of up to about 12 players (the limit depends on CPU cost). Sections are placed on a stereo stage and humanized.
-- **First milestone:** solo violin only.
+- **First milestone:** solo cello. The order of instruments doesn't matter for the goal, and our measured reference data (bowed cello G strings, see Phase 0–1 notes) validates the string and bow model directly on the cello. The core model is instrument-independent (SI units), so everything calibrated here carries over to the violin, viola and bass.
 
 Background research is in [docs/](docs/). This plan corrects several errors in that research; see [Research notes](#research-notes--corrections).
 
@@ -67,7 +67,7 @@ The model uses velocity waves. The bow point splits the string into two segments
 - **Finger/nut reflection:** `-1` for open strings. A stopped note is simply a shorter nut-side delay.
 - **Fractional delay:** 3rd-order Lagrange on the nut-side delay, because its length is modulated by vibrato, legato and portamento. Thiran allpass sounds cleaner for fixed lengths but produces transients when its length is modulated, so we keep it only as an option for the bridge side.
 - **Output:** force at the bridge, `F = Z · (v_in − v_out)`, which then goes through the body filter.
-- **Stiffness/dispersion (Phase 4):** a cascade of 1st-order allpasses in the loop, with tuning re-compensated. It matters much more for bass and cello than for violin. See 3.6.
+- **Stiffness/dispersion (Phase 1b):** a cascade of 1st-order allpasses in the loop, with tuning re-compensated. It matters much more for bass and cello than for violin. See 3.6.
 
 ### 3.2 The bow junction
 
@@ -111,12 +111,13 @@ F     = F_b · μ(Δv)
 ### 3.3 Body
 
 - A bank of biquad resonators fed by bridge force.
-- Tuned to the known violin signature modes:
+- Tuned to each instrument's signature modes. Violin:
   - A0 at about 275 Hz
   - CBR
   - B1− and B1+ at about 450–550 Hz
   - the "bridge hill" at about 2–3 kHz
   - plus a broadband tail
+- Cello first: the same mode families sit lower. Source published cello mode frequencies before Phase 2.
 - **Alternative:** partitioned convolution with a measured bridge-admittance or radiation IR. It is more realistic, but licensing and data sourcing are open (see caveats).
 - For sections, each player gets small random variations of mode frequencies and Q, so the section doesn't sound like one instrument copied 12 times.
 
@@ -133,9 +134,9 @@ F     = F_b · μ(Δv)
 
 | Instrument | Strings (tuning) | Scale length | Notes |
 |---|---|---|---|
-| Violin | G3 D4 A4 E5 | ~328 mm | Milestone 1 |
+| Violin | G3 D4 A4 E5 | ~328 mm | |
 | Viola | C3 G3 D4 A4 | ~370–420 mm | Size varies a lot between instruments |
-| Cello | C2 G2 D3 A3 | ~690 mm | Stiffness matters more |
+| Cello | C2 G2 D3 A3 | ~690 mm | Milestone 1. Stiffness matters more. Measured reference for the G string (mdw, see Phase 0–1 notes) |
 | Double bass | E1 A1 D2 G2 | ~1040–1060 mm | Stiffness and dispersion are clearly audible. Longer loops need more delay memory |
 
 Per string we store tension, linear density (which gives `Z`), and loss parameters. Per instrument we store body modes, bow friction parameters, and typical ranges of `β`, `v_b` and `F_b`.
@@ -178,7 +179,7 @@ A physical model is only as playable as its control mapping. This layer turns MI
 | **Expression** | CC11 | Output gain (post-body), for phrasing and fades |
 | **Vibrato depth** | CC21 | Depth of finger-position modulation. 0 means none. Rate is a parameter. CC21 is the usual vibrato CC in orchestral sample libraries; General MIDI assigns vibrato to CC1, but here CC1 is dynamics |
 | Velocity | — | Attack intensity for short notes; legato transition speed |
-| Keyswitches | White keys, starting at the first C below the instrument's lowest note (violin: C3 D3 E3 F3, with C4 = middle C) | Articulation selection. If more keyswitches are needed than fit below the range, start one octave lower |
+| Keyswitches | White keys, starting at the first C below the instrument's lowest note (cello: C1 D1 E1 F1; violin: C3 D3 E3 F3; C4 = middle C) | Articulation selection. If more keyswitches are needed than fit below the range, start one octave lower |
 
 Later: MPE (per-note pressure and pitch) and CLAP note expressions.
 
@@ -282,11 +283,12 @@ Each phase ends with something audible.
 |---|---|---|
 | **0. Scaffold** ✅ | Cargo workspace, `strings-dsp`, `strings-render` CLI writing WAV (`hound`) plus CSV of internal signals | `cargo test` passes; the renderer writes a plucked (free) string to WAV |
 | **1. One bowed string** ✅ | DWG string, bow junction and hysteresis, bridge loss, tuning compensation | A violin A string produces stable Helmholtz motion; the Schelleng sweep behaves as expected; tuning within ±1 cent |
-| **2. Solo violin (offline)** | 4 strings, string selection, fingering, legato, vibrato, biquad body, performer layer with the 4 articulations, bow-hair damping so a bow stopped on the string silences it quickly | Scripted phrases (scales, legato lines, staccato runs) sound like a violin, not a synth |
+| **1b. Measured string physics** | Bending stiffness and torsional waves (3.6), checked against the measured cello G string with `strings-render measured` | Simulated Helmholtz region close to the measured one at all three bow speeds (area within about ±30%, Helmholtz present at small β); physics tests still pass |
+| **2. Solo cello (offline)** | Cello presets for C2 G2 D3 A3 (G from the measured string; the others from published string data), 4 strings, string selection, fingering, legato, vibrato, biquad body, performer layer with the 4 articulations and its force mapping calibrated on the measured limits (4.2), bow-hair damping so a bow stopped on the string silences it quickly | Scripted phrases (scales, legato lines, staccato runs) sound like a cello, not a synth |
 | **3. CLAP plugin** | nih-plug wrapper, CLAP-only export, CC1/CC11/vibrato mapping, keyswitches, parameters, real-time safety | Playable in Bitwig and Reaper; no allocations in the audio thread; CPU cost measured |
-| **4. Realism pass** | Stiffness allpass and torsional waves (3.6, checked against `strings-render measured`), thermal friction, finger damping at note changes, bow noise, oversampling decision, bouncing-bow spiccato, sympathetic string coupling | A/B against recordings; clear improvement on attacks and legato transitions |
-| **5. More instruments** | Viola, cello, double bass presets and bodies | Each instrument is convincing across its range |
-| **6. Sections** | N-player engine, humanization, stage placement, SIMD across players | 12-player violin section within the CPU budget; sounds like a section, not a chorus effect |
+| **4. Realism pass** | Thermal friction, finger damping at note changes, bow noise, oversampling decision, bouncing-bow spiccato, sympathetic string coupling | A/B against recordings; clear improvement on attacks and legato transitions (the mdw attack data gives a measured target for attacks) |
+| **5. More instruments** | Violin, viola and double bass presets and bodies | Each instrument is convincing across its range |
+| **6. Sections** | N-player engine, humanization, stage placement, SIMD across players | 12-player section within the CPU budget; sounds like a section, not a chorus effect |
 | **7. Extended techniques** | Tremolo, trills, pizzicato, double stops, harmonics, mutes, MPE | — |
 
 **CPU budgets to confirm in Phase 3** (per instance, one core at 48 kHz):
@@ -323,7 +325,7 @@ Data: mdw Vienna string "A T1" (steel/tungsten cello G2, 98 Hz, rigid terminatio
 |---|---|---|
 | **FDTD stiff string** (Bilbao; Willemsen's real-time work) | Accurate stiffness and loss from physical constants, two polarizations, fingerboard collisions | Costs O(N) per sample. Changing pitch continuously needs dynamic grids, which are an active research area and prone to artifacts. Candidate for an "HQ solo" mode |
 | **Modal synthesis** | Exact mode frequencies and damping per mode, easy to couple to other resonators, good for bodies and sympathetic resonance | Low strings need 150+ modes. Bow coupling requires summing all modes each sample |
-| **Torsional waves** | A second waveguide per string, coupled at the bow. Known to affect the stick/slip trigger and attack quality (Woodhouse) | Now planned for Phase 4: see 3.6 |
+| **Torsional waves** | A second waveguide per string, coupled at the bow. Known to affect the stick/slip trigger and attack quality (Woodhouse) | Now planned for Phase 1b: see 3.6 |
 | **Thermal friction model** (Woodhouse) | Friction depends on the rosin's temperature, giving better attacks and hysteresis | Planned for Phase 4. Needs its own solver work |
 | **LuGre / elasto-plastic friction** | Micro-slip, dynamic hysteresis, smooth transitions | Multi-state, so there is no closed-form solve and it needs iteration; high CPU cost for sections |
 | **Finite bow width / 3D bow-hair ribbon** | A realistic contact patch, hair compliance, the torsional interaction of the hair | Beyond real-time today. A finite width (a few contact points) is a cheaper approximation worth trying |
@@ -345,7 +347,7 @@ Data: mdw Vienna string "A T1" (steel/tungsten cello G2, 98 Hz, rigid terminatio
 - **Aliasing** from stick/slip corners at high bow force. Decide on oversampling by measurement.
 - **High-frequency loss shapes playability.** With too little loss in the bridge filter, the sharp Helmholtz corner fragments the slip phase into extra slips, even well inside the Schelleng range. Loss pole 0.5 (at 48 kHz) gives a clean Helmholtz band without oversampling; brightness must come back through the body, not by thinning the loss.
 - **A rigidly sticking bow traps energy.** With the bow stopped on the string, the nut-side segment only decays at the string's own rate (about −19 dB after 200 ms on the A string). Real staccato stops are faster because the bow hair is compliant and lossy; this needs modeling in Phase 2.
-- **Body data.** Sourcing measured violin body IRs under a usable license is unsolved. The biquad bank tuned from published mode frequencies is the fallback.
+- **Body data.** Sourcing measured body IRs (cello first) under a usable license is unsolved. The biquad bank tuned from published mode frequencies is the fallback.
 - **CLAP-only host coverage.** Hosts without CLAP (for example Logic, which is AU only, and Pro Tools, which is AAX) can't load it. nih-plug can also export VST3, but its VST3 bindings are GPLv3, which is a licensing decision. CLAP-only keeps the licensing simple (nih-plug itself is ISC).
 - **nih-plug maintenance.** Check the project's current activity before committing to it. `clack` is the fallback.
 - **The research doc isn't fully reliable.** See below.

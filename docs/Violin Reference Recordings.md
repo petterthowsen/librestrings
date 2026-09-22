@@ -19,6 +19,7 @@ Suggested use: Iowa for single notes → Violin Etudes for runs and connected pl
 - Violin notes recorded chromatically, bowed (arco) and plucked (pizzicato), with and without vibrato, at pp / mf / ff.
 - Good for: comparing attack, spectrum and decay against the model's output (once it has a body filter; see TODO).
 - Limitation: no runs or connected phrases.
+- The library also has cello (and viola and double bass) recorded the same way, which fits the cello-first milestone (PLAN.md).
 
 ## 2. Runs, passagework and real phrasing
 
