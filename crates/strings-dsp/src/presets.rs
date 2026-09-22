@@ -56,7 +56,8 @@ pub mod reference {
     /// Proc. Mtgs. Acoust. 58, 035013 (2025), Table 1 and Fig. 1: T = 145.31 N,
     /// μ = 7.721 g/m (Z = 1.059 kg/s), L = 0.70 m, mode-1 damping ζ ≈ 3.5e-4
     /// (t60 = ln(1000) / (2π·f0·ζ) ≈ 32 s). Bending stiffness EI = 3.03e-4 N·m²
-    /// is not modeled yet. Data: `scripts/fetch-reference-data.sh`.
+    /// is not modeled yet (PLAN.md 3.6). Paper: docs/papers/. Data:
+    /// `scripts/fetch-reference-data.sh`.
     pub const MONOCHORD_CELLO_G_A_T1: StringSpec = StringSpec {
         name: "cello G (A T1, monochord)",
         frequency: 98.0,
