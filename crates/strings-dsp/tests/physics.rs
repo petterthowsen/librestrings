@@ -1,7 +1,9 @@
 //! Physics checks for one bowed string: tuning, stability, Helmholtz motion and
 //! the Schelleng playability limits.
 
-use strings_dsp::analysis::{Regime, bow_steady, cents, classify, measure_frequency, slip_stats};
+use strings_dsp::analysis::{
+    Regime, bow_steady, cents, classify, classify_bridge_force, measure_frequency, slip_stats,
+};
 use strings_dsp::presets::violin;
 use strings_dsp::{BowInput, BowedString, FrictionParams, StringSpec, schelleng_limits};
 
@@ -106,6 +108,13 @@ fn moderate_bowing_produces_helmholtz_motion() {
             "{} string",
             spec.name
         );
+        let bridge: Vec<f32> = frames.iter().map(|f| f.bridge_force).collect();
+        assert_eq!(
+            classify_bridge_force(&bridge, period),
+            Regime::Helmholtz,
+            "{} string, from bridge force",
+            spec.name
+        );
 
         let stats = slip_stats(&frames, period);
         assert!(
@@ -150,4 +159,36 @@ fn bow_force_outside_schelleng_limits_breaks_helmholtz_motion() {
 
     let (_, too_light) = steady_bow(spec, beta, speed, 0.25 * f_min);
     assert_ne!(classify(&too_light, period), Regime::Helmholtz, "F_min / 4");
+}
+
+/// The bridge-force classifier on idealized signals: a sawtooth (Helmholtz),
+/// two drops per period (double slip), a sinusoid (no slipping) and noise.
+#[test]
+fn bridge_force_classifier_on_ideal_signals() {
+    let period = 100.0;
+    let n = 4000;
+    let saw = |t: f32| t.fract() - 0.5;
+    let helmholtz: Vec<f32> = (0..n).map(|i| saw(i as f32 / period)).collect();
+    let double: Vec<f32> = (0..n).map(|i| saw(2.0 * i as f32 / period)).collect();
+    let sine: Vec<f32> = (0..n)
+        .map(|i| (std::f32::consts::TAU * i as f32 / period).sin())
+        .collect();
+    // Deterministic pseudo-random noise (xorshift).
+    let mut state = 0x2545_f491_u32;
+    let noise: Vec<f32> = (0..n)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            state as f32 / u32::MAX as f32 - 0.5
+        })
+        .collect();
+
+    assert_eq!(classify_bridge_force(&helmholtz, period), Regime::Helmholtz);
+    // A DC offset (static bridge force) doesn't matter.
+    let offset: Vec<f32> = helmholtz.iter().map(|v| v + 3.0).collect();
+    assert_eq!(classify_bridge_force(&offset, period), Regime::Helmholtz);
+    assert_eq!(classify_bridge_force(&double, period), Regime::MultiSlip);
+    assert_eq!(classify_bridge_force(&sine, period), Regime::NoSlip);
+    assert_eq!(classify_bridge_force(&noise, period), Regime::Raucous);
 }

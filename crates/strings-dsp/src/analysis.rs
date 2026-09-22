@@ -145,3 +145,90 @@ pub fn classify(frames: &[StringFrame], period: f32) -> Regime {
         Regime::Helmholtz
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct FlybackStats {
+    /// Sharp drops per nominal period. Helmholtz motion has 1.
+    pub per_period: f32,
+    /// Typical largest drop per period over the typical peak-to-peak range per
+    /// period: near 1 for a sawtooth, about 0.06 for a sinusoid.
+    pub sharpness: f32,
+}
+
+/// Sharp drops ("flybacks") in a bridge-force signal.
+///
+/// In Helmholtz motion the bridge force is a sawtooth: a slow rise and one
+/// sudden drop per period, when the corner reflects from the bridge. Extra
+/// slips add further drops. A drop is a fall over `period / 50` samples of
+/// at least `DROP_FRACTION` of the typical largest drop per period; the count
+/// re-arms once the fall is back under half the threshold.
+pub fn flybacks(x: &[f32], period: f32) -> FlybackStats {
+    const DROP_FRACTION: f32 = 0.4;
+    let none = FlybackStats {
+        per_period: 0.0,
+        sharpness: 0.0,
+    };
+    let w = ((period / 50.0).round() as usize).max(1);
+    let p = period.round() as usize;
+    if x.len() < p + w {
+        return none;
+    }
+    let fall: Vec<f32> = x.windows(w + 1).map(|s| s[0] - s[w]).collect();
+    let median = |mut v: Vec<f32>| {
+        v.sort_by(f32::total_cmp);
+        v[v.len() / 2]
+    };
+    let typical_drop = median(
+        fall.chunks_exact(p)
+            .map(|c| c.iter().copied().fold(0.0, f32::max))
+            .collect(),
+    );
+    let typical_range = median(
+        x.chunks_exact(p)
+            .map(|c| {
+                let (lo, hi) = c
+                    .iter()
+                    .fold((f32::MAX, f32::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+                hi - lo
+            })
+            .collect(),
+    );
+    let threshold = DROP_FRACTION * typical_drop;
+    if threshold <= 0.0 || typical_range <= 0.0 {
+        return none;
+    }
+    let mut armed = true;
+    let mut count = 0;
+    for &f in &fall {
+        if armed && f > threshold {
+            count += 1;
+            armed = false;
+        } else if f < 0.5 * threshold {
+            armed = true;
+        }
+    }
+    FlybackStats {
+        per_period: count as f32 * period / fall.len() as f32,
+        sharpness: typical_drop / typical_range,
+    }
+}
+
+/// Classifies a steady-state bridge-force signal on its own, without the
+/// model's contact state, so measured and simulated signals are judged alike.
+pub fn classify_bridge_force(x: &[f32], period: f32) -> Regime {
+    let mean = x.iter().map(|&v| v as f64).sum::<f64>() / x.len() as f64;
+    let ac: Vec<f32> = x.iter().map(|&v| (v as f64 - mean) as f32).collect();
+    let fb = flybacks(&ac, period);
+    let periodic = periodicity(&ac, period) >= 0.9;
+    // Periodic without sharp drops: the bow never grips and releases.
+    if periodic && fb.sharpness < 0.25 {
+        return Regime::NoSlip;
+    }
+    if !periodic || fb.per_period < 0.75 || fb.sharpness < 0.25 {
+        Regime::Raucous
+    } else if fb.per_period > 1.5 {
+        Regime::MultiSlip
+    } else {
+        Regime::Helmholtz
+    }
+}

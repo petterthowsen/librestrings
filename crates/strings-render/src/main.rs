@@ -6,8 +6,10 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
-use strings_dsp::analysis::{Regime, bow_steady, classify};
-use strings_dsp::presets::violin;
+
+mod measured;
+use strings_dsp::analysis::{Regime, bow_steady, classify, classify_bridge_force};
+use strings_dsp::presets::{reference, violin};
 use strings_dsp::{
     BowInput, BowedString, FrictionParams, StringFrame, StringSpec, schelleng_limits,
 };
@@ -72,6 +74,30 @@ enum Command {
         /// Override the string's bridge lowpass pole (at 48 kHz).
         #[arg(long)]
         loss_lowpass: Option<f32>,
+    },
+    /// Compare the model with a measured Schelleng diagram (mdw cello string A T1),
+    /// point by point. Fetch the data with scripts/fetch-reference-data.sh.
+    Measured {
+        #[arg(long, default_value = "data/reference/schelleng-typeA-s1-T1")]
+        data: PathBuf,
+        /// Override the string's bridge lowpass pole (at 48 kHz).
+        #[arg(long)]
+        loss_lowpass: Option<f32>,
+        /// Override the string's decay time of the fundamental (s).
+        #[arg(long)]
+        t60: Option<f32>,
+        /// Override the static friction coefficient.
+        #[arg(long)]
+        mu_s: Option<f32>,
+        /// Override the dynamic friction coefficient.
+        #[arg(long)]
+        mu_d: Option<f32>,
+        /// Override the friction curve's slip-speed scale (m/s).
+        #[arg(long)]
+        v0: Option<f32>,
+        /// Write every point's parameters and both regimes to this CSV file.
+        #[arg(long)]
+        csv: Option<PathBuf>,
     },
 }
 
@@ -161,6 +187,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             schelleng(&spec, sample_rate, speed, rows, cols);
         }
+        Command::Measured {
+            data,
+            loss_lowpass,
+            t60,
+            mu_s,
+            mu_d,
+            v0,
+            csv,
+        } => {
+            let base = reference::MONOCHORD_CELLO_G_A_T1;
+            let spec = StringSpec {
+                t60: t60.unwrap_or(base.t60),
+                ..with_loss(&base, loss_lowpass)
+            };
+            let d = FrictionParams::default();
+            let friction = FrictionParams {
+                mu_s: mu_s.unwrap_or(d.mu_s),
+                mu_d: mu_d.unwrap_or(d.mu_d),
+                v0: v0.unwrap_or(d.v0),
+            };
+            measured::run(&data, &spec, friction, csv.as_deref())?;
+        }
     }
     Ok(())
 }
@@ -246,19 +294,26 @@ fn schelleng(spec: &StringSpec, fs: f32, speed: f32, rows: usize, cols: usize) {
         .collect();
 
     println!(
-        "{} string, bow speed {speed} m/s. Left: simulated. Right: Schelleng prediction.",
+        "{} string, bow speed {speed} m/s. Left: simulated (contact state). \
+         Middle: simulated (bridge force only). Right: Schelleng prediction.",
         spec.name
     );
     println!("H = Helmholtz, M = multi-slip, R = raucous, . = no oscillation\n");
     let mut agree = 0;
+    let mut classifiers_agree = 0;
     for &force in &forces {
         let mut sim = String::new();
+        let mut from_bridge = String::new();
         let mut theory = String::new();
         for &beta in &betas {
             string.reset();
             string.set_bow_position(beta);
             let frames = bow_steady(&mut string, fs, speed, force, 0.8, 0.05);
-            let regime = classify(&frames[(0.4 * fs) as usize..], period);
+            let steady = &frames[(0.4 * fs) as usize..];
+            let regime = classify(steady, period);
+            let force_only: Vec<f32> = steady.iter().map(|f| f.bridge_force).collect();
+            let regime_bf = classify_bridge_force(&force_only, period);
+            classifiers_agree += usize::from(regime == regime_bf);
             let (f_min, f_max) = limits(&string, beta, speed);
             let predicted = if force > f_max {
                 'R'
@@ -270,21 +325,25 @@ fn schelleng(spec: &StringSpec, fs: f32, speed: f32, rows: usize, cols: usize) {
             agree += usize::from((regime == Regime::Helmholtz) == (predicted == 'H'));
             sim.push(regime.symbol());
             sim.push(' ');
+            from_bridge.push(regime_bf.symbol());
+            from_bridge.push(' ');
             theory.push(predicted);
             theory.push(' ');
         }
-        println!("{force:>9.4} N  {sim}   {theory}");
+        println!("{force:>9.4} N  {sim}   {from_bridge}   {theory}");
     }
     print!("{:>13}", "β:");
     for b in &betas {
         print!("{:<2}", format!("{:.0}", b * 100.0).chars().last().unwrap());
     }
     println!(
-        "\n{:>13}{:.2} .. {:.2} (log spaced)\n\nHelmholtz / not-Helmholtz agreement: {:.0}%",
+        "\n{:>13}{:.2} .. {:.2} (log spaced)\n\nHelmholtz / not-Helmholtz agreement: {:.0}%\n\
+         Contact-state vs bridge-force classifier agreement: {:.0}%",
         "",
         betas[0],
         betas[cols - 1],
-        100.0 * agree as f32 / (rows * cols) as f32
+        100.0 * agree as f32 / (rows * cols) as f32,
+        100.0 * classifiers_agree as f32 / (rows * cols) as f32
     );
 }
 

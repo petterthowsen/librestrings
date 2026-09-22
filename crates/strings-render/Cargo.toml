@@ -9,3 +9,4 @@ publish.workspace = true
 strings-dsp.workspace = true
 clap = { version = "4.5", features = ["derive"] }
 hound = "3.5"
+claxon = "0.4.3"

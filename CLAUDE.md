@@ -10,6 +10,7 @@ cargo clippy --all-targets                   # must be clean
 cargo fmt
 cargo run --release -p strings-render -- bow --string A -o out/a.wav
 cargo run --release -p strings-render -- schelleng --string A   # playability map
+cargo run --release -p strings-render -- measured              # vs measured cello string (needs scripts/fetch-reference-data.sh)
 ```
 
 Renders go in `out/` (gitignored).

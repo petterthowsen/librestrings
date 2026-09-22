@@ -174,6 +174,7 @@ F_b   = F_min^(1−p) · F_max^p
 - As players do, the bow also moves slightly toward the bridge at high dynamics.
 - `R` has to be derived from the bridge loss filter. Calibrate empirically in the renderer.
 - **Measured in Phase 1:** the simulated upper edge follows `F_max` closely, but the lower edge sits about 5–10× above the formula's `F_min` (same 1/β² slope). The dynamics mapping should anchor on `F_max` or on a calibrated lower edge, not on the raw `F_min`.
+- **Against a real string** (see "Measured comparison" under Phase 0–1 notes): the measured lower edge follows roughly 1/β (fitted exponents −0.9 to −1.3), not 1/β². This is in line with Schoonderwaldt et al. (2008) and Mansour et al. (2017). A calibrated lower edge should be fitted to measurements, not derived from the formula.
 
 ### 4.3 Articulations (initial set)
 
@@ -272,11 +273,25 @@ Each phase ends with something audible.
 
 ### Phase 0–1 notes
 
-- Run the tests with `cargo test`. Renderer: `cargo run --release -p strings-render -- <pluck|bow|schelleng> --help`. Output goes to `out/` (gitignored).
+- Run the tests with `cargo test`. Renderer: `cargo run --release -p strings-render -- <pluck|bow|schelleng|measured> --help`. Output goes to `out/` (gitignored).
 - Free-string tuning is within ±1 cent for all four violin strings, stopped up to an octave, at 44.1, 48 and 96 kHz.
 - Moderate bowing gives one slip per period with a slip fraction close to β, and the bridge force has the sawtooth shape of Helmholtz motion.
 - `strings-render schelleng` prints the simulated regime map next to Schelleng's prediction. About 80% agree; the disagreement is the lower-limit offset described in 4.2.
 - String loss is split between the bridge and nut reflections in proportion to segment length, so a segment trapped by a sticking bow still decays.
+
+### Measured comparison: cello G string on a monochord (September 2026)
+
+Data: mdw Vienna string "A T1" (steel/tungsten cello G2, 98 Hz, rigid terminations), 2000 points × 3 bow speeds, with bow force, bow velocity and bridge force at 50 kHz. See `docs/Violin Reference Recordings.md` §3 and Lampis, Chatziioannou & Scavone, Proc. Mtgs. Acoust. 58, 035013 (2025). Run `cargo run --release -p strings-render -- measured` (about 15 s). It simulates every measured point at its own measured (β, F_b, v_b) with `presets::reference::MONOCHORD_CELLO_G_A_T1` and classifies both bridge-force signals with the same classifier.
+
+- **Classifier:** `analysis::classify_bridge_force` uses the bridge force only: sharp drops per period, how sharp they are, and periodicity after removing DC. On simulated violin strings it agrees with the contact-state `classify` on 77–93% of points. On the measured data it reproduces the paper's Fig. 2a qualitatively. It counts the paper's "multiple flyback" and "S-motion" as multi-slip or raucous.
+- **The model's Helmholtz region is far too small:** about 130 simulated vs 700 measured Helmholtz points at 0.05 and 0.1 m/s, and 97 vs 392 at 0.2 m/s. At v_b = 0.1 m/s and β = 0.1 the measured band is 0.31–1.89 N, the simulated one 0.95–1.39 N. H/not-H agreement is 70–82%.
+- **Small β is where it fails most:** measured Helmholtz extends up to 4 N for β ≈ 0.02–0.05. The model gives only multi-slip there, whatever the loss or friction settings.
+- **Sensitivity** (Helmholtz points, 0.05 / 0.1 / 0.2 m/s; default 132 / 129 / 97):
+  - More high-frequency loss helps most. Loss pole 0.7 gives 258 / 225 / 148, and 0.8 gives 353 / 270 / 192; it saturates at about half the measured area.
+  - Friction (μ_s 1.0, μ_d 0.2, v0 0.05–0.2) and the fundamental's t60 change it by ±30 points at most.
+- **Damping doesn't match either:** with pole 0.5 the model's modal damping is ζ ≈ 3e-4 at mode 10. The measured string has about 1.4e-3, rising steeply with mode number (paper Fig. 1). A one-pole loop filter can't follow that curve.
+- **Not changed:** model defaults. Pole 0.5 was chosen for the violin at 48 kHz, and loss alone doesn't close the gap.
+- **Likely missing physics:** bending stiffness (EI = 3.0e-4 N·m² is measured), torsional waves (Z_to is given in the paper), finite bow width and bow-hair compliance. These are the Phase 4 candidates in §8. Re-run `measured` after each one.
 
 ## 8. Alternatives to explore later
 
