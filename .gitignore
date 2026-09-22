@@ -1,0 +1,8 @@
+build/
+Builds/
+.cache/
+compile_commands.json
+*.o
+*.so
+*.vst3
+*.clap
