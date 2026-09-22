@@ -29,6 +29,7 @@ Renders go in `out/` (gitignored).
 - The bow solver's stick/slip hysteresis (Friedlander) is deliberate. Don't "simplify" it into a stateless solve.
 - Keep plugin or framework dependencies out of `strings-dsp`; it must build and test with no audio I/O.
 - When a phase or finding changes, update PLAN.md (the phase table and the "Phase 0–1 notes"-style sections).
+- [STATUS.md](STATUS.md) lists the open issues. Remove an entry when you fix it, and add one when a finding leaves something unresolved.
 
 ## Known model behavior (don't "fix" without reason)
 
