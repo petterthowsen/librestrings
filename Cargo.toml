@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/strings-dsp", "crates/strings-render"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+strings-dsp = { path = "crates/strings-dsp" }
+
+# The physics tests simulate seconds of audio; unoptimized builds make them crawl.
+[profile.test]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
