@@ -2,10 +2,11 @@
 //! the Schelleng playability limits.
 
 use strings_dsp::analysis::{
-    Regime, bow_steady, cents, classify, classify_bridge_force, measure_frequency, slip_stats,
+    Regime, bow_steady, cents, classify, classify_bridge_force, measure_frequency, measure_partial,
+    partial_amplitude, slip_stats,
 };
-use strings_dsp::presets::violin;
-use strings_dsp::{BowInput, BowedString, FrictionParams, StringSpec, schelleng_limits};
+use strings_dsp::presets::{reference, violin};
+use strings_dsp::{BowInput, BowedString, FrictionParams, Loss, StringSpec, schelleng_limits};
 
 const FS: f32 = 48_000.0;
 
@@ -43,6 +44,97 @@ fn free_string_is_in_tune() {
                     spec.name
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn stiff_string_is_in_tune() {
+    let spec = &reference::MONOCHORD_CELLO_G_A_T1;
+    for fs in [44_100.0, 48_000.0, 96_000.0] {
+        for semitones in [0.0, 1.0, 7.0, 12.0, 24.0] {
+            let f0 = spec.frequency * 2f32.powf(semitones / 12.0);
+            let mut s = new_string(spec, fs);
+            s.set_frequency(f0);
+            s.set_bow_position(0.1);
+            let out = pluck(&mut s, fs, 1.0);
+            let err = cents(measure_frequency(&out[(0.1 * fs) as usize..], fs, f0), f0);
+            assert!(err.abs() < 1.0, "+{semitones} @ {fs}: {err:.2} cents");
+        }
+    }
+}
+
+/// The partials of the stiff cello string follow `f_n = n·f0·sqrt((1 + B·n²) / (1 + B))`
+/// up to about 2.5 kHz, where partial 20 is about 14 cents sharp. With the
+/// measured damping the upper partials die within a fraction of a second,
+/// too fast to measure their frequency, so this uses the one-pole loss.
+#[test]
+fn stiff_string_partials_are_sharp() {
+    let spec = &StringSpec {
+        loss: Loss::OnePole {
+            t60: 32.0,
+            lowpass: 0.5,
+        },
+        ..reference::MONOCHORD_CELLO_G_A_T1
+    };
+    let b = spec.inharmonicity();
+    assert!((b - 4.2e-5).abs() < 0.1e-5, "B = {b}");
+    for (fs, semitones) in [(48_000.0, 0.0), (96_000.0, 0.0), (48_000.0, 7.0)] {
+        let f0 = spec.frequency * 2f32.powf(semitones / 12.0);
+        let b = b * 2f32.powf(semitones / 6.0);
+        let mut s = new_string(spec, fs);
+        s.set_frequency(f0);
+        // Plucking here leaves no partial up to 25 near a node.
+        let beta = 0.137;
+        s.set_bow_position(beta);
+        let out = pluck(&mut s, fs, 2.0);
+        let out = &out[(0.05 * fs) as usize..];
+        for n in 1..=(2500.0 / f0) as usize {
+            let nf = n as f32;
+            if (std::f32::consts::PI * nf * beta).sin().abs() < 0.2 {
+                continue;
+            }
+            let target = nf * f0 * ((1.0 + b * nf * nf) / (1.0 + b)).sqrt();
+            let err = cents(measure_partial(out, fs, target, f0), target);
+            let stretch = cents(target, nf * f0);
+            assert!(
+                err.abs() < 2.0,
+                "+{semitones} @ {fs}, partial {n}: {err:.2} cents off (target is {stretch:.1} cents sharp)"
+            );
+        }
+    }
+}
+
+/// Each partial of the measured cello string decays at the rate of its damping
+/// curve, within a factor of 1.5, over the measured modes (up to 1.7 kHz).
+#[test]
+fn measured_damping_sets_partial_decay() {
+    let spec = &reference::MONOCHORD_CELLO_G_A_T1;
+    let Loss::Measured(curve) = spec.loss else {
+        panic!("reference string has measured loss");
+    };
+    for fs in [48_000.0, 96_000.0] {
+        let f0 = spec.frequency;
+        let mut s = new_string(spec, fs);
+        s.set_bow_position(0.137);
+        let out = pluck(&mut s, fs, 3.0);
+        // Windows of 8 periods, far enough apart for a clear drop but short
+        // enough that the fastest partial is still above the noise.
+        let window = (8.0 * fs / f0) as usize;
+        let start = (0.05 * fs) as usize;
+        for n in [1usize, 2, 4, 5, 7, 8, 9, 10, 11, 12, 15] {
+            let f = n as f32 * f0 * (1.0 + spec.inharmonicity() * (n * n) as f32).sqrt();
+            let zeta = curve.zeta(f);
+            // Aim for a drop of about 20 dB between the two windows.
+            let gap = ((2.3 / (std::f32::consts::TAU * f * zeta)) * fs) as usize;
+            let gap = gap.clamp(window, out.len() - start - window);
+            let a1 = partial_amplitude(&out[start..start + window], fs, f);
+            let a2 = partial_amplitude(&out[start + gap..start + gap + window], fs, f);
+            let measured = (a1 / a2).ln() / (std::f32::consts::TAU * f * gap as f32 / fs);
+            assert!(
+                (measured / zeta).ln().abs() < 1.5f32.ln(),
+                "@ {fs}, mode {n}: ζ {measured:.2e}, curve {zeta:.2e}"
+            );
         }
     }
 }

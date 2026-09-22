@@ -57,13 +57,28 @@ pub fn run(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let points = read_index(&dir.join("index.csv"))?;
     println!(
-        "{}: {} points; model: {}, Z = {:.4} kg/s, t60 {} s, loss lowpass {}, {friction:?}",
+        "{}: {} points; model: {}, Z = {:.4} kg/s, {friction:?}\n  loss: {:?}",
         dir.display(),
         points.len(),
         spec.name,
         spec.impedance(),
-        spec.t60,
-        spec.loss_lowpass
+        spec.loss
+    );
+    println!(
+        "  EI {} N·m² (B = {:.2e}), torsion: {}",
+        spec.bending_stiffness,
+        spec.inharmonicity(),
+        match spec.torsion {
+            Some(t) => format!(
+                "Z_t = {} kg/s ({:.2} × Z), f_t = {:.0} Hz ({:.2} × f0), Q {}",
+                t.impedance,
+                t.impedance / spec.impedance(),
+                t.frequency,
+                t.frequency / spec.frequency,
+                t.q
+            ),
+            None => "none".into(),
+        }
     );
     let results = classify_all(dir, spec, friction, &points)?;
 

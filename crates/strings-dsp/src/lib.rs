@@ -9,8 +9,10 @@ pub mod analysis;
 pub mod bow;
 pub mod delay;
 pub mod filters;
+pub mod loss;
 pub mod presets;
 pub mod string;
 
 pub use bow::{BowJunction, ContactState, FrictionParams, schelleng_limits};
-pub use string::{BowInput, BowedString, StringFrame, StringSpec};
+pub use loss::{DampingCurve, Loss};
+pub use string::{BowInput, BowedString, StringFrame, StringSpec, TorsionSpec};

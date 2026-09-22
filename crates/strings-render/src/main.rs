@@ -11,7 +11,8 @@ mod measured;
 use strings_dsp::analysis::{Regime, bow_steady, classify, classify_bridge_force};
 use strings_dsp::presets::{reference, violin};
 use strings_dsp::{
-    BowInput, BowedString, FrictionParams, StringFrame, StringSpec, schelleng_limits,
+    BowInput, BowedString, DampingCurve, FrictionParams, Loss, StringFrame, StringSpec,
+    TorsionSpec, schelleng_limits,
 };
 
 #[derive(Parser)]
@@ -80,12 +81,18 @@ enum Command {
     Measured {
         #[arg(long, default_value = "data/reference/schelleng-typeA-s1-T1")]
         data: PathBuf,
-        /// Override the string's bridge lowpass pole (at 48 kHz).
+        /// Use the Phase 1 one-pole loss instead of the measured damping curve,
+        /// with this bridge lowpass pole (at 48 kHz; default 0.5).
         #[arg(long)]
         loss_lowpass: Option<f32>,
-        /// Override the string's decay time of the fundamental (s).
+        /// Use the Phase 1 one-pole loss instead of the measured damping curve,
+        /// with this decay time of the fundamental (s; default 32).
         #[arg(long)]
         t60: Option<f32>,
+        /// Override the exponent of the measured damping curve, which sets how it
+        /// extrapolates above the measured modes (1.7 kHz).
+        #[arg(long)]
+        damping_exponent: Option<f32>,
         /// Override the static friction coefficient.
         #[arg(long)]
         mu_s: Option<f32>,
@@ -95,6 +102,21 @@ enum Command {
         /// Override the friction curve's slip-speed scale (m/s).
         #[arg(long)]
         v0: Option<f32>,
+        /// Override the bending stiffness EI (N·m²); 0 makes the string flexible.
+        #[arg(long)]
+        bending_stiffness: Option<f32>,
+        /// Leave out torsional waves.
+        #[arg(long)]
+        no_torsion: bool,
+        /// Override the torsional impedance at the string surface (kg/s).
+        #[arg(long)]
+        torsion_impedance: Option<f32>,
+        /// Override the torsional fundamental, as a multiple of the transverse one.
+        #[arg(long)]
+        torsion_ratio: Option<f32>,
+        /// Override the torsional quality factor.
+        #[arg(long)]
+        torsion_q: Option<f32>,
         /// Write every point's parameters and both regimes to this CSV file.
         #[arg(long)]
         csv: Option<PathBuf>,
@@ -194,12 +216,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             mu_s,
             mu_d,
             v0,
+            damping_exponent,
+            bending_stiffness,
+            no_torsion,
+            torsion_impedance,
+            torsion_ratio,
+            torsion_q,
             csv,
         } => {
             let base = reference::MONOCHORD_CELLO_G_A_T1;
+            let torsion = base.torsion.filter(|_| !no_torsion).map(|t| TorsionSpec {
+                impedance: torsion_impedance.unwrap_or(t.impedance),
+                frequency: torsion_ratio.map_or(t.frequency, |r| r * base.frequency),
+                q: torsion_q.unwrap_or(t.q),
+            });
+            let loss = match base.loss {
+                _ if t60.is_some() || loss_lowpass.is_some() => Loss::OnePole {
+                    t60: t60.unwrap_or(32.0),
+                    lowpass: loss_lowpass.unwrap_or(0.5),
+                },
+                Loss::Measured(curve) => Loss::Measured(DampingCurve {
+                    exponent: damping_exponent.unwrap_or(curve.exponent),
+                    ..curve
+                }),
+                one_pole => one_pole,
+            };
             let spec = StringSpec {
-                t60: t60.unwrap_or(base.t60),
-                ..with_loss(&base, loss_lowpass)
+                loss,
+                bending_stiffness: bending_stiffness.unwrap_or(base.bending_stiffness),
+                torsion,
+                ..base
             };
             let d = FrictionParams::default();
             let friction = FrictionParams {
@@ -213,11 +259,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Overrides the bridge lowpass pole of a string with one-pole loss.
 fn with_loss(spec: &StringSpec, loss_lowpass: Option<f32>) -> StringSpec {
-    StringSpec {
-        loss_lowpass: loss_lowpass.unwrap_or(spec.loss_lowpass),
-        ..*spec
-    }
+    let loss = match (spec.loss, loss_lowpass) {
+        (Loss::OnePole { t60, .. }, Some(lowpass)) => Loss::OnePole { t60, lowpass },
+        (loss, _) => loss,
+    };
+    StringSpec { loss, ..*spec }
 }
 
 fn build(common: &Common) -> Result<(StringSpec, BowedString), Box<dyn std::error::Error>> {

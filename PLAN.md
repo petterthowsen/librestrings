@@ -5,7 +5,7 @@ A CLAP instrument plugin, written in Rust, that synthesizes bowed string instrum
 - **Long-term scope:** violin, viola, cello and double bass, each playable as a **solo** instrument or as a **section** of up to about 12 players (the limit depends on CPU cost). Sections are placed on a stereo stage and humanized.
 - **First milestone:** solo cello. The order of instruments doesn't matter for the goal, and our measured reference data (bowed cello G strings, see Phase 0–1 notes) validates the string and bow model directly on the cello. The core model is instrument-independent (SI units), so everything calibrated here carries over to the violin, viola and bass.
 
-Background research is in [docs/](docs/). This plan corrects several errors in that research; see [Research notes](#research-notes--corrections).
+Background research is in [docs/](docs/); the papers the model takes numbers from are listed in [docs/Literature.md](docs/Literature.md). This plan corrects several errors in that research; see [Research notes](#research-notes--corrections).
 
 ---
 
@@ -63,11 +63,13 @@ The model uses velocity waves. The bow point splits the string into two segments
 ```
 
 - `N = fs / f0` is the loop length in samples, minus the phase delay of the loop filters at `f0` (tuning compensation).
-- **Bridge reflection:** `-g · lowpass`. Start with a one-pole filter. This sets decay time and brightness.
+- **Bridge reflection:** `-g · lowpass`. This sets decay time and brightness. Two loss models (`loss::Loss`):
+  - **One-pole** (violin presets): a decay time for the fundamental plus a one-pole lowpass.
+  - **Measured** (Phase 1b, cello reference string): a damping curve ζ(f) fitted to pluck data. It is realized as the DC gain × a one-pole × a 2nd-order Butterworth lowpass, fitted per semitone in the constructor. See "Phase 1b results".
 - **Finger/nut reflection:** `-1` for open strings. A stopped note is simply a shorter nut-side delay.
 - **Fractional delay:** 3rd-order Lagrange on the nut-side delay, because its length is modulated by vibrato, legato and portamento. Thiran allpass sounds cleaner for fixed lengths but produces transients when its length is modulated, so we keep it only as an option for the bridge side.
 - **Output:** force at the bridge, `F = Z · (v_in − v_out)`, which then goes through the body filter.
-- **Stiffness/dispersion (Phase 1b):** a cascade of 1st-order allpasses in the loop, with tuning re-compensated. It matters much more for bass and cello than for violin. See 3.6.
+- **Stiffness/dispersion (Phase 1b, done):** a cascade of 16 identical 1st-order allpasses at the nut reflection, with tuning re-compensated. It matters much more for bass and cello than for violin. See 3.6.
 
 ### 3.2 The bow junction
 
@@ -139,7 +141,7 @@ F     = F_b · μ(Δv)
 | Cello | C2 G2 D3 A3 | ~690 mm | Milestone 1. Stiffness matters more. Measured reference for the G string (mdw, see Phase 0–1 notes) |
 | Double bass | E1 A1 D2 G2 | ~1040–1060 mm | Stiffness and dispersion are clearly audible. Longer loops need more delay memory |
 
-Per string we store tension, linear density (which gives `Z`), and loss parameters. Per instrument we store body modes, bow friction parameters, and typical ranges of `β`, `v_b` and `F_b`.
+Per string we store tension, linear density (which gives `Z`), loss (one-pole or a measured damping curve), bending stiffness and, optionally, torsion. Per instrument we store body modes, bow friction parameters, and typical ranges of `β`, `v_b` and `F_b`.
 
 ### 3.6 Bending stiffness and torsional waves
 
@@ -148,7 +150,10 @@ The measured comparison (see "Measured comparison" under Phase 0–1 notes) show
 **Bending stiffness (dispersion).**
 - **Physics:** a stiff string's partials are sharp: `f_n = n·f0·sqrt(1 + B·n²)`, with inharmonicity `B = π²·EI / (T·L²)`. High frequencies travel faster, so the Helmholtz corner spreads out instead of staying sharp.
 - **For the measured string A T1:** EI = 3.03e-4 N·m², so B ≈ 4.2e-5 and partial 20 is about +15 cents sharp. Violin strings have much smaller B; the cello and bass need it most.
-- **Implementation:** a dispersion allpass cascade in the loop, fixed next to the bridge lowpass rather than on the modulated nut-side delay. Candidates are Rauhala & Välimäki's tunable dispersion filter and Abel, Välimäki & Smith's design. Tuning compensation adds the allpass phase delay at `f0`. B scales as 1/L², so a stopped note recomputes the coefficients on each note change, not every sample.
+- **Implementation (done):** `filters::DispersionAllpass`, a cascade of 16 identical first-order allpasses (Van Duyne & Smith; Rauhala & Välimäki), after the nut-side delay read. Its coefficient is fitted by golden-section search to the stiff-string partials up to 3.5 kHz, including the bridge lowpass's own phase. Tuning compensation subtracts the cascade's phase delay at `f0` from the nut-side delay.
+  - **At the nut, not the bridge.** The cascade adds about 60 samples of delay on the cello G string. On the bridge side that would move the bow's effective position far off at small β, where the bridge segment is only a few samples long.
+  - **Per-semitone table.** B scales as f² for stopped notes, so the constructor fits one coefficient per semitone, up to 3 octaves above the open string. `set_frequency` interpolates between them, so vibrato stays cheap and smooth.
+  - **Accuracy limit.** Identical sections follow the n² curve only up to a bandwidth that grows as M^(1/3). On the cello G string, 16 sections give ≤ 1.5 cents error up to 2.5 kHz and ≤ 3.2 cents up to 3.4 kHz. Above that the model is under-dispersed. Distinct coefficients fitted by least squares got stuck in local minima. An Abel–Välimäki–Smith biquad design missed the low partials by tens of cents, because its staircase phase is too coarse near DC. Revisit if the bass needs more (its B is about 5× larger).
 - **Data:** a `bending_stiffness` (EI, N·m²) field on `StringSpec`. B is derived from it.
 - **Checks:**
   - a pluck test that the partial frequencies follow `f_n` within a few cents;
@@ -156,12 +161,16 @@ The measured comparison (see "Measured comparison" under Phase 0–1 notes) show
   - the effect on the measured comparison.
 
 **Torsional waves.**
-- **Physics:** the bow grips the string's surface, so friction also twists the string. At the contact point the string's velocity is the transverse velocity plus the rolling velocity `r·ω`. The bow therefore sees the transverse and torsional impedances in parallel. The torsional impedance is much lower than Z, so the string gives way more easily at the bow. Woodhouse and co-workers found torsion affects the stick/slip trigger, attacks and the minimum bow force.
+- **Physics:** the bow grips the string's surface, so friction also twists the string. At the contact point the string's velocity is the transverse velocity plus the rolling velocity `r·ω`. The bow therefore sees the transverse and torsional impedances in parallel. (Correction: an earlier version said the torsional impedance is much lower than Z. Referred to the surface it is roughly `κ·μ·c_t`, several times Z, because torsional waves are about 5× faster. The string gives way somewhat more easily at the bow: Z·Z_t/(Z+Z_t) ≈ 0.77·Z.) Woodhouse and co-workers found torsion affects the stick/slip trigger, attacks and the minimum bow force.
 - **Implementation:** a second, short waveguide per string for the torsional waves, coupled only at the bow junction.
   - The junction solve keeps its closed-form quadratic and Friedlander hysteresis. Only the load line changes: `v_s = v_h + v_h,tors + F·(1/(2Z) + 1/(2Z_t))`, with `Z_t` the torsional impedance referred to the string surface.
   - The torsional fundamental is typically several times the transverse one, and its damping is much higher (low Q).
   - Bridge force (the output) still comes from the transverse waves only.
-- **Data:** the paper lists the manufacturer's `Z_to` (0.039 for A T1, in the table's units of g·m²/s²; the conversion to a surface impedance needs checking). The torsional frequency and damping aren't in the paper and need to come from the literature, or be fitted to the measured maps.
+- **Data:** the paper lists the manufacturer's `Z_to` (0.039 for A T1, in units of g·m²/s²), which the text calls "torsional stiffness". Read as GJ, it gives GJ ≈ 0.13·EI, and neither reading yields a plausible surface impedance, so it isn't used. The preset instead uses estimates, documented in `presets::reference`:
+  - f_t = 5.5·f0, as measured on a steel cello G string by Mores (PLOS One 2019: 543 Hz vs 98 Hz);
+  - Z_t = κ·μ·c_t with κ = 0.6, giving 3.5 kg/s (3.3·Z);
+  - Q = 50, since Mores finds torsional Q about 10× below the transverse Q.
+- **Implementation (done):** `TorsionSpec` on `StringSpec`, with two round-trip delay lines, one on each side of the bow, both reflecting with −1. The loss per period is the same for every mode (no lowpass). The torsional lines scale with the stopped pitch. The bridge-side line is clamped to 2 samples, which matters only below β ≈ 0.02.
 - **Cost:** roughly one extra short delay line and a filter per string. That is cheap next to the transverse loop, but it matters for 12-player sections.
 - **Checks:** Helmholtz motion still passes the physics tests, and the measured comparison shows the effect, especially the lower force limit and small β.
 
@@ -283,7 +292,7 @@ Each phase ends with something audible.
 |---|---|---|
 | **0. Scaffold** ✅ | Cargo workspace, `strings-dsp`, `strings-render` CLI writing WAV (`hound`) plus CSV of internal signals | `cargo test` passes; the renderer writes a plucked (free) string to WAV |
 | **1. One bowed string** ✅ | DWG string, bow junction and hysteresis, bridge loss, tuning compensation | A violin A string produces stable Helmholtz motion; the Schelleng sweep behaves as expected; tuning within ±1 cent |
-| **1b. Measured string physics** | Bending stiffness and torsional waves (3.6), checked against the measured cello G string with `strings-render measured` | Simulated Helmholtz region close to the measured one at all three bow speeds (area within about ±30%, Helmholtz present at small β); physics tests still pass |
+| **1b. Measured string physics** ⚠️ | Bending stiffness, torsional waves (3.6) and measured frequency-dependent damping, checked against the measured cello G string with `strings-render measured` | Simulated Helmholtz region close to the measured one at all three bow speeds (area within about ±30%, Helmholtz present at small β); physics tests still pass. **Not met:** all three are implemented and verified. The damping gets closest, at about half the measured area; stiffness and torsion still shrink it. See "Phase 1b results" |
 | **2. Solo cello (offline)** | Cello presets for C2 G2 D3 A3 (G from the measured string; the others from published string data), 4 strings, string selection, fingering, legato, vibrato, biquad body, performer layer with the 4 articulations and its force mapping calibrated on the measured limits (4.2), bow-hair damping so a bow stopped on the string silences it quickly | Scripted phrases (scales, legato lines, staccato runs) sound like a cello, not a synth |
 | **3. CLAP plugin** | nih-plug wrapper, CLAP-only export, CC1/CC11/vibrato mapping, keyswitches, parameters, real-time safety | Playable in Bitwig and Reaper; no allocations in the audio thread; CPU cost measured |
 | **4. Realism pass** | Thermal friction, finger damping at note changes, bow noise, oversampling decision, bouncing-bow spiccato, sympathetic string coupling | A/B against recordings; clear improvement on attacks and legato transitions (the mdw attack data gives a measured target for attacks) |
@@ -315,9 +324,55 @@ Data: mdw Vienna string "A T1" (steel/tungsten cello G2, 98 Hz, rigid terminatio
 - **Sensitivity** (Helmholtz points, 0.05 / 0.1 / 0.2 m/s; default 132 / 129 / 97):
   - More high-frequency loss helps most. Loss pole 0.7 gives 258 / 225 / 148, and 0.8 gives 353 / 270 / 192; it saturates at about half the measured area.
   - Friction (μ_s 1.0, μ_d 0.2, v0 0.05–0.2) and the fundamental's t60 change it by ±30 points at most.
-- **Damping doesn't match either:** with pole 0.5 the model's modal damping is ζ ≈ 3e-4 at mode 10. The measured string has about 1.4e-3, rising steeply with mode number (paper Fig. 1). A one-pole loop filter can't follow that curve.
+- **Damping doesn't match either:** with pole 0.5 the model's modal damping is ζ ≈ 3e-4 at mode 10. The measured string has about 8.5e-4 there (corrected from an earlier rough reading of 1.4e-3), rising steeply with mode number (paper Fig. 1). A one-pole loop filter can't follow that curve. (Fixed in Phase 1b with the measured loss model.)
 - **Not changed:** model defaults. Pole 0.5 was chosen for the violin at 48 kHz, and loss alone doesn't close the gap.
-- **Likely missing physics:** bending stiffness (EI = 3.0e-4 N·m² is measured) and torsional waves (Z_to is given in the paper), both planned in 3.6. Beyond those: finite bow width and bow-hair compliance (§8). Re-run `measured` after each one.
+- **Likely missing physics:** bending stiffness (EI = 3.0e-4 N·m² is measured) and torsional waves (Z_to is given in the paper), both planned in 3.6. Beyond those: finite bow width and bow-hair compliance (§8). Re-run `measured` after each one. (Phase 1b tried the first two; neither helped. See below.)
+
+### Phase 1b results: stiffness, torsion and damping (September 2026)
+
+Helmholtz points per bow speed (0.05 / 0.1 / 0.2 m/s; measured 701 / 700 / 392). The last column counts Helmholtz points at β < 0.05, where the measurement has 529 of 2400; the figure in brackets is how many of those agree with the measurement.
+
+| Model | Helmholtz points | at β < 0.05 |
+|---|---|---|
+| **One-pole loss (Phase 1)**, flexible, no torsion | 132 / 129 / 97 | 32 (31) |
+| + bending stiffness | 51 / 56 / 62 | 15 |
+| + torsion only | 13 / 26 / 31 | 21 |
+| + both | 12 / 26 / 43 | 6 |
+| One-pole, pole 0.8, flexible, no torsion | 353 / 270 / 192 | 134 (44) |
+| One-pole, pole 0.8 + stiffness + torsion, Q 15 | 260 / 273 / 198 | 90 (83) |
+| **Measured damping**, flexible, no torsion | **337 / 277 / 165** | **156 (143)** |
+| + bending stiffness | 249 / 211 / 90 | 153 (134) |
+| + torsion only | 170 / 187 / 135 | 187 (171) |
+| + both (preset default) | 119 / 154 / 107 | 127 (108) |
+| + both, torsion Q 15 | 225 / 242 / 117 | 182 (164) |
+| Measured damping, curve exponent 2.5 / 4.5 (flexible, no torsion) | 320 / 265 / 157 and 338 / 270 / 158 | 146 / 159 |
+
+**Stiffness and torsion**
+- **Verified:**
+  - partials of the stiff string within 2 cents of `f_n` up to 2.5 kHz (`stiff_string_partials_are_sharp`, run with one-pole loss, because with the measured damping the upper partials die too fast to measure their pitch);
+  - tuning within ±1 cent with all three, up to two octaves and at 44.1–96 kHz;
+  - violin behavior and Schelleng maps unchanged, byte for byte (violin presets use the one-pole loss and have neither stiffness nor torsion).
+- **Both cost Helmholtz points, through real extra slips.** The contact state confirms the extra slips; the classifier isn't miscounting. With one-pole loss at β = 0.1, v_b = 0.1 m/s, F_b = 1.1 N the flexible string has 1.0 slips per period, stiffness 4.0, torsion 5.3. Dispersion spreads the Helmholtz corner into precursors. Torsional reflections return about 5.5 times per period, sharp, because the torsional loop has no frequency-dependent loss. Both trigger early slips.
+
+**Measured damping**
+- **Data:** ζ per mode digitized from the paper's Fig. 1 (A T1), listed in `presets::reference`.
+- **Curve:** `ζ(f) = 2.9e-4 + 5.4e-4·(f / 1 kHz)^3.54`, within ±17% rms (log) of the data, excluding mode 3, which has a wide spread.
+- **Filter fit:** a grid search over (pole, cutoff), with the DC loss in closed form, fits the loss per period of the partials up to 8 kHz, capped at 3 nepers.
+- **Design limit:** pluck-measured ζ is within 0.68–1.45 × the curve over modes 1–15, the same at 48 and 96 kHz (`measured_damping_sets_partial_decay`). The fit is too low around modes 2–4 and too high around modes 9–11.
+
+**What we learned**
+- **Damping is the biggest single improvement:** 2.5× the Helmholtz points of Phase 1 and 5× at small β, with H/not-H agreement 81 / 76 / 85%. It doesn't depend on the extrapolation above 1.7 kHz (exponent 2.5–4.5 changes little), so it is set by the measured modes. A clean band now forms at β ≈ 0.05–0.12, 1–3 N.
+- **Still about half the measured area.** Two gaps remain. The lower force limit sits too high: the measurement has Helmholtz motion down to 0.2–0.3 N at β ≈ 0.1–0.2, where the model gives multi-slip or no slipping. At β < 0.05, measured Helmholtz motion reaches 2–4 N; the model only shows it in scattered cells.
+- **Stiffness and torsion still subtract overall, even with realistic transverse damping.** Torsion helps at small β (187 against 156) and costs at larger β. More torsional damping (Q 15) recovers most of the loss. Mansour, Woodhouse & Scavone (2017) found torsion changes the minimum bow force less than Schelleng's correction predicts (docs/Literature.md). The torsional Q and a frequency-dependent torsional loss are the least-grounded parameters here; the torsional frequency rests on one measurement of a different steel cello G string (Mores 2019).
+- **Model defaults:** the reference string keeps all three (measured EI and damping, estimated torsion), since it describes the physics rather than the best score. The ablations above show each one's effect.
+- **Next candidates:**
+  - frequency-dependent torsional loss (a lowpass in the torsional loop), with the torsional Q from the literature rather than fitted;
+  - finite bow width and bow-hair compliance (§8);
+  - the friction model (thermal friction, Phase 4), which Woodhouse links to the minimum bow force.
+- `strings-render measured` takes these overrides:
+  - `--t60` / `--loss-lowpass`: switch to the one-pole loss;
+  - `--damping-exponent`;
+  - `--bending-stiffness`, `--no-torsion`, `--torsion-impedance`, `--torsion-ratio` and `--torsion-q`.
 
 ## 8. Alternatives to explore later
 
@@ -325,7 +380,7 @@ Data: mdw Vienna string "A T1" (steel/tungsten cello G2, 98 Hz, rigid terminatio
 |---|---|---|
 | **FDTD stiff string** (Bilbao; Willemsen's real-time work) | Accurate stiffness and loss from physical constants, two polarizations, fingerboard collisions | Costs O(N) per sample. Changing pitch continuously needs dynamic grids, which are an active research area and prone to artifacts. Candidate for an "HQ solo" mode |
 | **Modal synthesis** | Exact mode frequencies and damping per mode, easy to couple to other resonators, good for bodies and sympathetic resonance | Low strings need 150+ modes. Bow coupling requires summing all modes each sample |
-| **Torsional waves** | A second waveguide per string, coupled at the bow. Known to affect the stick/slip trigger and attack quality (Woodhouse) | Now planned for Phase 1b: see 3.6 |
+| **Torsional waves** | A second waveguide per string, coupled at the bow. Known to affect the stick/slip trigger and attack quality (Woodhouse) | Implemented in Phase 1b (3.6); it doesn't help until the damping is realistic |
 | **Thermal friction model** (Woodhouse) | Friction depends on the rosin's temperature, giving better attacks and hysteresis | Planned for Phase 4. Needs its own solver work |
 | **LuGre / elasto-plastic friction** | Micro-slip, dynamic hysteresis, smooth transitions | Multi-state, so there is no closed-form solve and it needs iteration; high CPU cost for sections |
 | **Finite bow width / 3D bow-hair ribbon** | A realistic contact patch, hair compliance, the torsional interaction of the hair | Beyond real-time today. A finite width (a few contact points) is a cheaper approximation worth trying |

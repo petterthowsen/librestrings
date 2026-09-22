@@ -34,7 +34,15 @@ pub fn bow_steady(
 /// Hann-windowed DFT bin between the start and end of the signal. Accurate to a
 /// small fraction of a cent for a steady tone a second or so long.
 pub fn measure_frequency(x: &[f32], sample_rate: f32, estimate: f32) -> f32 {
-    let window = ((8.0 * sample_rate / estimate).round() as usize).min(x.len() / 2);
+    measure_partial(x, sample_rate, estimate, estimate)
+}
+
+/// Like [`measure_frequency`], for one partial of a tone whose partials are
+/// about `spacing` Hz apart: the window spans 8 periods of `spacing`, so
+/// neighbouring partials fall outside the main lobe. The partial must lie
+/// within about `spacing / 16` of `estimate`.
+pub fn measure_partial(x: &[f32], sample_rate: f32, estimate: f32, spacing: f32) -> f32 {
+    let window = ((8.0 * sample_rate / spacing).round() as usize).min(x.len() / 2);
     let mut f = estimate as f64;
     // Coarse pass with a short hop (wide unwrap range), then a fine pass with the longest hop.
     for hop in [window, x.len() - window] {
@@ -46,6 +54,23 @@ pub fn measure_frequency(x: &[f32], sample_rate: f32, estimate: f32) -> f32 {
         f += deviation * sample_rate as f64 / (std::f64::consts::TAU * hop as f64);
     }
     f as f32
+}
+
+/// Amplitude of the component at `frequency` in `x`, from a Hann-windowed DFT
+/// bin over the whole slice. Choose the slice long enough that neighbouring
+/// partials fall outside the main lobe (at least 4 periods of their spacing).
+pub fn partial_amplitude(x: &[f32], sample_rate: f32, frequency: f32) -> f32 {
+    let omega = std::f64::consts::TAU * frequency as f64 / sample_rate as f64;
+    let n = x.len() as f64;
+    let (mut re, mut im) = (0.0, 0.0);
+    for (i, &v) in x.iter().enumerate() {
+        let w = 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / n).cos();
+        let (s, c) = (omega * i as f64).sin_cos();
+        re += w * v as f64 * c;
+        im -= w * v as f64 * s;
+    }
+    // A Hann window's coherent gain is 1/2.
+    (4.0 * (re * re + im * im).sqrt() / n) as f32
 }
 
 fn bin_phase(x: &[f32], omega: f64) -> f64 {

@@ -17,14 +17,14 @@ Renders go in `out/` (gitignored).
 
 ## Layout
 
-- `crates/strings-dsp`: the model. `string.rs` holds the waveguide, `bow.rs` the friction junction and Schelleng limits, `delay.rs` and `filters.rs` the building blocks, `presets.rs` the instrument data, and `analysis.rs` the offline measurements.
+- `crates/strings-dsp`: the model. `string.rs` holds the waveguide (with stiffness and torsion), `bow.rs` the friction junction and Schelleng limits, `loss.rs` the loop-loss models, `delay.rs` and `filters.rs` the building blocks, `presets.rs` the instrument data, and `analysis.rs` the offline measurements.
 - `crates/strings-render`: the CLI (clap, hound).
-- `docs/`: research notes. **Not fully reliable**; PLAN.md's "Research notes / corrections" lists known errors, such as swapped Schelleng formulas and commuted synthesis misapplied to bowing.
+- `docs/`: research notes, plus `Literature.md` (papers the model takes numbers from, with links). The research notes are **not fully reliable**; PLAN.md's "Research notes / corrections" lists known errors, such as swapped Schelleng formulas and commuted synthesis misapplied to bowing.
 
 ## Rules
 
 - **Real-time safety:** everything in `strings-dsp` except `analysis` must never allocate, lock or do I/O in `process`/`solve`. Allocate in constructors.
-- **SI units everywhere:** m/s, N, kg/s, seconds, Hz. Parameters must not depend on the sample rate; convert using `fs` (see how `loss_lowpass` is defined at 48 kHz).
+- **SI units everywhere:** m/s, N, kg/s, seconds, Hz. Parameters must not depend on the sample rate; convert using `fs` (see how `Loss::OnePole::lowpass` is defined at 48 kHz).
 - **DSP changes must keep the physics tests passing** (`crates/strings-dsp/tests/physics.rs`: tuning ±1 cent, decay, Helmholtz motion, Schelleng extremes). For changes to the bow or string, also run the `schelleng` map and compare it before and after.
 - The bow solver's stick/slip hysteresis (Friedlander) is deliberate. Don't "simplify" it into a stateless solve.
 - Keep plugin or framework dependencies out of `strings-dsp`; it must build and test with no audio I/O.
@@ -35,3 +35,5 @@ Renders go in `out/` (gitignored).
 - The simulated lower force limit sits about 5–10× above Schelleng's theoretical F_min; the upper limit matches F_max. Anchor force defaults on F_max (the renderer and tests use 0.3 × F_max).
 - The bridge loss lowpass at 0.5 (at 48 kHz) is needed for a clean Helmholtz band at 48 kHz; brighter settings fragment the slip phase.
 - A bow stopped on the string damps it slowly (no bow-hair damping yet; planned for Phase 2).
+- On the measured cello string, bending stiffness and torsion (Phase 1b) *shrink* the Helmholtz region, through real extra slips, even with the measured damping. This is not a bug (PLAN.md "Phase 1b results"). Violin presets have neither and use the one-pole loss.
+- The measured loss (`Loss::Measured`) fits one filter per semitone in the constructor (about 7 ms per cello string). Don't construct strings on the audio thread.
