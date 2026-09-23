@@ -10,6 +10,7 @@ Open issues as of September 2026, end of Phase 2 (built, not yet judged by ear).
 | 1. One bowed string | Done (violin presets) |
 | 1b. Measured string physics | Stiffness, torsion and measured damping built and verified. The acceptance target is **not met** (see below) |
 | 2. Solo cello | Built: cello presets, bow hair, body, instrument, performer with the four articulations, calibrated force band, `play` renderer with example scores. Objective checks pass (`tests/performer.rs`). **Not yet listened to:** the "sounds like a cello" criterion is open |
+| 3. CLAP plugin | Built: nih-plug CLAP plugin with MIDI, CCs, keyswitches, parameters and an egui editor (status, instrument view, keyboard, faders); standalone app. Tests pass and the engine runs at 2.1% of real time. **Not yet tried in Bitwig or Reaper** |
 
 ## Listening
 
@@ -67,10 +68,18 @@ The target is a simulated Helmholtz region within ±30% of the measured one, wit
 
 23. **Filter coefficients are modulated but untested for artifacts.** Vibrato and legato change the loss filter (a Butterworth biquad) and the dispersion coefficient at the performer's 3 kHz control rate. Neither has been checked for zipper noise or transients.
 24. **Construction cost:** about 7 ms per cello string (one filter fit per semitone), so about 30 ms per cello. That is fine for a solo instrument, but a 12-player section needs about 0.35 s. Precomputed tables per preset would remove it.
-25. **CPU cost is measured only roughly:** the whole cello (4 strings, body, performer) renders at about 2.4% of real time on one core at 48 kHz (renderer timing). There are no `criterion` benchmarks yet (PLAN.md 6).
+25. **CPU cost is measured only roughly:** the whole cello (4 strings, body, performer) renders at about 2.4% of real time on one core at 48 kHz (renderer timing), and the plugin's engine at 2.1% (`cpu_cost` test in `strings-plugin`). There are no `criterion` benchmarks yet (PLAN.md 6). The standalone's load meter showed about 4% while playing, probably CPU frequency scaling under light real-time load; unconfirmed.
 26. **The force band is calibrated on open strings only.** Stopped notes rely on the band scaling with Z·v·β; the performer tests cover C2–E5 at three dynamics.
 27. **The classifiers are approximate.** The bridge-force classifier agrees with the contact-state one on 77–93% of simulated violin points, and it counts the paper's multiple-flyback and S-motion regimes as multi-slip or raucous.
 
+## Plugin
+
+28. **Not yet loaded in a DAW.** The Phase 3 criterion is "playable in Bitwig and Reaper". Only the standalone app (dummy backend) has run so far.
+29. **The CLAP ID is a placeholder** (`dev.strings.cello`), as is the name "Strings". Hosts save projects against the ID, so change it before anyone depends on it.
+30. **The instrument drawing is a placeholder,** and its string motion is stylized (a slowed Helmholtz corner scaled by bridge force), not the simulated string shape.
+31. **Computer-keyboard input depends on the host** giving the editor keyboard focus. Some hosts keep the keys for their own shortcuts.
+32. **Keyswitches and CC numbers are fixed** (PLAN.md 4.1); user mapping is still to come.
+
 ## Open decisions
 
-The rest is in PLAN.md "Open questions": CC64 vs CC68 for legato, default oversampling, whether a GUI is needed, and the product name.
+The rest is in PLAN.md "Open questions": CC64 vs CC68 for legato, default oversampling, and the product name.

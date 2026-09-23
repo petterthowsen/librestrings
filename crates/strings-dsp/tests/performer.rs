@@ -232,3 +232,23 @@ fn staccato_stops_and_spiccato_rings() {
         }
     }
 }
+
+#[test]
+fn release_all_ends_a_legato_line() {
+    let mut p = performer();
+    p.set_dynamics(0.6);
+    p.note_on(55, 0.8);
+    run(&mut p, 0.3);
+    p.note_on(57, 0.8);
+    run(&mut p, 0.3);
+    assert_eq!(p.note(), Some(57));
+    p.release_all();
+    // No legato return to the note still held: the bow lifts off.
+    run(&mut p, 0.5);
+    assert_eq!(p.note(), None);
+    assert!(p.contact(p.bowed_string()) < 1e-6);
+    // Keys released after "all notes off" change nothing.
+    p.note_off(55);
+    p.note_off(57);
+    assert_eq!(p.note(), None);
+}

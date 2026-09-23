@@ -1,0 +1,26 @@
+[package]
+name = "strings-plugin"
+description = "CLAP plugin: the solo cello performer with an egui editor"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+# cdylib for the CLAP bundle, lib for the standalone binary.
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "strings-standalone"
+path = "src/main.rs"
+required-features = ["standalone"]
+
+[features]
+# A standalone app (JACK or ALSA) for playing without a DAW.
+standalone = ["nih_plug/standalone"]
+
+[dependencies]
+strings-dsp.workspace = true
+# `assert_process_allocs` aborts on any allocation in `process` in debug builds.
+nih_plug = { workspace = true, features = ["assert_process_allocs"] }
+nih_plug_egui.workspace = true
+crossbeam-queue = "0.3"

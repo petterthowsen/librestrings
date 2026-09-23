@@ -1,0 +1,3 @@
+[alias]
+# `cargo xtask bundle strings-plugin --release` builds the CLAP bundle into target/bundled/.
+xtask = "run --package xtask --release --"

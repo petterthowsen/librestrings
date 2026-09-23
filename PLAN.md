@@ -43,7 +43,8 @@ crates/
       presets.rs           # per-instrument physical data (violin, cello; later viola, bass)
   strings-render/          # CLI: scores -> WAV (+ CSV of internal signals), playability maps
     scores/                # example scores for `play`
-  strings-plugin/          # nih-plug wrapper, CLAP export, param + MIDI mapping
+  strings-plugin/          # nih-plug wrapper, CLAP export, param + MIDI mapping, egui editor
+xtask/                     # `cargo xtask bundle strings-plugin --release` (nih_plug_xtask)
 docs/
 PLAN.md
 ```
@@ -297,7 +298,7 @@ Each phase ends with something audible.
 | **1. One bowed string** ✅ | DWG string, bow junction and hysteresis, bridge loss, tuning compensation | A violin A string produces stable Helmholtz motion; the Schelleng sweep behaves as expected; tuning within ±1 cent |
 | **1b. Measured string physics** ⚠️ | Bending stiffness, torsional waves (3.6) and measured frequency-dependent damping, checked against the measured cello G string with `strings-render measured` | Simulated Helmholtz region close to the measured one at all three bow speeds (area within about ±30%, Helmholtz present at small β); physics tests still pass. **Not met:** all three are implemented and verified. The damping gets closest, at about half the measured area; stiffness and torsion still shrink it. See "Phase 1b results" |
 | **2. Solo cello (offline)** ⚠️ | Cello presets for C2 G2 D3 A3 (G from the measured string; the others from published string data), 4 strings, string selection, fingering, legato, vibrato, biquad body, performer layer with the 4 articulations and its force mapping calibrated on the measured limits (4.2), bow-hair damping so a bow stopped on the string silences it quickly | Scripted phrases (scales, legato lines, staccato runs) sound like a cello, not a synth. **Built and tested objectively; not yet judged by ear.** See "Phase 2 notes" |
-| **3. CLAP plugin** | nih-plug wrapper, CLAP-only export, CC1/CC11/vibrato mapping, keyswitches, parameters, real-time safety | Playable in Bitwig and Reaper; no allocations in the audio thread; CPU cost measured |
+| **3. CLAP plugin** ⚠️ | nih-plug wrapper, CLAP-only export, CC1/CC11/vibrato mapping, keyswitches, parameters, real-time safety | Playable in Bitwig and Reaper; no allocations in the audio thread; CPU cost measured. **Built:** plugin, editor and standalone app; engine at 2.1% of real time. **Not yet tried in Bitwig or Reaper.** See "Phase 3 notes" |
 | **4. Realism pass** | Thermal friction, finger damping at note changes, bow noise, oversampling decision, bouncing-bow spiccato, sympathetic string coupling | A/B against recordings; clear improvement on attacks and legato transitions (the mdw attack data gives a measured target for attacks) |
 | **5. More instruments** | Violin, viola and double bass presets and bodies | Each instrument is convincing across its range |
 | **6. Sections** | N-player engine, humanization, stage placement, SIMD across players | 12-player section within the CPU budget; sounds like a section, not a chorus effect |
@@ -408,6 +409,25 @@ Run `cargo run --release -p strings-render -- play <scale|legato|staccato|phrase
 - Vibrato: finger modulation with delayed onset, slow random drift of rate and depth, none on open strings.
 - Pitch and bow position update at 3 kHz; the bow every sample. A counting-allocator test checks that playing never allocates.
 
+### Phase 3 notes: CLAP plugin (September 2026)
+
+Build the bundle with `cargo xtask bundle strings-plugin --release` (writes `target/bundled/Strings.clap`), or play without a DAW: `cargo run --release -p strings-plugin --features standalone -- --backend alsa` (or `jack`). On Linux the build needs the X11/XCB and JACK headers listed in CLAUDE.md.
+
+**Plugin** (`crates/strings-plugin/src/lib.rs`)
+- nih-plug (pinned to a September 2026 commit; the project is active), CLAP export only, egui editor. Mono instrument, the same signal on every output channel (stereo or mono layouts).
+- The performer is built in `initialize` (about 30 ms), only again if the sample rate changes. `process` handles MIDI sample-accurately, never allocates (nih-plug's `assert_process_allocs` aborts on an allocation in debug builds) and returns `KeepAlive` so strings ring on. nih-plug sets flush-to-zero. A non-finite output resets the instrument and counts the reset (shown in the status row).
+- **Controls:** CC1 dynamics, CC11 expression, CC21 vibrato, CC123 releases all notes gracefully (`Performer::release_all`), CC120 silences at once. Dynamics, expression, vibrato, pressure, articulation and volume are also host parameters. **Whichever changed last wins:** a parameter only acts when its value changes, so a CC keeps its value until the parameter moves.
+- **Keyswitches:** the white keys from the first C below the lowest note (cello: C1 sustain, D1 staccato, E1 spiccato).
+- **CPU:** 2.1% of real time on one core at 48 kHz for the engine (performer plus telemetry, 256-sample blocks, notes changing every 0.5 s; `cargo test --release -p strings-plugin cpu_cost -- --ignored --nocapture`). The standalone's load meter showed about 4% while idle-playing a note; probably CPU frequency scaling under light real-time load. To confirm in a DAW.
+
+**Editor** (`crates/strings-plugin/src/editor/`, layout from ROADMAP.md)
+- Status row: sample rate, block size, DSP load (smoothed and peak, yellow above the 3% budget), output peak, NaN resets; toggles for the computer keyboard and a debug view.
+- Instrument and ensemble selection (only cello and solo are enabled), articulation buttons that follow keyswitches.
+- The instrument view is a placeholder drawing. The strings are drawn in parts (nut to finger, finger to bridge, afterlength) from the performer's state: the finger where the vibrating length starts, the bow at β moving along its length with the bow velocity, and Helmholtz motion (a corner on a parabolic envelope) on the vibrating part, slowed down for display with an amplitude from the string's bridge force. It is stylized, not the simulated string shape.
+- Readout: note, string, position, pitch, β, bow speed and force, and the motion from slips per period (Helmholtz at one per period, timed from slip onsets; exact for periodic motion). The debug view adds the calibrated force band and the bow's position in it, and per-string pitch, contact and level.
+- Bottom: a piano from C1 to C6 (mouse: lower on a key is louder, dragging plays legato; keyswitches colored, out-of-range keys grey), the computer keyboard in the tracker layout (Q = C, 2 = C♯ … P = E, by physical key position; Z/X transpose by octave) with a velocity setting, and faders for the parameters. A marker on a fader shows the performer's value when a CC has moved it away from the parameter.
+- Editor and audio thread share only atomics (telemetry, published once per block) and a lock-free queue (notes from the editor).
+
 ## 8. Alternatives to explore later
 
 | Technique | What it buys | Why not now |
@@ -458,5 +478,4 @@ Errors and gaps in `docs/Real-Time Physical Modeling Techniques for Audio Synthe
 
 - Whether CC64 or CC68 toggles legato.
 - Whether to use the whole-string 2× oversampling mode by default.
-- A GUI: nih-plug supports egui, iced and vizia. Is one needed before Phase 5?
 - The product name (it replaces the `strings-*` crate placeholders).

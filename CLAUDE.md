@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-A physically modeled bowed-string synthesizer in Rust. The eventual target is a CLAP plugin; for now it is a DSP library plus an offline renderer. [PLAN.md](PLAN.md) is the roadmap and design reference; read the relevant section before changing DSP.
+A physically modeled bowed-string synthesizer in Rust: a DSP library, an offline renderer, and a CLAP plugin (nih-plug, egui editor). [PLAN.md](PLAN.md) is the roadmap and design reference; read the relevant section before changing DSP.
 
 ## Commands
 
@@ -13,7 +13,12 @@ cargo run --release -p strings-render -- bow --string A -o out/a.wav
 cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument cello for cello strings)
 cargo run --release -p strings-render -- calibrate             # cello force band (ForceLimits) from simulated maps
 cargo run --release -p strings-render -- measured              # vs measured cello string (needs scripts/fetch-reference-data.sh)
+cargo xtask bundle strings-plugin --release                     # CLAP bundle -> target/bundled/Strings.clap
+cargo run --release -p strings-plugin --features standalone -- --backend alsa   # play without a DAW (or jack; dummy is silent)
+cargo test --release -p strings-plugin cpu_cost -- --ignored --nocapture    # plugin engine CPU cost
 ```
+
+The plugin needs X11/XCB and JACK headers on Linux (Debian/Ubuntu): `libx11-xcb-dev libxcb-dri2-0-dev libxcb-icccm4-dev libxcursor-dev libxkbcommon-dev libxcb-shape0-dev libxcb-xfixes0-dev libjack-jackd2-dev` (plus `libasound2-dev libgl-dev`).
 
 Renders go in `out/` (gitignored).
 
@@ -21,6 +26,7 @@ Renders go in `out/` (gitignored).
 
 - `crates/strings-dsp`: the model. `string.rs` holds the waveguide (with stiffness, torsion and bow hair), `bow.rs` the friction junction and Schelleng limits, `loss.rs` the loop-loss models, `delay.rs` and `filters.rs` the building blocks, `body.rs` the body resonators, `instrument.rs` four strings and a body with the calibrated force band, `performer.rs` the gesture layer (notes and controllers to bow and finger), `presets.rs` the instrument data, and `analysis.rs` the offline measurements.
 - `crates/strings-render`: the CLI (clap, hound). `score.rs` is the text score format for `play`; `scores/` has examples.
+- `crates/strings-plugin`: the CLAP plugin. `lib.rs` holds the engine (performer, MIDI/CC/keyswitch handling, telemetry), `params.rs` the parameters, `shared.rs` the audio↔editor state (atomics and a lock-free note queue), `editor/` the egui GUI. `xtask/` bundles it.
 - `docs/`: research notes, plus `Literature.md` (papers the model takes numbers from, with links). The research notes are **not fully reliable**; PLAN.md's "Research notes / corrections" lists known errors, such as swapped Schelleng formulas and commuted synthesis misapplied to bowing.
 
 ## Rules
@@ -30,6 +36,7 @@ Renders go in `out/` (gitignored).
 - **DSP changes must keep the physics tests passing** (`crates/strings-dsp/tests/physics.rs`: tuning ±1 cent, decay, Helmholtz motion, Schelleng extremes). For changes to the bow or string, also run the `schelleng` map and compare it before and after.
 - The bow solver's stick/slip hysteresis (Friedlander) is deliberate. Don't "simplify" it into a stateless solve.
 - Keep plugin or framework dependencies out of `strings-dsp`; it must build and test with no audio I/O.
+- The plugin's `process` must not allocate or lock either: the editor reads telemetry atomics and sends notes through the `ArrayQueue`. Build the performer in `initialize`, never in `process`.
 - When a phase or finding changes, update PLAN.md (the phase table and the "Phase 0–1 notes"-style sections).
 - [STATUS.md](STATUS.md) lists the open issues. Remove an entry when you fix it, and add one when a finding leaves something unresolved.
 

@@ -357,6 +357,30 @@ impl Performer {
         &self.settings
     }
 
+    /// The note being played, until the bow has left the string.
+    pub fn note(&self) -> Option<u8> {
+        if self.phase == Phase::Idle {
+            None
+        } else {
+            self.sounding
+        }
+    }
+
+    /// The string the bow plays (or last played), lowest is 0.
+    pub fn bowed_string(&self) -> usize {
+        self.string
+    }
+
+    /// How firmly the bow is on string `i`, 0 (off) to 1.
+    pub fn contact(&self, i: usize) -> f32 {
+        self.contact[i].value()
+    }
+
+    /// The articulation for the next note.
+    pub fn articulation(&self) -> Articulation {
+        self.articulation
+    }
+
     /// Dynamics, 0–1 (CC1): bow speed, bow position and with them loudness.
     pub fn set_dynamics(&mut self, value: f32) {
         self.dynamics.target = value.clamp(0.0, 1.0);
@@ -391,6 +415,17 @@ impl Performer {
         self.velocity.set(0.0);
         self.contact = [Ramp::at(0.0); 4];
         self.intonation = [0.0; 4];
+    }
+
+    /// Releases every held note as if the last one were let go (MIDI "all
+    /// notes off"): the bow finishes its stroke instead of stopping dead.
+    pub fn release_all(&mut self) {
+        self.held_len = 0;
+        if let Some(note) = self.sounding {
+            // Held again alone, so the release doesn't return legato to another note.
+            self.hold(note);
+            self.note_off(note);
+        }
     }
 
     /// `velocity` is the MIDI velocity scaled to 0–1.
