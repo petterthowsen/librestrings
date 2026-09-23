@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Bundles the plugin: cargo xtask bundle strings-plugin --release"
+description = "Bundles the plugin (cargo xtask bundle strings-plugin --release) or bundles and installs it to ~/.clap (cargo xtask install)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

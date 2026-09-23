@@ -38,12 +38,13 @@ cargo test
 
 ## Plugin
 
-Build the CLAP bundle, then copy it to your CLAP folder (on Linux, `~/.clap`):
+Build the CLAP bundle and install it to your CLAP folder (`~/.clap` on Linux, `~/Library/Audio/Plug-Ins/CLAP` on macOS, `%LOCALAPPDATA%\Programs\Common\CLAP` on Windows):
 
 ```sh
-cargo xtask bundle strings-plugin --release
-cp target/bundled/LibreStrings.clap ~/.clap/
+cargo xtask install
 ```
+
+`cargo xtask bundle strings-plugin --release` only builds it, into `target/bundled/`.
 
 It is a mono instrument (the same signal on both outputs) that takes MIDI:
 
@@ -163,7 +164,7 @@ crates/
                     offline `analysis` module used by tests and the renderer.
   strings-render/   Command-line offline renderer.
   strings-plugin/   The CLAP plugin and standalone app (nih-plug, egui editor).
-xtask/              Bundles the plugin (`cargo xtask bundle`).
+xtask/              Bundles the plugin (`cargo xtask bundle`) and installs it (`cargo xtask install`).
 docs/               Background research and reference material.
 PLAN.md             Design, roadmap, caveats and alternatives.
 ```

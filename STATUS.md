@@ -10,11 +10,11 @@ Open issues as of September 2026, end of Phase 2 (built, not yet judged by ear).
 | 1. One bowed string | Done (violin presets) |
 | 1b. Measured string physics | Stiffness, torsion and measured damping built and verified. The acceptance target is **not met** (see below) |
 | 2. Solo cello | Built: cello presets, bow hair, body, instrument, performer (legato, détaché, the bow lift, double stops), calibrated force band, `play` renderer with example scores. Objective checks pass (`tests/performer.rs`). **First listening done** (Phase 3 notes); the "sounds like a cello" criterion is open |
-| 3. CLAP plugin | Built: nih-plug CLAP plugin with MIDI, CCs, keyswitches, parameters and an egui editor (status, instrument view, keyboard, faders, tuning window); standalone app. Tests pass and the engine runs at 4.8% of real time (strings at 2×). **Not yet tried in Bitwig or Reaper** |
+| 3. CLAP plugin | Built: nih-plug CLAP plugin with MIDI, CCs, keyswitches, parameters and an egui editor (status, instrument view, keyboard, faders, tuning window); standalone app. Tests pass and the engine runs at 4.8% of real time (strings at 2×). **Plays in Bitwig** (September 2026); not yet tried in Reaper |
 
 ## Listening
 
-1. **First listening only.** Pitch and releases sound right; attacks lacked bite, held notes were static, low notes lacked weight and spiccato sounded plucked (PLAN.md "Phase 3 notes: tuning and first listening"). The fixes for those (attack bite, bow wander, a heavier body, finger damping) are guesses that nobody has listened to yet. The tuning window is meant for this.
+1. **First listening only.** Pitch and releases sound right; attacks lacked bite, held notes were static, low notes lacked weight and spiccato sounded plucked (PLAN.md "Phase 3 notes: tuning and first listening"). The fixes for those (attack bite, bow wander, a heavier body, finger damping) are in. A second, informal listening in the standalone app (September 2026) found nothing that stood out, and the A/B renders of the force band, the torsional loss and 2× oversampling all favored the change. No careful comparison against recordings has been done yet (Phase 4).
 2. **Short notes off the string may sound plucked on low notes.** The scripted spiccato touch is gone (PLAN.md 4.3): a short note is now a real stroke of at least 40 ms, thrown off the string. That is still only a few periods of C2–G2, shorter than the 35–100 ms an attack needs to settle. A bouncing bow is Phase 4.
 
 ## Playability vs the measured cello string
@@ -76,7 +76,7 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 
 ## Plugin
 
-28. **Not yet loaded in a DAW.** The Phase 3 criterion is "playable in Bitwig and Reaper". Only the standalone app (dummy backend) has run so far.
+28. **Not yet tried in Reaper.** The Phase 3 criterion is "playable in Bitwig and Reaper". It loads and plays in Bitwig on Linux with no problems found (September 2026).
 29. **The crates still carry the placeholder names** (`strings-dsp`, `strings-plugin`, `strings-render`). The product is LibreStrings, with CLAP ID `io.github.petterthowsen.librestrings` (fixed for good: hosts save projects against it).
 30. **The instrument drawing is a placeholder,** and its string motion is stylized (a slowed Helmholtz corner scaled by bridge force), not the simulated string shape.
 31. **Computer-keyboard input depends on the host** giving the editor keyboard focus. Some hosts keep the keys for their own shortcuts.
