@@ -94,6 +94,10 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 
 34. **High-pitched noise heard in the plugin, not in the renders.** Playing it, the user noticed high-pitched random noise on top of the sound; the offline render of held notes (E3, C2, C4, with and without vibrato) sounds clean. In the render the partials stay tonal up to 8 kHz (spectral flatness ≤ 0.011, at 44.1, 48 and 96 kHz), and updating the controls every sample instead of at 3 kHz changes nothing, so it isn't zipper noise. Not yet traced in the plugin (host rate, buffer size, parameter smoothing, the editor). **Likely dropouts:** in September 2026 the standalone sounded choppy ("bit-chopped") at the default period of 512 and clean with `--period-size 1024`. The engine renders the same notes cleanly offline at 44.1–96 kHz, and its worst block takes 6% of the block time at 128–512 samples (4.8% median), so the dropouts come from the audio path (the standalone backend and sound server), not from `process`. Not yet checked whether the noise heard in Bitwig was the same.
 
+## Sections
+
+46. **Sections are built but not heard** (docs/SECTIONS.md A2): up to 12 players, each with its own seeded detune, lateness, vibrato, dynamics, bow position, pressure, timing and body. Every spread in `Humanization` is a first guess. There is no stage placement yet (mono sum), and the plugin still plays one player. The A/B renders are in `out/ab-section/`.
+
 ## Playing controls
 
 35. **The SWAM-style controls are built but not heard** (PLAN.md "Phase 3 notes: playing like SWAM"): CC11 dynamics and CC1 vibrato, the pressure range from flautando to scratch, one way of playing with a bow lift (off or on the string) in place of the articulations, legato transitions set by velocity, fingering modes and double stops. Only tests and renders of the example scores so far. The numbers (portamento 250 ms below velocity 0.6, grip attack 8–100 ms, minimum stroke 40 ms) are guesses.

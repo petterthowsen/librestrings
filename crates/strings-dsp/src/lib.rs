@@ -14,6 +14,7 @@ pub mod instrument;
 pub mod loss;
 pub mod performer;
 pub mod presets;
+pub mod section;
 pub mod string;
 
 pub use body::{Body, BodyMode, BodySpec, BodyTuning, DenseModes, Hill};
@@ -23,6 +24,7 @@ pub use loss::{DampingCurve, Loss};
 pub use performer::{
     BowLift, Fingering, Performer, PerformerFrame, PerformerSettings, PerformerTuning, Polyphony,
 };
+pub use section::{Humanization, MAX_PLAYERS, Section};
 pub use string::{
     BowHair, BowInput, BowedString, StringDesign, StringFrame, StringSpec, TorsionSpec,
 };

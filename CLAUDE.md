@@ -8,7 +8,7 @@ LibreStrings: a free, physically modeled bowed-string synthesizer in Rust: a DSP
 cargo test                                   # unit + physics tests (test profile is optimized)
 cargo clippy --all-targets                   # must be clean
 cargo fmt
-cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | ostinato | sul | file.score
+cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | ostinato | sul | file.score (--players N: a section)
 cargo run --release -p strings-render -- bow --string A -o out/a.wav
 cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument cello for cello strings)
 cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate
@@ -27,7 +27,7 @@ Renders go in `out/` (gitignored).
 
 ## Layout
 
-- `crates/strings-dsp`: the model. `string.rs` holds the waveguide (with stiffness, torsion and bow hair), `bow.rs` the friction junction and Schelleng limits, `loss.rs` the loop-loss models, `delay.rs` and `filters.rs` the building blocks, `body.rs` the body resonators, `instrument.rs` four strings and a body with the calibrated force band, `performer.rs` the gesture layer (notes and controllers to bow and finger), `presets.rs` the instrument data, and `analysis.rs` the offline measurements.
+- `crates/strings-dsp`: the model. `string.rs` holds the waveguide (with stiffness, torsion and bow hair), `bow.rs` the friction junction and Schelleng limits, `loss.rs` the loop-loss models, `delay.rs` and `filters.rs` the building blocks, `body.rs` the body resonators, `instrument.rs` four strings and a body with the calibrated force band, `performer.rs` the gesture layer (notes and controllers to bow and finger), `section.rs` up to 12 humanized players (docs/SECTIONS.md), `presets.rs` the instrument data, and `analysis.rs` the offline measurements.
 - `crates/strings-render`: the CLI (clap, hound). `score.rs` is the text score format for `play`; `scores/` has examples. `compare.rs` measures the solo cello against recorded notes (Iowa).
 - `crates/strings-plugin`: the CLAP plugin. `lib.rs` holds the engine (performer, MIDI/CC/keyswitch handling: CC11 dynamics, CC1 vibrato, as in SWAM; telemetry), `params.rs` the parameters, `shared.rs` the audio↔editor state (atomics and lock-free queues), `tuning.rs` the numbers the tuning window edits, `editor/` the egui GUI (`tuning_window.rs`: the model's numbers, editable while playing, with "Copy changes" for pasting back into the presets). `xtask/` bundles it.
 - `docs/`: research notes, plus `Literature.md` (papers the model takes numbers from, with links). The research notes are **not fully reliable**; PLAN.md's "Research notes / corrections" lists known errors, such as swapped Schelleng formulas and commuted synthesis misapplied to bowing.

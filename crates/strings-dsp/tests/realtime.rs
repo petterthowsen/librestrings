@@ -2,15 +2,15 @@
 //!
 //! A counting global allocator stands in for `assert_no_alloc` (PLAN.md 6). It
 //! counts allocations on this thread only, so the test harness's own threads
-//! don't interfere. It is the only test in this binary.
+//! don't interfere.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
 use strings_dsp::presets::cello;
 use strings_dsp::{
-    BodyTuning, BowHair, BowLift, DampingCurve, Fingering, FrictionParams, Instrument, Loss,
-    Performer, PerformerSettings, Polyphony,
+    BodyTuning, BowHair, BowLift, DampingCurve, Fingering, FrictionParams, Humanization,
+    Instrument, Loss, MAX_PLAYERS, Performer, PerformerSettings, Polyphony, Section,
 };
 
 struct Counting;
@@ -144,4 +144,50 @@ fn retuning_never_allocates() {
         }
     });
     assert_eq!(count, 0, "allocations while retuning");
+}
+
+/// A section plays, changes size, retunes its humanization and bodies, and
+/// releases notes still waiting for late players, all without allocating.
+#[test]
+fn a_section_never_allocates() {
+    let fs = 48_000.0;
+    let mut s = Section::new(
+        &cello::INSTRUMENT,
+        PerformerSettings::default(),
+        Humanization::default(),
+        fs,
+    );
+    let body = BodyTuning::from(&cello::BODY);
+    let mut out = [0.0; MAX_PLAYERS];
+    let mut block = |s: &mut Section, seconds: f32| {
+        for _ in 0..(seconds * fs) as usize {
+            std::hint::black_box(s.process(&mut out));
+        }
+    };
+    let count = allocations_during(|| {
+        s.set_players(MAX_PLAYERS);
+        s.set_dynamics(0.7);
+        s.set_vibrato(0.8);
+        for note in 45..70 {
+            s.note_on(note, 0.6);
+            block(&mut s, 0.01);
+        }
+        for note in 45..70 {
+            s.note_off(note);
+        }
+        block(&mut s, 0.1);
+        s.set_players(3);
+        s.set_humanization(Humanization::NONE);
+        s.set_body(&body);
+        s.set_settings(PerformerSettings::default());
+        s.note_on(50, 0.7);
+        block(&mut s, 0.1);
+        s.set_players(8);
+        s.note_on(57, 0.7);
+        s.release_all();
+        block(&mut s, 0.1);
+        s.reset();
+        block(&mut s, 0.02);
+    });
+    assert_eq!(count, 0, "allocations on the audio path");
 }

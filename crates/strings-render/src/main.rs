@@ -14,8 +14,9 @@ mod score;
 use strings_dsp::analysis::{Regime, bow_steady, classify, classify_bridge_force};
 use strings_dsp::presets::{cello, reference, violin};
 use strings_dsp::{
-    BowHair, BowInput, BowedString, DampingCurve, Fingering, FrictionParams, Loss, Performer,
-    PerformerSettings, Polyphony, StringFrame, StringSpec, TorsionSpec, schelleng_limits,
+    BowHair, BowInput, BowedString, DampingCurve, Fingering, FrictionParams, Humanization, Loss,
+    MAX_PLAYERS, Performer, PerformerSettings, Polyphony, Section, StringFrame, StringSpec,
+    TorsionSpec, schelleng_limits,
 };
 
 #[derive(Parser)]
@@ -107,10 +108,15 @@ enum Command {
         /// twice the sample rate (default: the performer's).
         #[arg(long, value_parser = clap::value_parser!(u8).range(1..=2))]
         oversampling: Option<u8>,
+        /// Players in the section (1 is the solo cello), each with its own
+        /// humanization. Mixed to mono for now, with no placement.
+        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=12))]
+        players: u8,
         #[arg(long, short)]
         out: PathBuf,
-        /// Also write the summed bridge force (before the body) to this WAV file.
-        #[arg(long)]
+        /// Also write the summed bridge force (before the body) to this WAV
+        /// file. Solo only.
+        #[arg(long, conflicts_with = "players")]
         bridge_out: Option<PathBuf>,
     },
     /// Fit an instrument's bow-force band (the performer's force mapping) to
@@ -317,6 +323,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             fingering,
             double_stops,
             oversampling,
+            players,
             out,
             bridge_out,
         } => {
@@ -349,14 +356,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 (0.0, score::Event::Polyphony(polyphony)),
             ];
             events.splice(0..0, modes);
-            play(
-                &events,
-                settings,
-                sample_rate,
-                tail,
-                &out,
-                bridge_out.as_deref(),
-            )?;
+            if players > 1 {
+                play_section(&events, settings, players as usize, sample_rate, tail, &out)?;
+            } else {
+                play(
+                    &events,
+                    settings,
+                    sample_rate,
+                    tail,
+                    &out,
+                    bridge_out.as_deref(),
+                )?;
+            }
         }
         Command::Compare {
             data,
@@ -495,6 +506,51 @@ fn play(
         )?;
     }
     Ok(())
+}
+
+/// `play` for a section of `players`, with the default humanization.
+fn play_section(
+    events: &[(f32, score::Event)],
+    settings: PerformerSettings,
+    players: usize,
+    fs: f32,
+    tail: f32,
+    out: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use score::Event;
+    let mut section = Section::new(&cello::INSTRUMENT, settings, Humanization::default(), fs);
+    section.set_players(players);
+    let end = events.last().map_or(0.0, |e| e.0) + tail;
+    let total = (end * fs) as usize;
+    let mut output = Vec::with_capacity(total);
+    let mut each = [0.0; MAX_PLAYERS];
+    let mut next = 0;
+    let started = std::time::Instant::now();
+    for i in 0..total {
+        while next < events.len() && events[next].0 * fs <= i as f32 {
+            match events[next].1 {
+                Event::On(note, velocity) => section.note_on(note, velocity),
+                Event::Off(note) => section.note_off(note),
+                Event::Dynamics(v) => section.set_dynamics(v),
+                Event::Vibrato(v) => section.set_vibrato(v),
+                Event::Pressure(v) => section.set_pressure(v),
+                Event::BowLift(b) => section.set_bow_lift(b),
+                Event::Fingering(f) => section.set_fingering(f),
+                Event::String(s) => section.set_string(s),
+                Event::Polyphony(p) => section.set_polyphony(p),
+            }
+            next += 1;
+        }
+        output.push(section.process(&mut each));
+    }
+    let elapsed = started.elapsed().as_secs_f32();
+    println!(
+        "rendered {players} players, {end:.1} s in {elapsed:.2} s ({:.1}% of real time)",
+        100.0 * elapsed / end
+    );
+    let peak = output.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+    println!("output peak {peak:.3} (not normalized)");
+    write_samples(out, &output, fs, 1.0)
 }
 
 /// Writes 32-bit float mono samples times `gain`.

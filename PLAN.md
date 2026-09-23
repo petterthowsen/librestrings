@@ -39,7 +39,7 @@ crates/
       body.rs              # biquad-bank body resonator
       instrument.rs        # 4 strings + body; calibrated bow-force band
       performer.rs         # gesture layer: string choice, fingering, bow strokes and lift, legato, vibrato
-      section.rs           # (later) N players + humanization + stage placement
+      section.rs           # N players + humanization (stage placement: later)
       presets.rs           # per-instrument physical data (violin, cello; later viola, bass)
   strings-render/          # CLI: scores -> WAV (+ CSV of internal signals), playability maps
     scores/                # example scores for `play`

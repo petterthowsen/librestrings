@@ -36,18 +36,21 @@ At 4.8% of real time per cello, 12 players would cost about 58% of a core, and P
 
 ### A2. The section engine (`strings-dsp/src/section.rs`)
 
-- [ ] `Section`: N `Performer`s built for `MAX_PLAYERS = 12`, of which `players` are active, with the same notes and controllers sent to every active player.
-- [ ] Players joining or leaving (a size change while playing) fade in or out over about 50 ms, and a new player starts with the next note.
-- [ ] Per-player humanization, seeded (PLAN.md §5):
-  - [ ] detune: a fixed offset of a few cents plus a slow drift, on top of the intonation by ear
-  - [ ] onset timing: note-ons and bow changes delayed by 0–30 ms, with one player at 0 so the section doesn't feel late live. A small fixed-size event queue per player, no allocation
-  - [ ] vibrato: rate, depth and phase
-  - [ ] dynamics offset, bow position (β) and pressure bias, within the performer's safe β range (β ≤ 0.115)
-  - [ ] legato transition time
-  - [ ] body: a different dense-mode seed and small mode frequency and Q changes
-  - [ ] bow wander seed
-- [ ] Solo stays a section of 1 with humanization off, so the solo cello sounds exactly as it does now. Check with a render.
-- [ ] Real-time test: a scripted section performance allocates nothing (like `tests/realtime.rs`).
+- [x] `Section`: `MAX_PLAYERS = 12` `Performer`s cloned from one, of which `players` are active, with the same notes and controllers sent to every active player. Each active player's gain is 1/√N, so the power stays about the same at every size.
+- [x] Players joining or leaving (a size change while playing) fade in or out over 50 ms (`FADE`). A player switched off finishes its note as if it were let go, and once faded out it is reset and not processed. A player switched on comes in with the next note.
+- [x] Per-player humanization (`Humanization`, first guesses to be judged by ear). Each player draws a value in ±1 per quantity from its seed, and the spread scales it, so changing the spread keeps each player's character:
+  - [x] detune: ±5 cents fixed plus ±2 cents of drift over about 3 s (`Performer::set_detune`, which moves the open strings and the pitch the ear aims for; the strings have 50 cents of memory below their open pitch)
+  - [x] onset timing: each player comes in 0–25 ms late, each note ±8 ms around that, never early and never out of order. Player 0 is never late. A 64-note queue per player, no allocation
+  - [x] vibrato: rate ±10%, depth ±25%, and phase (`Performer::reseed`)
+  - [x] dynamics ±0.05, bow position up to 12% toward the bridge (never away: β ≤ 0.115), pressure ±0.08
+  - [x] attack, legato and portamento times ±20%
+  - [x] body: listed modes ±3% in frequency and ±15% in damping, and the dense modes from another seed
+  - [x] bow wander seed (`Performer::reseed`)
+- [x] Solo stays a section of 1 with no humanization: player 0 has none, and `one_player_is_the_solo_performer` checks it sample for sample. The solo `play phrase` render and the Schelleng map are bit-identical to before.
+- [x] Real-time test: `a_section_never_allocates` (size changes, retuning, "all notes off" with notes waiting).
+- [ ] Listen to the A/B renders (`out/ab-section/`, below) and tune the `Humanization` defaults.
+
+Renders (`strings-render play <score> --players N`, mono, no placement yet): `phrase-{1,4,8,12}.wav`, `legato-{1,4,8,12}.wav`, and 8 players at 1× and 2× on `phrase` and `scale` (`phrase-8-1x.wav` …) for the oversampling decision (A1). Rendering cost: 12 players at 33% of real time on `phrase` and 43% on `legato`, where more strings ring on.
 
 ### A3. Placement (`strings-dsp/src/stage.rs`)
 
@@ -76,7 +79,8 @@ At 4.8% of real time per cello, 12 players would cost about 58% of a core, and P
 
 ### A6. Renderer and checks
 
-- [ ] `strings-render play --players N` (and the stage parameters), so section renders can be A/B'd.
+- [x] `strings-render play --players N`, so section renders can be A/B'd.
+- [ ] The stage parameters in the renderer, and stereo output.
 - [ ] A/B renders: solo against 4, 8 and 12 players on `phrase` and `legato`; early reflections on and off; two rooms.
 - [ ] Test: with humanization off and one player at the stage centre, the section's left and right outputs equal the solo cello's (up to the delay and gain).
 - [ ] Test: moving a section left makes the left channel louder and earlier.

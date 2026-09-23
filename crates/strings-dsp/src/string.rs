@@ -232,14 +232,16 @@ impl Torsion {
 }
 
 impl BowedString {
-    /// `lowest_frequency` bounds the delay memory; the string can't be tuned below it.
+    /// `lowest_frequency` bounds the delay memory: the string can be tuned
+    /// down to [`Self::DETUNE_ROOM`] below it (a player's own tuning), not
+    /// further.
     pub fn new(
         spec: &StringSpec,
         friction: FrictionParams,
         sample_rate: f32,
         lowest_frequency: f32,
     ) -> Self {
-        let max_loop = (sample_rate / lowest_frequency).ceil() as usize + 4;
+        let max_loop = (Self::DETUNE_ROOM * sample_rate / lowest_frequency).ceil() as usize + 4;
         let measured_loss = matches!(spec.loss, Loss::Measured(_));
         let stiff = spec.inharmonicity() > 0.0;
         let impedance = spec.impedance();
@@ -291,6 +293,10 @@ impl BowedString {
         s.update_delays();
         s
     }
+
+    /// Room in the delay memory for tuning below `lowest_frequency` (a
+    /// ratio): 50 cents, more than a player's detune.
+    pub const DETUNE_ROOM: f32 = 1.03;
 
     /// Stopped notes can go this far above the open string (a ratio) with their
     /// stiffness and measured loss modeled; higher ones keep the top design.

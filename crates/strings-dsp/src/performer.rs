@@ -290,6 +290,12 @@ pub const CONTROL_RATE: f32 = 3000.0;
 pub const PRESSURE_FLAUTANDO: f32 = 0.0;
 pub const PRESSURE_SCRATCH: f32 = 1.3;
 
+/// Largest detune of a player (cents, either way); the strings have room to
+/// be tuned this far below their open pitch ([`BowedString::new`]).
+///
+/// [`BowedString::new`]: crate::string::BowedString::new
+pub const MAX_DETUNE: f32 = 30.0;
+
 /// Controller smoothing (s).
 const CONTROL_SMOOTHING: f32 = 0.03;
 /// Finger positions (semitones) below this are an open string.
@@ -517,6 +523,9 @@ pub struct Performer {
 
     /// Finger correction per string from listening (semitones).
     intonation: [f32; 4],
+    /// The player's own tuning (semitones): open strings and the pitch the
+    /// ear aims for.
+    detune: f32,
     /// Pitch the bowed string should sound, vibrato included (Hz).
     intended: f32,
     samples_since_slip: usize,
@@ -573,6 +582,7 @@ impl Performer {
             speed: 0.0,
             frames: [StringFrame::default(); 4],
             intonation: [0.0; 4],
+            detune: 0.0,
             intended: 0.0,
             samples_since_slip: 0,
             was_slipping: false,
@@ -693,6 +703,21 @@ impl Performer {
     /// fingering choose. Takes effect from the next note; double stops ignore it.
     pub fn set_string(&mut self, string: Option<usize>) {
         self.sul = string.filter(|&s| s < 4);
+    }
+
+    /// Tunes this player's instrument `cents` away from the preset: the open
+    /// strings, and the pitch the ear aims for on stopped notes. Within
+    /// ±[`MAX_DETUNE`] cents; a section's players each have their own.
+    pub fn set_detune(&mut self, cents: f32) {
+        self.detune = cents.clamp(-MAX_DETUNE, MAX_DETUNE) / 100.0;
+    }
+
+    /// Restarts the humanizing drift, the bow wander and the vibrato phase
+    /// from `seed`, so a clone plays as another player.
+    pub fn reseed(&mut self, seed: u32) {
+        self.rng = seed.max(1);
+        self.vibrato_phase = std::f32::consts::TAU * next_random(&mut self.rng);
+        self.drift_timer = 0.0;
     }
 
     /// Silences everything at once.
@@ -1325,10 +1350,11 @@ impl Performer {
             };
             let open = spec.strings[i].frequency;
             let correction = if stopped { self.intonation[i] } else { 0.0 };
+            let aim = finger + vibrato + self.detune;
             if i == self.string {
-                self.intended = open * 2f32.powf((finger + vibrato) / 12.0);
+                self.intended = open * 2f32.powf(aim / 12.0);
             }
-            let frequency = open * 2f32.powf((finger + vibrato + correction) / 12.0);
+            let frequency = open * 2f32.powf((aim + correction) / 12.0);
 
             let easing = stopped && !(playing && self.bows(i));
             let m = &mut self.mute[i];
