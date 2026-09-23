@@ -3,6 +3,8 @@ name = "xtask"
 description = "Bundles the plugin: cargo xtask bundle strings-plugin --release"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [dependencies]

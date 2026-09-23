@@ -3,6 +3,8 @@ name = "strings-dsp"
 description = "Physical-modeling DSP for bowed strings: waveguide strings, bow friction, analysis helpers"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [dependencies]

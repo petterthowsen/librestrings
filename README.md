@@ -1,6 +1,6 @@
-# Physically Modeled Strings
+# LibreStrings
 
-A bowed-string synthesizer in Rust, built on physical modeling rather than samples. The sound comes from simulating a string and the stick-slip friction of a bow on it, sample by sample.
+A free bowed-string synthesizer in Rust, built on physical modeling rather than samples. The sound comes from simulating a string and the stick-slip friction of a bow on it, sample by sample.
 
 **Status: early development.** A solo cello (four strings, body, and a performer that turns notes and controllers into bowing) plays as a CLAP plugin with its own editor, as a standalone app, and offline from the command line. It hasn't been tested in a DAW yet. The goal is a CLAP instrument covering violin, viola, cello and double bass, played either solo or as sections of up to about 12 players. See [PLAN.md](PLAN.md) for the roadmap and [STATUS.md](STATUS.md) for open issues.
 
@@ -42,20 +42,22 @@ Build the CLAP bundle, then copy it to your CLAP folder (on Linux, `~/.clap`):
 
 ```sh
 cargo xtask bundle strings-plugin --release
-cp target/bundled/Strings.clap ~/.clap/
+cp target/bundled/LibreStrings.clap ~/.clap/
 ```
 
 It is a mono instrument (the same signal on both outputs) that takes MIDI:
 
 | Input | Controls |
 |---|---|
-| Notes | Monophonic. Overlapping notes play legato |
-| CC1 | Dynamics: bow speed and position, and with them loudness |
-| CC11 | Expression: output level |
-| CC21 | Vibrato depth |
-| C1, D1, E1 | Keyswitches: sustain, staccato, spiccato |
+| Notes | Detached notes are new bow strokes; velocity sets the attack. Overlapping notes play legato; the landing note's velocity sets how fast it moves there (soft is a slow portamento) |
+| CC11 | Dynamics: bow speed, force and position, and with them loudness |
+| CC1 | Vibrato depth |
+| C1, D1 | Keyswitches: bow lift off the string, on the string |
+| CC123, CC120 | All notes off (the bow ends gracefully), all sound off |
 
-Dynamics, expression, vibrato, pressure, articulation and volume are also plugin parameters that the host can automate. When a CC and a parameter both set a control, the one that changed last wins.
+The bow lift decides how a note ends. Off the string, the bow lifts and the string rings on; short notes are thrown off, spiccato-like. On the string, the bow stops and rests there, so short notes are staccato (martelé when pressed hard).
+
+Dynamics, vibrato, pressure (flautando to scratch), bow lift, polyphony (mono or double stops), fingering (near the nut, mid position, near the bridge) and volume are also plugin parameters that the host can automate. When a CC and a parameter both set a control, the one that changed last wins.
 
 The editor shows the instrument, with the bow, finger and vibrating string following what the performer does, plus bow speed, bow force and whether the string is in clean Helmholtz motion. Below it are an on-screen keyboard and faders, so you can play without a MIDI controller:
 
@@ -93,11 +95,11 @@ Add `--help` to any command for all options.
 ### `play`: the solo cello from a score
 
 ```sh
-strings-render play phrase -o out/phrase.wav     # also: scale, legato, staccato
+strings-render play phrase -o out/phrase.wav     # also: scale, legato, staccato, doublestops
 strings-render play my.score -o out/my.wav       # a score file
 ```
 
-The score format is described in `crates/strings-render/src/score.rs`; `crates/strings-render/scores/` has examples. `--bridge-out <file>` also writes the bridge force before the body; `--pressure` and `--string-bias` change how it is played.
+The score format is described in `crates/strings-render/src/score.rs`; `crates/strings-render/scores/` has examples. `--bridge-out <file>` also writes the bridge force before the body; `--pressure`, `--fingering` and `--double-stops` change how it is played.
 
 ### `bow`: bow a single note
 
@@ -166,7 +168,7 @@ docs/               Background research and reference material.
 PLAN.md             Design, roadmap, caveats and alternatives.
 ```
 
-The crate names are placeholders until the project has a name.
+The crates keep their working names (`strings-*`) for now.
 
 ## Contributing
 
@@ -174,4 +176,6 @@ It's early, and the design is still moving; [PLAN.md](PLAN.md) shows what's next
 
 ## License
 
-To be decided.
+LibreStrings is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE).
+
+The papers in `docs/papers/` keep their own licenses, given in their file names.

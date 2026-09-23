@@ -3,6 +3,8 @@ name = "strings-plugin"
 description = "CLAP plugin: the solo cello performer with an egui editor"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [lib]
