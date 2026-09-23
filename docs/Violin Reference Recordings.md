@@ -20,6 +20,8 @@ Suggested use: Iowa for single notes → Violin Etudes for runs and connected pl
 - Good for: comparing attack, spectrum and decay against the model's output (once it has a body filter; see TODO).
 - Limitation: no runs or connected phrases.
 - The library also has cello (and viola and double bass) recorded the same way, which fits the cello-first milestone (PLAN.md).
+- **Cello arco (2012), in use:** `scripts/fetch-reference-data.sh iowa-cello` fetches the mono 16-bit 44.1 kHz set (110 MB) and converts it to WAV; `strings-render compare` measures the model against it (PLAN.md "Phase 4: comparison with recorded notes"). One file per string (sul C, G, D, A), dynamic (pp, mf, ff) and range: chromatic runs of long notes without vibrato, up two octaves of each string (the G string at ff only to D4). The gaps between notes are digital silence; below 20 Hz there is rumble close to a quiet note's fundamental; the player plays a median 15 cents sharp. The ff C file named C2B2 has one extra segment. License: "may be downloaded and used for any projects, without restrictions".
+- Checked, not used: the solo cello in Virtual Playing Orchestra 3 is 10 vibrato notes a minor third apart from No Budget Orchestra (bwv662 on freesound, looped and edited, licenses include CC BY-NC) plus staccato blended from Iowa and NBO samples. Fine for listening, not for measuring.
 
 ## 2. Runs, passagework and real phrasing
 

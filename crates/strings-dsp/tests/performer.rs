@@ -99,6 +99,21 @@ fn fingering_modes_choose_the_strings() {
     }
 }
 
+/// A named string ("sul G") wins over the fingering mode where it can play
+/// the note, and gives way where it can't.
+#[test]
+fn a_named_string_plays_what_it_can() {
+    let mut p = performer();
+    p.set_string(Some(1));
+    // (note, string): D3 and A3 up the G string; C2 is below it, so the C string.
+    for (note, string) in [(50u8, 1), (57, 1), (36, 0)] {
+        p.reset();
+        p.note_on(note, 0.5);
+        assert_eq!(p.process_frame().string, string, "note {note}");
+        p.note_off(note);
+    }
+}
+
 /// A performer whose bow holds perfectly still (no wander).
 fn steady_performer() -> Performer {
     let settings = PerformerSettings {

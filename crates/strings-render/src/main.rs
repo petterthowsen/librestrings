@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Parser, Subcommand};
 
 mod calibrate;
+mod compare;
 mod measured;
 mod score;
 use strings_dsp::analysis::{Regime, bow_steady, classify, classify_bridge_force};
@@ -117,6 +118,31 @@ enum Command {
     Calibrate {
         #[arg(long, default_value_t = 48_000.0)]
         sample_rate: f32,
+    },
+    /// Compare the solo cello with recorded notes (University of Iowa, arco):
+    /// each note played again on the same string at the same dynamic, both
+    /// measured the same way. Fetch with scripts/fetch-reference-data.sh iowa-cello.
+    Compare {
+        #[arg(long, default_value = "data/reference/iowa-cello")]
+        data: PathBuf,
+        /// Only these dynamics (pp, mf, ff; repeat or separate by commas).
+        #[arg(long, value_delimiter = ',')]
+        dynamics: Vec<String>,
+        /// Only this string (C, G, D, A).
+        #[arg(long)]
+        string: Option<String>,
+        /// The model's vibrato control, 0–1 (default: matched to each recording).
+        #[arg(long)]
+        vibrato: Option<f32>,
+        /// MIDI velocity of the model's strokes, 1–127.
+        #[arg(long, default_value_t = 64.0)]
+        velocity: f32,
+        /// Where the listening files go (recording, then model, per note).
+        #[arg(long, short, default_value = "out/compare")]
+        out: PathBuf,
+        /// Write every note's measurements to this CSV file.
+        #[arg(long)]
+        csv: Option<PathBuf>,
     },
     /// Compare the model with a measured Schelleng diagram (mdw cello string A T1),
     /// point by point. Fetch the data with scripts/fetch-reference-data.sh.
@@ -321,6 +347,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 bridge_out.as_deref(),
             )?;
         }
+        Command::Compare {
+            data,
+            dynamics,
+            string,
+            vibrato,
+            velocity,
+            out,
+            csv,
+        } => compare::run(&compare::Options {
+            data,
+            out,
+            dynamics,
+            string,
+            vibrato,
+            velocity: velocity / 127.0,
+            csv,
+        })?,
         Command::Calibrate { sample_rate } => calibrate::run(&cello::INSTRUMENT, sample_rate),
         Command::Measured {
             data,

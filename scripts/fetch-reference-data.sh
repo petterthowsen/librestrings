@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Download measured bowed-string reference data into data/ (gitignored).
-# Sources and licenses: docs/Violin Reference Recordings.md, section 3.
+# Sources and licenses: docs/Violin Reference Recordings.md, sections 1 and 3.
 #
 # Usage: scripts/fetch-reference-data.sh [name ...]   (default: all entries below)
 # Downloads resume if interrupted and are checked against Zenodo's md5.
@@ -13,8 +13,12 @@ DATA=data/reference
 mkdir -p "$DATA"
 
 # name | file | md5 | url
-# All: mdw Vienna (Lampis, Chatziioannou, Mayer), CC BY 4.0.
+# guettler-*, schelleng-*: mdw Vienna (Lampis, Chatziioannou, Mayer), CC BY 4.0.
+# iowa-cello: University of Iowa MIS, cello arco 2012 (mono, 16-bit 44.1 kHz),
+#   "may be downloaded and used for any projects, without restrictions".
+#   Converted from AIFF to WAV, which needs ffmpeg.
 MANIFEST="
+iowa-cello|Cello.arco.mono.1644.1.zip|81f12cc1df9dd052a1dd2f1d6611fa30|https://theremin.music.uiowa.edu/sound%20files/MIS/Strings/cello2012/Cello.arco.mono.1644.1.zip
 guettler-waveforms|waveforms.zip|ccdf7decfa7061f62109292a850bed0c|https://zenodo.org/api/records/13374477/files/waveforms.zip/content
 schelleng-typeA-s1-T1|2024-03-25_TypeA_sample1.7z|2709034cc10344f37f3488376ae3ebcd|https://zenodo.org/api/records/17749111/files/2024-03-25_TypeA_sample1.7z/content
 "
@@ -41,7 +45,7 @@ echo "$MANIFEST" | while IFS='|' read -r name file md5 url; do
     echo "$md5  $dest/$file" | md5sum -c -
     echo "$name: extracting"
     case "$file" in
-        *.zip) unzip -q -o "$dest/$file" -d "$dest" ;;
+        *.zip) unzip -q -o "$dest/$file" -d "$dest" -x '__MACOSX/*' ;;
         *.7z)
             7z x -y -bd -o"$dest" "$dest/$file" >/dev/null
             rm "$dest/$file"
@@ -49,5 +53,10 @@ echo "$MANIFEST" | while IFS='|' read -r name file md5 url; do
             ;;
     esac
     rm -f "$dest/$file"
+    for aif in "$dest"/*.aif; do
+        [ -e "$aif" ] || continue
+        ffmpeg -loglevel error -y -i "$aif" "${aif%.aif}.wav"
+        rm "$aif"
+    done
     touch "$dest/.extracted"
 done

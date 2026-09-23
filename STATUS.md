@@ -14,7 +14,7 @@ Open issues as of September 2026, end of Phase 2 (built, not yet judged by ear).
 
 ## Listening
 
-1. **First listening only.** Pitch and releases sound right; attacks lacked bite, held notes were static, low notes lacked weight and spiccato sounded plucked (PLAN.md "Phase 3 notes: tuning and first listening"). The fixes for those (attack bite, bow wander, a heavier body, finger damping) are in. A second, informal listening in the standalone app (September 2026) found nothing that stood out, and the A/B renders of the force band, the torsional loss and 2× oversampling all favored the change. No careful comparison against recordings has been done yet (Phase 4).
+1. **First listening only.** Pitch and releases sound right; attacks lacked bite, held notes were static, low notes lacked weight and spiccato sounded plucked (PLAN.md "Phase 3 notes: tuning and first listening"). The fixes for those (attack bite, bow wander, a heavier body, finger damping) are in. A second, informal listening in the standalone app (September 2026) found nothing that stood out, and the A/B renders of the force band, the torsional loss and 2× oversampling all favored the change. The first comparison against recorded notes is measured but not yet listened to (items 40–44).
 2. **Short notes off the string may sound plucked on low notes.** The scripted spiccato touch is gone (PLAN.md 4.3): a short note is now a real stroke of at least 40 ms, thrown off the string. That is still only a few periods of C2–G2, shorter than the 35–100 ms an attack needs to settle. A bouncing bow is Phase 4.
 
 ## Playability vs the measured cello string
@@ -92,6 +92,16 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 37. **MIDI pitch bend is ignored.** It could move the finger on the bowed string(s); open strings can't bend.
 38. **Double stops are limited:** two notes, a fixed hand span (4 semitones at every position, where high positions allow more), and intonation by ear only on the older note. Chords of three or four strings (broken or with high force) aren't played.
 39. **The fingering modes are one number each** (how far above a lower string's open pitch a note stays on it). In a double stop they only rank the pairs of strings, so mid position can still take an open string when the other note would be past its bias.
+
+## Against recorded notes
+
+From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: comparison with recorded notes"). The listening files (`out/compare/`) haven't been listened to yet.
+
+40. **The spectrum doesn't follow the dynamics.** Recorded notes brighten from pp to ff by 7–11 dB in partials 4–7 and 9–14 dB in partials 8–15; the model's spectrum stays the same or darkens. At pp the low strings are far too bright (partials 4–7 about 15 dB too strong on the C and G strings); at mf–ff the A string is 10–15 dB too dark above partial 8.
+41. **High positions on a lower string play sharp and noisy.** Notes 7–18 semitones up a string (sul C F#3–B3, sul G D4–G4, sul D B4–C#5, mostly at mf–ff) are 17–57 cents sharp with an HNR of 9–16 dB. The bridge fingering mode plays up to 12.5 semitones up a string; the range tests only use the nut fingering.
+42. **No bow noise:** the model's harmonic-to-noise ratio is about 10 dB higher than the recording's at every dynamic (37–45 dB against 26–34 dB).
+43. **The low strings' fundamental is weak:** 9–16 dB below the harmonic power on the C string, 1–8 dB recorded. The microphone distance may add to the gap; the body's low end is estimated (item 16).
+44. **One recorded player and one microphone.** The Iowa notes have no vibrato and one way of starting (a slow swell at pp–mf), and the player plays a median 15 cents sharp. Attack times and rings compare how the notes were played as much as the instrument; the Guettler attack data (mdw) is still the measured target for attacks.
 
 ## Open decisions
 

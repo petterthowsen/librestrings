@@ -446,6 +446,8 @@ pub struct Performer {
     bow_lift: BowLift,
     polyphony: Polyphony,
     fingering: Fingering,
+    /// A string the notes stay on where they can (a "sul G" marking).
+    sul: Option<usize>,
 
     held: [u8; MAX_HELD],
     held_len: usize,
@@ -525,6 +527,7 @@ impl Performer {
             bow_lift: BowLift::OffString,
             polyphony: Polyphony::Mono,
             fingering: Fingering::NutAndOpen,
+            sul: None,
             held: [0; MAX_HELD],
             held_len: 0,
             sounding: None,
@@ -672,6 +675,13 @@ impl Performer {
 
     pub fn fingering(&self) -> Fingering {
         self.fingering
+    }
+
+    /// Keeps single notes on one string (0 is the lowest) wherever it can
+    /// play them, over the fingering mode: a "sul G" marking. `None` lets the
+    /// fingering choose. Takes effect from the next note; double stops ignore it.
+    pub fn set_string(&mut self, string: Option<usize>) {
+        self.sul = string.filter(|&s| s < 4);
     }
 
     /// Silences everything at once.
@@ -1159,12 +1169,14 @@ impl Performer {
         let best = (0..4)
             .filter(|&i| playable(i))
             .min_by(|&a, &b| cost(a).total_cmp(&cost(b)));
-        let string = match (best, current) {
-            (Some(b), Some(c)) if playable(c) && cost(c) - stick <= cost(b) => c,
-            (Some(b), _) => b,
+        let sul = self.sul.filter(|&s| playable(s));
+        let string = match (sul, best, current) {
+            (Some(s), _, _) => s,
+            (None, Some(b), Some(c)) if playable(c) && cost(c) - stick <= cost(b) => c,
+            (None, Some(b), _) => b,
             // Below the lowest string: play it open. Above the range: top string.
-            (None, _) if position(0) < 0.0 => 0,
-            (None, _) => 3,
+            (None, None, _) if position(0) < 0.0 => 0,
+            (None, None, _) => 3,
         };
         let reach = self.instrument.spec().reach;
         (string, position(string).clamp(0.0, reach))
