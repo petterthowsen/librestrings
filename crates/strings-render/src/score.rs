@@ -7,7 +7,8 @@
 //! 0    dyn 0.6             # dynamics 0–1 (also: vib, pressure; pressure 0.5 is normal)
 //! 0    bow on              # bow lift: on (stops on the string) | off (lifts, the default)
 //! 0    fingering mid       # nut | mid | bridge
-//! 0    string G            # play on this string where it can ("sul G"): C | G | D | A | any
+//! 0    string G            # play on this string where it can ("sul G"): a string's name
+//!                          # (cello: C G D A; violin: G D A E) or any
 //! 0    poly on             # on: overlapping notes are double stops where they can be
 //! 0    note C3 1.0 80      # note, length in beats, velocity 1–127 (default 64)
 //! 1    on D3 90            # note on (velocity optional) ...
@@ -27,7 +28,7 @@ pub enum Event {
     Pressure(f32),
     BowLift(BowLift),
     Fingering(Fingering),
-    /// A named string (0 = C), or `None` to let the fingering choose.
+    /// A named string (0 is the lowest), or `None` to let the fingering choose.
     String(Option<usize>),
     Polyphony(Polyphony),
 }
@@ -43,8 +44,9 @@ pub fn fingering(name: &str) -> Result<Fingering, String> {
 }
 
 /// Events with their times in seconds, sorted by time (stable, so events at the
-/// same time keep their order in the file, with note-offs first).
-pub fn parse(text: &str) -> Result<Vec<(f32, Event)>, String> {
+/// same time keep their order in the file, with note-offs first). `strings`
+/// are the instrument's string names, lowest first.
+pub fn parse(text: &str, strings: [&str; 4]) -> Result<Vec<(f32, Event)>, String> {
     let mut tempo = 60.0;
     let mut events = Vec::new();
     for (n, line) in text.lines().enumerate() {
@@ -96,15 +98,16 @@ pub fn parse(text: &str) -> Result<Vec<(f32, Event)>, String> {
                 events.push((time, Event::Fingering(f)));
             }
             Some("string") => {
+                let expected = || err(&format!("expected {} or any", strings.join(", ")));
                 let string = match arg(2) {
                     Some("any") => None,
                     Some(name) => Some(
-                        ["C", "G", "D", "A"]
+                        strings
                             .iter()
                             .position(|s| s.eq_ignore_ascii_case(name))
-                            .ok_or_else(|| err("expected C, G, D, A or any"))?,
+                            .ok_or_else(expected)?,
                     ),
-                    None => return Err(err("expected C, G, D, A or any")),
+                    None => return Err(expected()),
                 };
                 events.push((time, Event::String(string)));
             }
@@ -177,8 +180,11 @@ mod tests {
         assert_eq!(note(Some("H2")), None);
     }
 
+    const CELLO: [&str; 4] = ["C", "G", "D", "A"];
+
     #[test]
     fn parses_and_sorts() {
+        let parse = |text| parse(text, CELLO);
         let events =
             parse("# header\ntempo 120\n1 note C3 1 100 # comment\n2 note D3 1\n0 dyn 0.5")
                 .unwrap();
@@ -198,5 +204,19 @@ mod tests {
             Event::String(None)
         ));
         assert!(parse("0 string E").is_err());
+    }
+
+    #[test]
+    fn names_the_instruments_strings() {
+        let violin = ["G", "D", "A", "E"];
+        assert!(matches!(
+            parse("0 string G", violin).unwrap()[0].1,
+            Event::String(Some(0))
+        ));
+        assert!(matches!(
+            parse("0 string e", violin).unwrap()[0].1,
+            Event::String(Some(3))
+        ));
+        assert!(parse("0 string C", violin).is_err());
     }
 }

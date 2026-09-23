@@ -1,0 +1,23 @@
+# Violin: double stops: notes held together are bowed together on adjacent
+# strings. A moving line over a held open A, then sustained and short chords.
+tempo 60
+0 poly on
+0 dyn 0.5
+0 vib 0.5
+0 on A4 70              # open A, held under the line on the E string
+0 note E5 1.05 70
+1 note F#5 1.05 70
+2 note G#5 1.05 70
+3 note A5 1.9 80
+3 off A4
+5 note D4 1.9 70        # a sixth: open D, B4 on the A string
+5 note B4 1.9 70
+7 note B3 1.9 70        # a third: B3 on the G string, open D
+7 note D4 1.9 70
+9 bow on
+9 note D4 0.2 90        # short chords on the string: both notes in one stroke
+9 note A4 0.2 90
+9.5 note D4 0.2 90
+9.5 note A4 0.2 90
+10 note G3 0.2 90
+10 note D4 0.2 90

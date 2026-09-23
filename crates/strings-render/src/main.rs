@@ -15,8 +15,8 @@ use strings_dsp::analysis::{Regime, bow_steady, classify, classify_bridge_force}
 use strings_dsp::presets::{cello, reference, violin};
 use strings_dsp::{
     Absorption, BowHair, BowInput, BowedString, DampingCurve, Fingering, FrictionParams,
-    Humanization, Loss, MAX_PLAYERS, Performer, PerformerSettings, Placement, Polyphony,
-    RoomPreset, Section, Stage, StageSettings, StringFrame, StringSpec, TorsionSpec,
+    Humanization, InstrumentSpec, Loss, MAX_PLAYERS, Performer, PerformerSettings, Placement,
+    Polyphony, RoomPreset, Section, Stage, StageSettings, StringFrame, StringSpec, TorsionSpec,
     schelleng_limits,
 };
 
@@ -83,11 +83,14 @@ enum Command {
         #[arg(long)]
         loss_lowpass: Option<f32>,
     },
-    /// Play a score on the solo cello through the performer and body. SCORE is a
-    /// file (format in score.rs) or a built-in: scale, legato, staccato, phrase,
-    /// doublestops, ostinato, sul.
+    /// Play a score through the performer and body. SCORE is a file (format in
+    /// score.rs) or a built-in: scale, legato, staccato, phrase, doublestops,
+    /// ostinato, sul (cello), or violin-scale, violin-legato, violin-staccato,
+    /// violin-phrase, violin-doublestops, violin-sul.
     Play {
         score: String,
+        #[arg(long, default_value = "cello")]
+        instrument: Family,
         #[arg(long, default_value_t = 48_000.0)]
         sample_rate: f32,
         /// Seconds rendered after the last event.
@@ -109,25 +112,25 @@ enum Command {
         /// twice the sample rate (default: the performer's).
         #[arg(long, value_parser = clap::value_parser!(u8).range(1..=2))]
         oversampling: Option<u8>,
-        /// Players in the section (1 is the solo cello), each with its own
+        /// Players in the section (1 is the solo instrument), each with its own
         /// humanization. With more than one, or --stage, the output is stereo
         /// through the stage.
         #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=12))]
         players: u8,
-        /// Play a solo cello on the stage too (stereo), not dry.
+        /// Play a solo instrument on the stage too (stereo), not dry.
         #[arg(long)]
         stage: bool,
         /// The section's centre (m): x to the audience's right, y upstage from
-        /// the front of the stage.
-        #[arg(long, default_value_t = Placement::CELLOS.x, allow_negative_numbers = true)]
-        x: f32,
-        #[arg(long, default_value_t = Placement::CELLOS.y)]
-        y: f32,
+        /// the front of the stage (default: the instrument's usual seat).
+        #[arg(long, allow_negative_numbers = true)]
+        x: Option<f32>,
+        #[arg(long)]
+        y: Option<f32>,
         /// The area the section fills (m).
-        #[arg(long, default_value_t = Placement::CELLOS.width)]
-        width: f32,
-        #[arg(long, default_value_t = Placement::CELLOS.depth)]
-        depth: f32,
+        #[arg(long)]
+        width: Option<f32>,
+        #[arg(long)]
+        depth: Option<f32>,
         /// studio, chamber, concert or scoring.
         #[arg(long, default_value = "chamber", value_parser = room_preset)]
         room: RoomPreset,
@@ -150,6 +153,8 @@ enum Command {
     /// Fit an instrument's bow-force band (the performer's force mapping) to
     /// simulated Schelleng maps of all its strings.
     Calibrate {
+        #[arg(long, default_value = "cello")]
+        instrument: Family,
         #[arg(long, default_value_t = 48_000.0)]
         sample_rate: f32,
         /// Override the bow hair's stiffness (N/m), with --hair-damping.
@@ -266,9 +271,19 @@ enum Family {
     Cello,
 }
 
+impl Family {
+    fn instrument(self) -> &'static InstrumentSpec {
+        match self {
+            Family::Violin => &violin::INSTRUMENT,
+            Family::Cello => &cello::INSTRUMENT,
+        }
+    }
+}
+
 /// An open string and the bow hair it is played with.
 fn open_string(family: Family, name: &str) -> Result<(StringSpec, Option<BowHair>), String> {
     let found = match family {
+        // The Phase 1 reference map: a rigid bow (the instrument has hair).
         Family::Violin => violin::string(name).map(|s| (*s, None)),
         Family::Cello => cello::string_named(name).map(|s| (*s, cello::INSTRUMENT.hair)),
     };
@@ -345,6 +360,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::Play {
             score,
+            instrument,
             sample_rate,
             tail,
             pressure,
@@ -372,10 +388,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "doublestops" => include_str!("../scores/doublestops.score").to_string(),
                 "ostinato" => include_str!("../scores/ostinato.score").to_string(),
                 "sul" => include_str!("../scores/sul.score").to_string(),
+                "violin-scale" => include_str!("../scores/violin-scale.score").to_string(),
+                "violin-legato" => include_str!("../scores/violin-legato.score").to_string(),
+                "violin-staccato" => include_str!("../scores/violin-staccato.score").to_string(),
+                "violin-phrase" => include_str!("../scores/violin-phrase.score").to_string(),
+                "violin-doublestops" => {
+                    include_str!("../scores/violin-doublestops.score").to_string()
+                }
+                "violin-sul" => include_str!("../scores/violin-sul.score").to_string(),
                 path => std::fs::read_to_string(path)?,
             };
-            let mut events = score::parse(&text)?;
-            let mut settings = PerformerSettings::default();
+            let spec = instrument.instrument();
+            let mut events = score::parse(&text, spec.strings.map(|s| s.name))?;
+            let mut settings = PerformerSettings::for_instrument(spec);
             if let Some(p) = pressure {
                 settings.pressure = p;
             }
@@ -394,7 +419,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ];
             events.splice(0..0, modes);
             if players > 1 || stage {
-                let placement = Placement { x, y, width, depth };
+                let seat = Placement::for_instrument(spec);
+                let placement = Placement {
+                    x: x.unwrap_or(seat.x),
+                    y: y.unwrap_or(seat.y),
+                    width: width.unwrap_or(seat.width),
+                    depth: depth.unwrap_or(seat.depth),
+                };
                 let stage = StageSettings {
                     room,
                     absorption,
@@ -402,8 +433,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     reflections,
                 };
                 play_section(
+                    (spec, settings),
                     &events,
-                    settings,
                     players as usize,
                     (stage, placement),
                     sample_rate,
@@ -412,8 +443,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )?;
             } else {
                 play(
+                    (spec, settings),
                     &events,
-                    settings,
                     sample_rate,
                     tail,
                     &out,
@@ -441,11 +472,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             bridge,
         })?,
         Command::Calibrate {
+            instrument,
             sample_rate,
             hair_stiffness,
             hair_damping,
         } => {
-            let mut spec = cello::INSTRUMENT;
+            let mut spec = *instrument.instrument();
             if let (Some(stiffness), Some(damping)) = (hair_stiffness, hair_damping) {
                 spec.hair = Some(BowHair { stiffness, damping });
             }
@@ -507,15 +539,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn play(
+    (spec, settings): (&InstrumentSpec, PerformerSettings),
     events: &[(f32, score::Event)],
-    settings: PerformerSettings,
     fs: f32,
     tail: f32,
     out: &Path,
     bridge_out: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use score::Event;
-    let mut performer = Performer::new(&cello::INSTRUMENT, settings, fs);
+    let mut performer = Performer::new(spec, settings, fs);
     let end = events.last().map_or(0.0, |e| e.0) + tail;
     let total = (end * fs) as usize;
     let mut output = Vec::with_capacity(total);
@@ -563,8 +595,8 @@ fn play(
 /// `play` for a section of `players`, with the default humanization, on the
 /// stage: stereo.
 fn play_section(
+    (spec, settings): (&InstrumentSpec, PerformerSettings),
     events: &[(f32, score::Event)],
-    settings: PerformerSettings,
     players: usize,
     (stage_settings, placement): (StageSettings, Placement),
     fs: f32,
@@ -572,7 +604,7 @@ fn play_section(
     out: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use score::Event;
-    let mut section = Section::new(&cello::INSTRUMENT, settings, Humanization::default(), fs);
+    let mut section = Section::new(spec, settings, Humanization::default(), fs);
     section.set_players(players);
     let mut stage = Stage::new(stage_settings, placement, settings.seed, fs);
     stage.set_players(players);

@@ -7,6 +7,7 @@
 //! and sends the result as a [`StringsUpdate`]; the audio thread swaps it in
 //! and sends the old one back to be freed.
 
+use crate::params::InstrumentParam;
 use strings_dsp::{
     BodyTuning, BowHair, DampingCurve, FrictionParams, Humanization, InstrumentSpec, Loss,
     PerformerSettings, StringDesign, StringSpec, TorsionSpec,
@@ -90,7 +91,7 @@ impl Tuning {
     pub fn new(spec: &InstrumentSpec) -> Self {
         Self {
             live: LiveTuning {
-                performer: PerformerSettings::default(),
+                performer: PerformerSettings::for_instrument(spec),
                 friction: spec.friction,
                 hair: spec.hair,
                 body: BodyTuning::from(&spec.body),
@@ -106,6 +107,8 @@ impl Tuning {
 pub struct StringsUpdate {
     /// Counts the editor's requests; the audio thread reports the last one it applied.
     pub generation: u32,
+    /// The instrument they were fitted for; another one's engine leaves them.
+    pub instrument: InstrumentParam,
     pub specs: [StringSpec; 4],
     /// For player 0, fitted at its string rate.
     pub designs: [StringDesign; 4],

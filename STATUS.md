@@ -11,6 +11,7 @@ Open issues as of September 2026, end of Phase 2 (built, not yet judged by ear).
 | 1b. Measured string physics | Stiffness, torsion and measured damping built and verified. The acceptance target is **not met** (see below) |
 | 2. Solo cello | Built: cello presets, bow hair, body, instrument, performer (legato, détaché, the bow lift, double stops), calibrated force band, `play` renderer with example scores. Objective checks pass (`tests/performer.rs`). **First listening done** (Phase 3 notes); the "sounds like a cello" criterion is open |
 | 3. CLAP plugin | Built: nih-plug CLAP plugin with MIDI, CCs, keyswitches, parameters and an egui editor (status, instrument view, keyboard, faders, tuning window); standalone app. Tests pass and the engine runs at 4.8% of real time (strings at 2×). **Plays in Bitwig** (September 2026); not yet tried in Reaper |
+| 5. More instruments | **Violin built** (PLAN.md "Phase 5: the violin"): Phase 1 strings with the cello's bow hair, a body from published mode frequencies, a calibrated force band; in the renderer and the plugin. Objective checks pass; not yet heard. Viola and double bass to come |
 
 ## Next steps
 
@@ -73,7 +74,7 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 18. **Dispersion is accurate only up to about 2.5 kHz** (≤ 1.5 cents; ≤ 3.2 cents to 3.4 kHz) and under-dispersed above. The double bass (B about 5× larger) may need more sections or another design.
 19. **Dispersion delay limits short loops.** The 16-section cascade adds about 60 samples on the cello G string. On a short, stiff loop (high stopped notes, violin E if it gets stiffness) the nut delay would clamp and tuning would drift. There is no check or test for that case beyond two octaves.
 20. **The torsional bridge-side line is clamped to 2 samples,** so torsion is wrong below β ≈ 0.02 on the cello.
-21. **The violin presets have no stiffness, torsion, measured damping or bow hair.** They use the one-pole loss, and their lower force limit sits 5–10× above Schelleng's F_min (known behavior; PLAN.md 4.2). A rigidly held bow stopped on a violin string still damps it slowly.
+21. **The violin strings have no stiffness, torsion or measured damping.** They use the Phase 1 one-pole loss (decay times of 1.2–2 s are guesses), and their lower force limit sits 5–10× above Schelleng's F_min (known behavior; PLAN.md 4.2). The violin instrument plays them with the cello's bow hair; the physics tests and the violin Schelleng map use a rigid bow.
 22. **Quiet short notes off the string are unmeasured.** The old spiccato on the A string barely rang at pp (21–35 dB below its touch); the new thrown stroke is checked only at mf.
 
 ## Engineering gaps
@@ -121,6 +122,14 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 43. **The low strings' fundamental is mostly fixed.** The body lost it, not the string (`compare --bridge`). Two fitted modes (118 and 144 Hz) fill the gap between A0 and the dense modes. On the C string A2–D3 went from −6 to −31 dB to −1 to −8 at mf–ff (recorded −1 to −5), and to −3 to −15 at pp, and the G string's median from −5 to −2.5 dB (recorded −2.2) at mf (PLAN.md "The body's low end"). Still weak: G2–Ab2 (−7 to −17 against −1 to −2) and, on the C string, Ab3–C4 around 220 Hz (−10 to −13 against 0 to −2). The A/B renders (`out/ab-body-low-end/`) were listened to (September 2026): the change sounds good.
 44. **One recorded player and one microphone.** The Iowa notes have no vibrato and one way of starting (a slow swell at pp–mf), and the player plays a median 15 cents sharp. Attack times and rings compare how the notes were played as much as the instrument; the Guettler attack data (mdw) is still the measured target for attacks.
 45. **Two high positions are still a little off:** ff sul D B4 plays 17 cents sharp and sul D C#5 5 cents flat, with clean Helmholtz motion, in `compare`. In the seed sweep sul G D4 at mf settles slowly (0.4–1 s) on 2 of 24 seeds. The bow's minimum distance (0.024 m per kg/s of impedance) is fitted to where the model fails, not to players; it works from 3.5 to 4.5 cm on the C string. The A/B renders (`out/ab-bow-distance/`: `play sul` and `play phrase --fingering bridge`, before and after) were listened to (September 2026): the change sounds better.
+
+## Violin
+
+50. **The violin is not yet heard.** Renders of every `violin-*` score and an 8-player section are in `out/violin/`. Everything that shapes its sound is a first guess: the body's damping, signs and levels (only the four signature-mode frequencies and the bridge hill are from data), the strings' loss, the output gain (matched to the cello's median level, not by ear) and the performer's timings, which are the cello's.
+51. **The violin's bow hair is the cello's,** fitted to a cello string. There is no measured violin string or Schelleng diagram to fit it to.
+52. **The violin performer keeps the cello's β range (0.115–0.07).** Players bow a violin from about 0.04 to 0.2; the violin strings have no flat zone, but the force band isn't tested outside the cello's range. Sul tasto and a wider range of dynamics color are open.
+53. **The open D at pp settles slowly on 3 of 24 wander seeds** (167–273 ms), as the cello's open G at pp does.
+54. **Changing the instrument in the plugin cuts off what is sounding.** The old engine is swapped out at once, with no fade. Not tried in a host yet.
 
 ## Open decisions
 

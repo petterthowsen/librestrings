@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-LibreStrings: a free, physically modeled bowed-string synthesizer in Rust: a DSP library, an offline renderer, and a CLAP plugin (nih-plug, egui editor). [PLAN.md](PLAN.md) is the roadmap and design reference; read the relevant section before changing DSP.
+LibreStrings: a free, physically modeled bowed-string synthesizer in Rust (cello and violin so far): a DSP library, an offline renderer, and a CLAP plugin (nih-plug, egui editor). [PLAN.md](PLAN.md) is the roadmap and design reference; read the relevant section before changing DSP.
 
 ## Commands
 
@@ -9,9 +9,10 @@ cargo test                                   # unit + physics tests (test profil
 cargo clippy --all-targets                   # must be clean
 cargo fmt
 cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | ostinato | sul | file.score (--players N: a section on the stage, stereo; --stage for a solo)
+cargo run --release -p strings-render -- play violin-scale --instrument violin -o out/violin-scale.wav   # violin: violin-scale | -legato | -staccato | -phrase | -doublestops | -sul
 cargo run --release -p strings-render -- bow --string A -o out/a.wav
 cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument cello for cello strings)
-cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate
+cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate (--instrument violin)
 cargo run --release -p strings-render -- measured              # vs measured cello string (needs scripts/fetch-reference-data.sh)
 cargo run --release -p strings-render -- compare --dynamics mf --string G   # vs recorded cello notes (fetch-reference-data.sh iowa-cello; all: ~4 min)
 cargo run --release -p strings-render -- compare --string C --bridge    # the same on the strings' bridge force (before the body)
@@ -29,7 +30,7 @@ Renders go in `out/` (gitignored).
 
 - `crates/strings-dsp`: the model. `string.rs` holds the waveguide (with stiffness, torsion and bow hair), `bow.rs` the friction junction and Schelleng limits, `loss.rs` the loop-loss models, `delay.rs` and `filters.rs` the building blocks, `body.rs` the body resonators, `instrument.rs` four strings and a body with the calibrated force band, `performer.rs` the gesture layer (notes and controllers to bow and finger), `section.rs` up to 12 humanized players and `stage.rs` their placement, mics and early reflections (docs/SECTIONS.md), `presets.rs` the instrument data, and `analysis.rs` the offline measurements.
 - `crates/strings-render`: the CLI (clap, hound). `score.rs` is the text score format for `play`; `scores/` has examples. `compare.rs` measures the solo cello against recorded notes (Iowa).
-- `crates/strings-plugin`: the CLAP plugin. `lib.rs` holds the engine (a section of players on a stage, stereo; MIDI/CC/keyswitch handling: CC11 dynamics, CC1 vibrato, as in SWAM; telemetry), `params.rs` the parameters, `shared.rs` the audio↔editor state (atomics and lock-free queues), `tuning.rs` the numbers the tuning window edits, `editor/` the egui GUI (`tuning_window.rs`: the model's numbers, editable while playing, with "Copy changes" for pasting back into the presets). `xtask/` bundles it.
+- `crates/strings-plugin`: the CLAP plugin. The instrument is a parameter; a new one's engine is built on nih-plug's background thread and swapped in by `process`. `lib.rs` holds the engine (a section of players on a stage, stereo; MIDI/CC/keyswitch handling: CC11 dynamics, CC1 vibrato, as in SWAM; telemetry), `params.rs` the parameters, `shared.rs` the audio↔editor state (atomics and lock-free queues), `tuning.rs` the numbers the tuning window edits, `editor/` the egui GUI (`tuning_window.rs`: the model's numbers, editable while playing, with "Copy changes" for pasting back into the presets). `xtask/` bundles it.
 - `docs/`: research notes, plus `Literature.md` (papers the model takes numbers from, with links). The research notes are **not fully reliable**; PLAN.md's "Research notes / corrections" lists known errors, such as swapped Schelleng formulas and commuted synthesis misapplied to bowing.
 
 ## Rules
@@ -48,7 +49,9 @@ Renders go in `out/` (gitignored).
 - The simulated lower force limit sits about 5–10× above Schelleng's theoretical F_min; the upper limit matches F_max. Anchor force defaults on F_max (the renderer and tests use 0.3 × F_max).
 - The bridge loss lowpass at 0.5 (at 48 kHz) is needed for a clean Helmholtz band at 48 kHz; brighter settings fragment the slip phase.
 - A rigid bow stopped on the string damps it slowly, and bow hair doesn't change that much. Notes stop cleanly because the performer eases the force with the bow speed (PLAN.md "Phase 2 notes"). Keep that coupling when changing strokes.
-- Bow hair (`BowHair`) is off by default, so violin and reference results stay unchanged; the cello preset turns it on. Its parameters are fitted to the measured map.
+- Bow hair (`BowHair`) is off by default, so the Phase 1 violin strings (physics tests, `schelleng --instrument violin`) and the reference results stay unchanged. The cello and violin instruments turn it on, with the same parameters, fitted to the measured cello map; without it the violin's G string barely plays Helmholtz motion.
+- Per-instrument performer values (`beta`, `output_gain`) and a section's seat live in `InstrumentSpec`; build performers with `PerformerSettings::for_instrument(spec)`. `PerformerSettings::default()` is the cello's.
+- After changing the violin's strings, bow or friction, re-run `calibrate --instrument violin --sample-rate 96000` into `presets::violin::FORCE_LIMITS` and the violin seed sweep (`violin_notes_stay_helmholtz_across_wander_seeds`).
 - The cello strings play flat at β ≈ 0.124–0.156 (a torsion effect), so the performer's β range stays below 0.115. Bowed pitch also drifts with force; the performer intonates stopped notes by ear (slip-period feedback), which is deliberate, not a tuning bug.
 - After changing the strings, bow or friction of the cello, re-run `calibrate --sample-rate 96000` and paste its limits into `presets::cello::FORCE_LIMITS`. Then run the seed sweep (`cargo test --release -p strings-dsp --test performer across_wander_seeds -- --ignored --nocapture`): one seed passing says little about attacks.
 - The strings run at 2× the sample rate by default (`PerformerSettings::oversampling`, `Instrument::new`); the body stays at the sample rate. At 1× high notes lock onto whole-sample periods (C5 steps by 5–20 cents). Fit string designs at `Instrument::string_sample_rate`, not the host rate.

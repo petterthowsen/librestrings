@@ -9,7 +9,40 @@ use std::sync::atomic::{AtomicBool, AtomicI32};
 
 use nih_plug::prelude::*;
 use nih_plug_egui::EguiState;
-use strings_dsp::{Absorption, BowLift, Fingering, MAX_PLAYERS, Polyphony, RoomPreset};
+use strings_dsp::presets::{cello, violin};
+use strings_dsp::{
+    Absorption, BowLift, Fingering, InstrumentSpec, MAX_PLAYERS, Polyphony, RoomPreset,
+};
+
+/// The instrument the plugin plays. Not automatable: changing it builds a new
+/// engine on a background thread (tens of milliseconds), which then replaces
+/// the old one, cutting off what was sounding.
+#[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InstrumentParam {
+    // Saved in projects by these ids.
+    #[id = "cello"]
+    Cello,
+    #[id = "violin"]
+    Violin,
+}
+
+impl InstrumentParam {
+    pub const ALL: [Self; 2] = [Self::Cello, Self::Violin];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Cello => "Cello",
+            Self::Violin => "Violin",
+        }
+    }
+
+    pub fn spec(self) -> &'static InstrumentSpec {
+        match self {
+            Self::Cello => &cello::INSTRUMENT,
+            Self::Violin => &violin::INSTRUMENT,
+        }
+    }
+}
 
 /// What the bow does at the end of a detached note (SWAM's bow lift).
 #[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -186,6 +219,8 @@ pub struct StringsParams {
     #[persist = "key-velocity"]
     pub key_velocity: Arc<AtomicI32>,
 
+    #[id = "instrument"]
+    pub instrument: EnumParam<InstrumentParam>,
     #[id = "dynamics"]
     pub dynamics: FloatParam,
     #[id = "vibrato"]
@@ -252,6 +287,7 @@ impl Default for StringsParams {
             debug_view: Arc::new(AtomicBool::new(false)),
             key_velocity: Arc::new(AtomicI32::new(90)),
 
+            instrument: EnumParam::new("Instrument", InstrumentParam::Cello).non_automatable(),
             dynamics: unit("Dynamics", 0.5),
             vibrato: unit("Vibrato", 0.0),
             pressure: unit("Pressure", 0.5),

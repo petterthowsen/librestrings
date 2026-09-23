@@ -15,7 +15,8 @@ use nih_plug_egui::egui::{self, Color32, FontId, Key, RichText, Sense, Stroke, p
 
 use crate::params::StringsParams;
 use crate::shared::{GuiEvent, Shared};
-use crate::{INSTRUMENT, keyswitch, midi_note};
+use crate::{keyswitch, keyswitch_base, midi_note};
+use strings_dsp::InstrumentSpec;
 
 const KEYS: [(Key, &str); 17] = [
     (Key::Q, "Q"),
@@ -44,9 +45,12 @@ const RELEASE_DEBOUNCE: f64 = 0.02;
 
 /// Transpose range in octaves around C3.
 const TRANSPOSE: (i32, i32) = (-2, 3);
-/// Range of the on-screen keyboard: C1 (the keyswitches) to C6.
-const LOWEST: u8 = 24;
-const HIGHEST: u8 = 84;
+/// Range of the on-screen keyboard: five octaves from the keyswitches (cello
+/// C1–C6, violin C3–C8).
+fn range(spec: &InstrumentSpec) -> (u8, u8) {
+    let lowest = keyswitch_base(spec);
+    (lowest, lowest + 60)
+}
 
 #[derive(Default)]
 pub struct KeyboardState {
@@ -78,9 +82,9 @@ fn first_mapped(params: &StringsParams) -> u8 {
 }
 
 /// The playable range: the lowest open string to the top of the highest string.
-fn playable(note: u8) -> bool {
-    let low = midi_note(INSTRUMENT.strings[0].frequency);
-    let high = midi_note(INSTRUMENT.strings[3].frequency) + INSTRUMENT.reach as u8;
+fn playable(spec: &InstrumentSpec, note: u8) -> bool {
+    let low = midi_note(spec.strings[0].frequency);
+    let high = midi_note(spec.strings[3].frequency) + spec.reach as u8;
     (low..=high).contains(&note)
 }
 
@@ -176,7 +180,9 @@ pub fn piano(
     state: &mut KeyboardState,
 ) {
     let t = &shared.telemetry;
-    let whites = (LOWEST..=HIGHEST).filter(|&n| !is_black(n)).count() as f32;
+    let spec = t.instrument().spec();
+    let (lowest, highest) = range(spec);
+    let whites = (lowest..=highest).filter(|&n| !is_black(n)).count() as f32;
     let width = ui.available_width() - 390.0;
     let size = vec2(width.max(300.0), 128.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
@@ -184,7 +190,7 @@ pub fn piano(
     let black_h = rect.height() * 0.62;
 
     let white_rect = |note: u8| {
-        let index = (LOWEST..note).filter(|&n| !is_black(n)).count() as f32;
+        let index = (lowest..note).filter(|&n| !is_black(n)).count() as f32;
         egui::Rect::from_min_size(
             pos2(rect.left() + index * white_w, rect.top()),
             vec2(white_w, rect.height()),
@@ -205,11 +211,11 @@ pub fn piano(
         }
     };
     let note_at = |pos: egui::Pos2| {
-        let black = (LOWEST..=HIGHEST)
+        let black = (lowest..=highest)
             .filter(|&n| is_black(n))
             .find(|&n| black_rect(n).contains(pos));
         black.or_else(|| {
-            (LOWEST..=HIGHEST)
+            (lowest..=highest)
                 .filter(|&n| !is_black(n))
                 .find(|&n| white_rect(n).contains(pos))
         })
@@ -261,15 +267,15 @@ pub fn piano(
 
     let painter = ui.painter_at(rect);
     let small = FontId::proportional(9.0);
-    for note in (LOWEST..=HIGHEST).filter(|&n| !is_black(n)) {
+    for note in (lowest..=highest).filter(|&n| !is_black(n)) {
         let r = white_rect(note).shrink2(vec2(0.5, 0.0));
         let fill = if sounding == Some(note) {
             sounding_color
         } else if held(note) {
             held_color
-        } else if let Some(a) = keyswitch(INSTRUMENT, note) {
+        } else if let Some(a) = keyswitch(spec, note) {
             switch_color(a == bow_lift)
-        } else if playable(note) {
+        } else if playable(spec, note) {
             Color32::from_gray(235)
         } else {
             Color32::from_gray(150)
@@ -294,13 +300,13 @@ pub fn piano(
             );
         }
     }
-    for note in (LOWEST..=HIGHEST).filter(|&n| is_black(n)) {
+    for note in (lowest..=highest).filter(|&n| is_black(n)) {
         let r = black_rect(note);
         let fill = if sounding == Some(note) {
             sounding_color
         } else if held(note) {
             held_color
-        } else if playable(note) {
+        } else if playable(spec, note) {
             Color32::from_gray(25)
         } else {
             Color32::from_gray(70)

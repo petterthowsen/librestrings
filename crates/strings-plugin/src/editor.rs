@@ -10,11 +10,12 @@ use nih_plug::prelude::*;
 use nih_plug_egui::egui::{self, Color32, RichText};
 use nih_plug_egui::{EguiState, create_egui_editor};
 
+use crate::keyswitch_base;
 use crate::params::{
-    AbsorptionParam, BowLiftParam, FingeringParam, PolyphonyParam, RoomParam, StringsParams,
+    AbsorptionParam, BowLiftParam, FingeringParam, InstrumentParam, PolyphonyParam, RoomParam,
+    StringsParams,
 };
 use crate::shared::{GuiEvent, Shared, Telemetry};
-use crate::{INSTRUMENT, keyswitch_base};
 
 mod fader;
 mod instrument_view;
@@ -142,16 +143,15 @@ fn toggle(ui: &mut egui::Ui, flag: &std::sync::atomic::AtomicBool, label: &str) 
 fn selection_row(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter, shared: &Shared) {
     ui.horizontal(|ui| {
         ui.label("Instrument");
-        egui::ComboBox::from_id_salt("instrument")
-            .selected_text("Cello")
-            .width(130.0)
-            .show_ui(ui, |ui| {
-                let _ = ui.selectable_label(true, "Cello");
-                for later in ["Violin", "Viola", "Double bass"] {
-                    ui.add_enabled(false, egui::SelectableLabel::new(false, later))
-                        .on_disabled_hover_text("Phase 5");
-                }
-            });
+        enum_combo(
+            ui,
+            setter,
+            &params.instrument,
+            &InstrumentParam::ALL,
+            InstrumentParam::name,
+            130.0,
+        )
+        .on_hover_text("Changing it cuts off what is sounding. Viola and double bass: Phase 5.");
         ui.add_space(12.0);
         ui.label("Players");
         players(ui, params, setter);
@@ -159,7 +159,7 @@ fn selection_row(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter
 
         ui.label("Bow lift");
         let live = shared.telemetry.bow_lift();
-        let base = keyswitch_base(INSTRUMENT);
+        let base = keyswitch_base(shared.telemetry.instrument().spec());
         for (i, b) in BowLiftParam::ALL.into_iter().enumerate() {
             let key = keyboard::note_name(base + 2 * i as u8);
             let what = match b {
@@ -384,7 +384,7 @@ fn enum_combo<T: Enum + PartialEq + Copy + 'static>(
 /// The performer's state in numbers, beside the instrument.
 fn readout(ui: &mut egui::Ui, params: &StringsParams, t: &Telemetry) {
     let bowed = t.string.load(Relaxed) as usize % 4;
-    let spec = &INSTRUMENT.strings[bowed];
+    let spec = &t.instrument().spec().strings[bowed];
     let string = &t.strings[bowed];
     let frequency = string.frequency.load(Relaxed);
     let beta = string.beta.load(Relaxed);
@@ -464,8 +464,9 @@ fn motion(slips: f32) -> (&'static str, Color32) {
 
 fn debug_view(ui: &mut egui::Ui, t: &Telemetry, bowed: usize, v: f32, beta: f32) {
     // The calibrated Helmholtz band at the current speed and position (PLAN.md 4.2).
-    let spec = &INSTRUMENT.strings[bowed];
-    let (lo, hi) = INSTRUMENT.force_limits[bowed].band(spec.impedance(), v, beta);
+    let instrument = t.instrument().spec();
+    let spec = &instrument.strings[bowed];
+    let (lo, hi) = instrument.force_limits[bowed].band(spec.impedance(), v, beta);
     let force = t.bow_force.load(Relaxed);
     ui.label(RichText::new("Force band").weak());
     ui.label(RichText::new(format!("{lo:.2} – {hi:.2} N")).monospace());
@@ -485,7 +486,7 @@ fn debug_view(ui: &mut egui::Ui, t: &Telemetry, bowed: usize, v: f32, beta: f32)
             ui.end_row();
             for (i, s) in t.strings.iter().enumerate().rev() {
                 let small = |text: String| RichText::new(text).small().monospace();
-                ui.label(small(INSTRUMENT.strings[i].name.into()));
+                ui.label(small(instrument.strings[i].name.into()));
                 ui.label(small(format!("{:.1}", s.frequency.load(Relaxed))));
                 ui.label(small(format!("{:.2}", s.contact.load(Relaxed))));
                 ui.label(small(format!("{:.3}", s.level.load(Relaxed))));

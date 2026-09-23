@@ -124,4 +124,4 @@ Renders (`out/ab-stage/`, stereo): `phrase-solo-front` (a solo at the centre fro
 
 - Divisi (a section split across the notes of a chord), after mono sections work (PLAN.md §5). Until then, a double stop in a section is played by every player.
 - Bow changes at different times on long held notes (free bowing) need automatic bow changes (PLAN.md 4.5).
-- Violin, viola and bass sections come with those instruments (Phase 5).
+- Violin, viola and bass sections come with those instruments (Phase 5). The violin is in: its sections play through the same engine (`play violin-phrase --instrument violin --players 8`), seated by default on the audience's left (`Placement::VIOLINS`, renderer only; the plugin's stage position is a parameter). Its humanization is the cello's.

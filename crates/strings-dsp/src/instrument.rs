@@ -10,6 +10,7 @@
 use crate::body::{Body, BodySpec, BodyTuning};
 use crate::bow::FrictionParams;
 use crate::filters::HalfbandDecimator;
+use crate::stage::Placement;
 use crate::string::{BowHair, BowInput, BowedString, StringDesign, StringFrame, StringSpec};
 
 /// The Helmholtz band of bow force, calibrated per instrument (PLAN.md 4.2).
@@ -55,6 +56,15 @@ pub struct InstrumentSpec {
     pub force_limits: [ForceLimits; 4],
     /// How far above each open string it is played (semitones).
     pub reach: f32,
+    /// The performer's bow position (fraction of the vibrating length from
+    /// the bridge) at dynamics 0 and 1 ([`PerformerSettings::beta`]).
+    ///
+    /// [`PerformerSettings::beta`]: crate::PerformerSettings::beta
+    pub beta: (f32, f32),
+    /// Gain after the body, so every instrument plays at a similar level.
+    pub output_gain: f32,
+    /// Where a section of these sits on the stage.
+    pub seat: Placement,
 }
 
 #[derive(Clone, Copy, Debug)]

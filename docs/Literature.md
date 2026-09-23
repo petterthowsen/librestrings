@@ -49,3 +49,6 @@ Papers the model takes numbers or methods from, and what was used from each. Dat
 - **J. Woodhouse, [euphonics.org](https://euphonics.org/5-3-signature-modes-and-formants/) §5.3:** cello bridge admittances show two hills, around 1 kHz and 2–2.3 kHz. Used for: the second bridge hill (2.2 kHz). The statistical treatment of the dense modes follows the same book.
 - **Cello string tensions:** [Aitchison & Mnatzaganian tension chart](https://www.aitchisoncellos.com/string-tensions-charts/), Larsen Standard at 700 mm: A 39.3 lb, D 29.7 lb, G 27.6 lb, C 30.1 lb. Used for: the C, D and A strings of `presets::cello` (the G is the measured string).
 
+## Violin body (Phase 5)
+
+- **J. Woodhouse, [euphonics.org](https://euphonics.org/5-3-signature-modes-and-formants/) §5.3, Fig. 5:** the signature modes of one violin: A0 272 Hz, CBR 407 Hz, B1− 462 Hz, B1+ 551 Hz; the bridge hill peaks around 2.3 kHz. No damping values. Used for: the listed modes and the bridge hill of `presets::violin::BODY`.

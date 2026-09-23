@@ -107,20 +107,27 @@ pub struct PerformerSettings {
     pub tuning: PerformerTuning,
 }
 
+/// The cello's settings.
 impl Default for PerformerSettings {
     fn default() -> Self {
+        Self::for_instrument(&crate::presets::cello::INSTRUMENT)
+    }
+}
+
+impl PerformerSettings {
+    /// The settings for playing `spec`: its bow positions and output gain,
+    /// and everything else as for any instrument.
+    pub fn for_instrument(spec: &InstrumentSpec) -> Self {
         Self {
             speed: (0.04, 0.5),
-            // Above β ≈ 0.12 the model's cello strings play up to 45 cents flat
-            // (STATUS.md), so the mapping stays below.
-            beta: (0.115, 0.07),
-            // 3.5 cm on the C string, 1.4 cm on the A.
+            beta: spec.beta,
+            // Cello: 3.5 cm on the C string, 1.4 cm on the A.
             bow_distance: 0.024,
             pressure: 0.65,
             pressure_range: (PRESSURE_FLAUTANDO, PRESSURE_SCRATCH),
             vibrato_rate: 5.5,
             vibrato_depth: 0.35,
-            output_gain: 0.065,
+            output_gain: spec.output_gain,
             seed: 0x0b0e_5eed,
             oversampling: 2,
             tuning: PerformerTuning::default(),

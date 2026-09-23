@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering::Relaxed};
 use crossbeam_queue::ArrayQueue;
 use nih_plug::prelude::AtomicF32;
 
-use crate::params::BowLiftParam;
+use crate::params::{BowLiftParam, InstrumentParam};
 use crate::tuning::{LiveTuning, StringsUpdate};
 
 #[derive(Clone, Copy, Debug)]
@@ -45,9 +45,13 @@ pub struct StringTelemetry {
 pub struct Telemetry {
     /// The performer is built (after the host activates the plugin).
     pub ready: AtomicBool,
-    /// Changes whenever the performer is built again (a new sample rate),
-    /// which drops the tuning window's changes; the editor then sends them again.
+    /// Changes whenever the performer is built again (a new sample rate or
+    /// instrument), which drops the tuning window's changes; the editor then
+    /// sends them again.
     pub engine: AtomicU32,
+    /// The instrument the engine plays (an index into `InstrumentParam::ALL`).
+    /// It follows the parameter once the new engine is built.
+    pub instrument: AtomicU32,
     /// The last string update the audio thread applied (`StringsUpdate::generation`).
     pub strings_generation: AtomicU32,
     pub sample_rate: AtomicF32,
@@ -89,6 +93,11 @@ pub struct Telemetry {
 }
 
 impl Telemetry {
+    pub fn instrument(&self) -> InstrumentParam {
+        let i = self.instrument.load(Relaxed) as usize;
+        InstrumentParam::ALL[i % InstrumentParam::ALL.len()]
+    }
+
     pub fn bow_lift(&self) -> BowLiftParam {
         BowLiftParam::ALL[self.bow_lift.load(Relaxed) as usize % 2]
     }
@@ -106,8 +115,9 @@ pub struct Shared {
     pub telemetry: Telemetry,
     /// Notes from the editor's keyboard.
     pub gui_events: ArrayQueue<GuiEvent>,
-    /// The tuning window's changes. The audio thread applies the last one.
-    pub live_tuning: ArrayQueue<LiveTuning>,
+    /// The tuning window's changes, for the instrument they were made for.
+    /// The audio thread applies the last one for its instrument.
+    pub live_tuning: ArrayQueue<(InstrumentParam, LiveTuning)>,
     /// Refitted strings, to the audio thread and back (the old filters are
     /// freed on the editor's side, never on the audio thread).
     pub string_updates: ArrayQueue<Box<StringsUpdate>>,

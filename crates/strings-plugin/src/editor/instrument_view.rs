@@ -14,7 +14,6 @@ use std::sync::atomic::Ordering::Relaxed;
 
 use nih_plug_egui::egui::{self, Color32, Pos2, Rect, Shape, Stroke, pos2, vec2};
 
-use crate::INSTRUMENT;
 use crate::shared::Telemetry;
 
 /// Helmholtz cycles per second on screen.
@@ -84,10 +83,11 @@ pub fn show(ui: &mut egui::Ui, t: &Telemetry, state: &mut ViewState) {
     draw_body(&painter, &g);
 
     let bowed = t.string.load(Relaxed) as usize % 4;
+    let spec = t.instrument().spec();
     let mut bow_x = g.bridge_x - 0.1 * (g.bridge_x - g.nut_x);
     for i in 0..4 {
         let s = &t.strings[i];
-        let ratio = s.frequency.load(Relaxed) / INSTRUMENT.strings[i].frequency;
+        let ratio = s.frequency.load(Relaxed) / spec.strings[i].frequency;
         let finger_x = g.finger_x(ratio);
         if i == bowed {
             bow_x = g.bridge_x - s.beta.load(Relaxed) * (g.bridge_x - finger_x);

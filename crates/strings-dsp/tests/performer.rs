@@ -1,11 +1,11 @@
 //! The solo cello played through the performer: string choice, Helmholtz
 //! motion and intonation across the range, legato, the bow lift, double stops
-//! and the pressure range.
+//! and the pressure range. The violin's range is checked the same way.
 
 use strings_dsp::analysis::{Regime, cents, classify, measure_frequency};
-use strings_dsp::presets::cello;
+use strings_dsp::presets::{cello, violin};
 use strings_dsp::{
-    BowLift, ContactState, Fingering, Performer, PerformerFrame, PerformerSettings,
+    BowLift, ContactState, Fingering, InstrumentSpec, Performer, PerformerFrame, PerformerSettings,
     PerformerTuning, Polyphony,
 };
 
@@ -116,6 +116,10 @@ fn a_named_string_plays_what_it_can() {
 
 /// A performer whose bow holds perfectly still (no wander).
 fn steady_performer() -> Performer {
+    steady(&cello::INSTRUMENT)
+}
+
+fn steady(spec: &InstrumentSpec) -> Performer {
     let settings = PerformerSettings {
         tuning: PerformerTuning {
             wander_pressure: 0.0,
@@ -123,9 +127,9 @@ fn steady_performer() -> Performer {
             wander_beta: 0.0,
             ..PerformerTuning::default()
         },
-        ..PerformerSettings::default()
+        ..PerformerSettings::for_instrument(spec)
     };
-    Performer::new(&cello::INSTRUMENT, settings, FS)
+    Performer::new(spec, settings, FS)
 }
 
 /// Across the range and dynamics every note settles into Helmholtz motion
@@ -134,14 +138,30 @@ fn steady_performer() -> Performer {
 /// (STATUS.md).
 #[test]
 fn notes_across_the_range_are_helmholtz_and_in_tune() {
-    check_range(&mut steady_performer(), 5.0);
+    check_range(&mut steady_performer(), &RANGE_NOTES, 5.0);
 }
 
 /// The bow's wander moves the pitch a little (bowed pitch depends on force and
 /// position), but notes stay Helmholtz and within 10 cents.
 #[test]
 fn notes_stay_helmholtz_while_the_bow_wanders() {
-    check_range(&mut performer(), 10.0);
+    check_range(&mut performer(), &RANGE_NOTES, 10.0);
+}
+
+/// The violin, as the cello above.
+#[test]
+fn violin_notes_across_the_range_are_helmholtz_and_in_tune() {
+    check_range(&mut steady(&violin::INSTRUMENT), &VIOLIN_NOTES, 5.0);
+}
+
+#[test]
+fn violin_notes_stay_helmholtz_while_the_bow_wanders() {
+    let mut p = Performer::new(
+        &violin::INSTRUMENT,
+        PerformerSettings::for_instrument(&violin::INSTRUMENT),
+        FS,
+    );
+    check_range(&mut p, &VIOLIN_NOTES, 10.0);
 }
 
 /// Across the range, the wander's randomness decides a few borderline attacks
@@ -150,20 +170,30 @@ fn notes_stay_helmholtz_while_the_bow_wanders() {
 #[test]
 #[ignore]
 fn notes_stay_helmholtz_across_wander_seeds() {
+    across_seeds(&cello::INSTRUMENT, &RANGE_NOTES);
+}
+
+#[test]
+#[ignore]
+fn violin_notes_stay_helmholtz_across_wander_seeds() {
+    across_seeds(&violin::INSTRUMENT, &VIOLIN_NOTES);
+}
+
+fn across_seeds(spec: &InstrumentSpec, notes: &[(u8, Option<usize>)]) {
     let mut failures = Vec::new();
     for seed in 1..=24 {
         let settings = PerformerSettings {
             seed,
-            ..PerformerSettings::default()
+            ..PerformerSettings::for_instrument(spec)
         };
-        let mut p = Performer::new(&cello::INSTRUMENT, settings, FS);
+        let mut p = Performer::new(spec, settings, FS);
         failures.extend(
-            range_failures(&mut p, 10.0)
+            range_failures(&mut p, notes, 10.0)
                 .into_iter()
                 .map(|f| format!("seed {seed}, {f}")),
         );
     }
-    let notes = 24 * 3 * RANGE_NOTES.len();
+    let notes = 24 * 3 * notes.len();
     eprintln!(
         "{} failed checks over {notes} notes:\n{}",
         failures.len(),
@@ -172,8 +202,8 @@ fn notes_stay_helmholtz_across_wander_seeds() {
     assert!(failures.len() * 100 <= notes, "{} failures", failures.len());
 }
 
-fn check_range(p: &mut Performer, stopped_tolerance: f32) {
-    let failures = range_failures(p, stopped_tolerance);
+fn check_range(p: &mut Performer, notes: &[(u8, Option<usize>)], stopped_tolerance: f32) {
+    let failures = range_failures(p, notes, stopped_tolerance);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
@@ -199,13 +229,38 @@ const RANGE_NOTES: [(u8, Option<usize>); 16] = [
     (74, Some(2)),
 ];
 
+/// The violin's: its range from the open G to A6 (two octaves up the E
+/// string), then high positions on the lower strings, 12 and 19 semitones up.
+const VIOLIN_NOTES: [(u8, Option<usize>); 16] = [
+    (55, None),
+    (59, None),
+    (62, None),
+    (66, None),
+    (69, None),
+    (73, None),
+    (76, None),
+    (81, None),
+    (88, None),
+    (93, None),
+    (67, Some(0)),
+    (74, Some(0)),
+    (74, Some(1)),
+    (81, Some(1)),
+    (81, Some(2)),
+    (88, Some(2)),
+];
+
 /// Plays notes across the range at three dynamics and lists every one that
 /// isn't Helmholtz, settles later than 150 ms or misses its pitch (open
 /// strings may be 20 cents flat).
-fn range_failures(p: &mut Performer, stopped_tolerance: f32) -> Vec<String> {
+fn range_failures(
+    p: &mut Performer,
+    notes: &[(u8, Option<usize>)],
+    stopped_tolerance: f32,
+) -> Vec<String> {
     let mut failures = Vec::new();
     for dynamics in [0.1, 0.5, 0.9] {
-        for (note, string) in RANGE_NOTES {
+        for &(note, string) in notes {
             p.reset();
             p.set_string(string);
             p.set_dynamics(dynamics);
@@ -227,7 +282,7 @@ fn range_failures(p: &mut Performer, stopped_tolerance: f32) -> Vec<String> {
             }
             let bridge: Vec<f32> = steady.iter().map(|f| f.frame.bridge_force).collect();
             let err = cents(measure_frequency(&bridge, FS, target), target);
-            let played = &cello::STRINGS[frames.last().unwrap().string];
+            let played = &p.instrument().spec().strings[frames.last().unwrap().string];
             let open = cents(played.frequency, target).abs() < 1.0;
             let tolerance = if open { 20.0 } else { stopped_tolerance };
             if err.abs() >= tolerance {

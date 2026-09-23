@@ -1,7 +1,10 @@
 //! Physical data for instruments. Values are typical, not measured; refine by ear.
 
 pub mod violin {
-    use crate::{Loss, StringSpec};
+    use crate::body::{BodyMode, BodySpec, DenseModes, Hill};
+    use crate::instrument::{ForceLimits, InstrumentSpec};
+    use crate::stage::Placement;
+    use crate::{FrictionParams, Loss, StringSpec};
 
     // No stiffness or torsion yet: we have no data for these strings, and
     // violin strings are far less stiff than cello strings (PLAN.md 3.6).
@@ -62,6 +65,115 @@ pub mod violin {
     pub fn string(name: &str) -> Option<&'static StringSpec> {
         STRINGS.iter().find(|s| s.name.eq_ignore_ascii_case(name))
     }
+
+    /// The violin's signature modes, from Woodhouse's measurements of one
+    /// violin (euphonics.org, 5.3, Fig. 5): A0 at 272 Hz (the air resonance),
+    /// CBR at 407 Hz, and the two "baseball" modes B1− at 462 Hz and B1+ at
+    /// 551 Hz, the strongest radiators. Damping (1.5–2.5%), signs and levels
+    /// are estimates, to be refined by ear or measurement.
+    const SIGNATURE_MODES: [BodyMode; 4] = [
+        BodyMode {
+            frequency: 272.0,
+            damping: 0.02,
+            gain: 0.8,
+        },
+        BodyMode {
+            frequency: 407.0,
+            damping: 0.02,
+            gain: 0.3,
+        },
+        BodyMode {
+            frequency: 462.0,
+            damping: 0.015,
+            gain: 1.0,
+        },
+        BodyMode {
+            frequency: 551.0,
+            damping: 0.015,
+            gain: -1.2,
+        },
+    ];
+
+    /// The bridge hill, peaking around 2.3 kHz (euphonics.org, 5.3). Width
+    /// and level are estimates.
+    const HILLS: [Hill; 1] = [Hill {
+        frequency: 2300.0,
+        width: 0.6,
+        gain: 2.0,
+    }];
+
+    /// The dense modes start among the B1 modes; the level falls above the
+    /// bridge hill.
+    pub const BODY: BodySpec = BodySpec {
+        modes: &SIGNATURE_MODES,
+        dense: DenseModes {
+            from: 500.0,
+            to: 10000.0,
+            count: 60,
+            damping: 0.03,
+            level: 0.35,
+            rolloff: 5000.0,
+            hills: &HILLS,
+            seed: 0x5eed_f1d1,
+        },
+    };
+
+    /// Fitted by `strings-render calibrate --instrument violin --sample-rate
+    /// 96000`, as for the cello (see [`super::cello`]). Band positions 0.5–0.8
+    /// give prompt Helmholtz motion in 88–100% of checked cases (the E string
+    /// at 0.8 is the lowest). Without the bow hair the G string's band was
+    /// found in only 21 of 48 columns and gave 54–83%.
+    const FORCE_LIMITS: [ForceLimits; 4] = [
+        ForceLimits {
+            lower: 0.378,
+            lower_exponent: -1.533,
+            upper: 5.447,
+            upper_exponent: -0.846,
+        },
+        ForceLimits {
+            lower: 0.163,
+            lower_exponent: -1.805,
+            upper: 5.546,
+            upper_exponent: -0.850,
+        },
+        ForceLimits {
+            lower: 0.056,
+            lower_exponent: -2.090,
+            upper: 7.471,
+            upper_exponent: -0.742,
+        },
+        ForceLimits {
+            lower: 0.047,
+            lower_exponent: -2.046,
+            upper: 5.389,
+            upper_exponent: -0.880,
+        },
+    ];
+
+    /// The Phase 1 strings (one-pole loss, no stiffness or torsion), played
+    /// with the cello's bow hair: the same kind of bow, not refitted. It
+    /// doubles the G string's Helmholtz region, where a rigid bow left a
+    /// narrow, patchy band and slow attacks.
+    pub const INSTRUMENT: InstrumentSpec = InstrumentSpec {
+        name: "violin",
+        strings: STRINGS,
+        friction: FrictionParams {
+            mu_s: 0.8,
+            mu_d: 0.3,
+            v0: 0.1,
+        },
+        hair: Some(super::cello::HAIR),
+        body: BODY,
+        force_limits: FORCE_LIMITS,
+        reach: 24.0,
+        // The cello's mapping: the violin strings have no flat zone (no
+        // torsion), but the force band is calibrated and tested only there.
+        beta: (0.115, 0.07),
+        // Matched to the cello's median level on the example scales (the
+        // violin strings' impedance is a third of the cello's); not yet by ear.
+        output_gain: 0.5,
+        seat: Placement::VIOLINS,
+    };
 }
 
 /// Measured reference strings, for comparing the model against lab data.
@@ -118,6 +230,7 @@ pub mod reference {
 pub mod cello {
     use crate::body::{BodyMode, BodySpec, DenseModes, Hill};
     use crate::instrument::{ForceLimits, InstrumentSpec};
+    use crate::stage::Placement;
     use crate::{BowHair, DampingCurve, FrictionParams, Loss, StringSpec, TorsionSpec};
 
     /// Vibrating length (m): the mdw monochord's, within the usual 690–700 mm.
@@ -331,5 +444,10 @@ pub mod cello {
         body: BODY,
         force_limits: FORCE_LIMITS,
         reach: 24.0,
+        // Above β ≈ 0.12 the model's cello strings play up to 45 cents flat
+        // (STATUS.md), so the mapping stays below.
+        beta: (0.115, 0.07),
+        output_gain: 0.065,
+        seat: Placement::CELLOS,
     };
 }

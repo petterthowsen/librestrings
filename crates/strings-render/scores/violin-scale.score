@@ -1,0 +1,47 @@
+# Violin: three-octave G major scale, détaché, up and down, then a long open G.
+tempo 88
+0 dyn 0.5
+0 vib 0.6
+0 note G3 0.95 70
+1 note A3 0.95 70
+2 note B3 0.95 70
+3 note C4 0.95 70
+4 note D4 0.95 70
+5 note E4 0.95 70
+6 note F#4 0.95 70
+7 note G4 0.95 70
+8 note A4 0.95 70
+9 note B4 0.95 70
+10 note C5 0.95 70
+11 note D5 0.95 70
+12 note E5 0.95 70
+13 note F#5 0.95 70
+14 note G5 0.95 70
+15 note A5 0.95 70
+16 note B5 0.95 70
+17 note C6 0.95 70
+18 note D6 0.95 70
+19 note E6 0.95 70
+20 note F#6 0.95 70
+21 note G6 1.95 80
+23 note F#6 0.95 70
+24 note E6 0.95 70
+25 note D6 0.95 70
+26 note C6 0.95 70
+27 note B5 0.95 70
+28 note A5 0.95 70
+29 note G5 0.95 70
+30 note F#5 0.95 70
+31 note E5 0.95 70
+32 note D5 0.95 70
+33 note C5 0.95 70
+34 note B4 0.95 70
+35 note A4 0.95 70
+36 note G4 0.95 70
+37 note F#4 0.95 70
+38 note E4 0.95 70
+39 note D4 0.95 70
+40 note C4 0.95 70
+41 note B3 0.95 70
+42 note A3 0.95 70
+43 note G3 3 70

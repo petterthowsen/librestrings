@@ -15,9 +15,9 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 
 use nih_plug_egui::egui::{self, Color32, RichText, Stroke, pos2, vec2};
-use strings_dsp::{Body, BodyTuning, BowedString, Instrument, MAX_PLAYERS};
+use strings_dsp::{Body, BodyTuning, BowedString, Instrument, InstrumentSpec, Loss, MAX_PLAYERS};
 
-use crate::INSTRUMENT;
+use crate::params::InstrumentParam;
 use crate::shared::{Shared, Telemetry};
 use crate::tuning::{LiveTuning, StringsTuning, StringsUpdate, Tuning};
 
@@ -144,7 +144,7 @@ impl Knob {
 }
 
 /// Every editable number, in display order.
-fn knobs(defaults: &Tuning) -> Vec<Knob> {
+fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
     use Group::*;
     let mut k = vec![
         Knob::new(
@@ -739,54 +739,73 @@ fn knobs(defaults: &Tuning) -> Vec<Knob> {
             .range(0.0, 0.5)
             .unit(" ×")
             .help("Each player's body mode damping, up to this fraction either way."),
-        Knob::new(Strings, "Damping floor", field!(strings.damping.floor))
-            .log(1e-4, 1e-2)
-            .unit(" ζ")
-            .help(
-                "Damping ratio of the low partials: the measured string's plus the energy lost \
-                 into the body. Sets how long open strings ring.",
-            ),
-        Knob::new(Strings, "Damping at 1 kHz", field!(strings.damping.at_1khz))
-            .log(1e-5, 1e-2)
-            .unit(" ζ")
-            .help("How much the damping rises with frequency (ζ = floor + this × (f/1 kHz)^exp)."),
-        Knob::new(
-            Strings,
-            "Damping exponent",
-            field!(strings.damping.exponent),
-        )
-        .range(1.0, 5.0)
-        .help("Measured: 3.54. It sets how dark the ringing string gets."),
-        Knob::new(
-            Strings,
-            "Bending stiffness",
-            field!(strings.bending_stiffness),
-        )
-        .log(1e-6, 2e-3)
-        .unit(" N·m²")
-        .help("EI of the string: its inharmonicity. Measured on the G string: 3.03e-4."),
-        Knob::new(
-            Strings,
-            "Torsion impedance",
-            field!(strings.torsion_impedance),
-        )
-        .log(1.0, 10.0)
-        .unit(" × Z")
-        .help("Torsional impedance at the string's surface, relative to the transverse one."),
-        Knob::new(
-            Strings,
-            "Torsion frequency",
-            field!(strings.torsion_frequency),
-        )
-        .range(BowedString::LOWEST_TORSION_RATIO, 12.0)
-        .unit(" × f0"),
-        Knob::new(Strings, "Torsion Q", field!(strings.torsion_q)).log(5.0, 500.0),
     ]);
+    // The strings' own physics, where the instrument's strings have it (the
+    // violin's have a one-pole loss and neither stiffness nor torsion).
+    let string = &spec.strings[0];
+    if matches!(string.loss, Loss::Measured(_)) {
+        k.extend([
+            Knob::new(Strings, "Damping floor", field!(strings.damping.floor))
+                .log(1e-4, 1e-2)
+                .unit(" ζ")
+                .help(
+                    "Damping ratio of the low partials: the measured string's plus the energy lost \
+                 into the body. Sets how long open strings ring.",
+                ),
+            Knob::new(Strings, "Damping at 1 kHz", field!(strings.damping.at_1khz))
+                .log(1e-5, 1e-2)
+                .unit(" ζ")
+                .help(
+                    "How much the damping rises with frequency (ζ = floor + this × (f/1 kHz)^exp).",
+                ),
+            Knob::new(
+                Strings,
+                "Damping exponent",
+                field!(strings.damping.exponent),
+            )
+            .range(1.0, 5.0)
+            .help("Measured: 3.54. It sets how dark the ringing string gets."),
+        ]);
+    }
+    if string.bending_stiffness > 0.0 {
+        k.push(
+            Knob::new(
+                Strings,
+                "Bending stiffness",
+                field!(strings.bending_stiffness),
+            )
+            .log(1e-6, 2e-3)
+            .unit(" N·m²")
+            .help("EI of the string: its inharmonicity. Measured on the G string: 3.03e-4."),
+        );
+    }
+    if string.torsion.is_some() {
+        k.extend([
+            Knob::new(
+                Strings,
+                "Torsion impedance",
+                field!(strings.torsion_impedance),
+            )
+            .log(1.0, 10.0)
+            .unit(" × Z")
+            .help("Torsional impedance at the string's surface, relative to the transverse one."),
+            Knob::new(
+                Strings,
+                "Torsion frequency",
+                field!(strings.torsion_frequency),
+            )
+            .range(BowedString::LOWEST_TORSION_RATIO, 12.0)
+            .unit(" × f0"),
+            Knob::new(Strings, "Torsion Q", field!(strings.torsion_q)).log(5.0, 500.0),
+        ]);
+    }
     k
 }
 
 pub struct TuningState {
     pub open: bool,
+    /// The instrument whose engine the changes go to.
+    instrument: InstrumentParam,
     tuning: Tuning,
     defaults: Tuning,
     knobs: Vec<Knob>,
@@ -809,12 +828,20 @@ pub struct TuningState {
 
 impl Default for TuningState {
     fn default() -> Self {
-        let defaults = Tuning::new(INSTRUMENT);
+        Self::new(InstrumentParam::Cello)
+    }
+}
+
+impl TuningState {
+    fn new(instrument: InstrumentParam) -> Self {
+        let spec = instrument.spec();
+        let defaults = Tuning::new(spec);
         Self {
             open: false,
+            instrument,
             tuning: defaults,
             defaults,
-            knobs: knobs(&defaults),
+            knobs: knobs(spec, &defaults),
             engine: 0,
             sent_live: None,
             sent_strings: defaults.strings,
@@ -825,9 +852,7 @@ impl Default for TuningState {
             default_response: body_response(&defaults.live.body),
         }
     }
-}
 
-impl TuningState {
     /// Sends changes to the audio thread and frees returned string filters.
     /// Runs every frame, with the window open or not.
     pub fn sync(&mut self, ctx: &egui::Context, shared: &Arc<Shared>) {
@@ -835,6 +860,15 @@ impl TuningState {
         while shared.string_returns.pop().is_some() {}
         if !t.ready.load(Relaxed) {
             return;
+        }
+        let instrument = t.instrument();
+        if instrument != self.instrument {
+            // Another instrument's engine: its presets, and none of the
+            // changes made to the last one.
+            *self = Self {
+                open: self.open,
+                ..Self::new(instrument)
+            };
         }
         let engine = t.engine.load(Relaxed);
         if engine != self.engine {
@@ -845,7 +879,10 @@ impl TuningState {
             self.pending = None;
         }
         if self.sent_live != Some(self.tuning.live)
-            && shared.live_tuning.push(self.tuning.live).is_ok()
+            && shared
+                .live_tuning
+                .push((self.instrument, self.tuning.live))
+                .is_ok()
         {
             self.sent_live = Some(self.tuning.live);
         }
@@ -880,7 +917,11 @@ impl TuningState {
         let generation = self.generation;
         self.pending = Some(generation);
         self.sent_strings = self.tuning.strings;
-        let specs = self.tuning.strings.apply_to(&INSTRUMENT.strings);
+        let specs = self
+            .tuning
+            .strings
+            .apply_to(&self.instrument.spec().strings);
+        let instrument = self.instrument;
         let shared = shared.clone();
         std::thread::spawn(move || {
             let designs = Instrument::design_strings(&specs, string_rate);
@@ -892,6 +933,7 @@ impl TuningState {
             let player_designs = vec![player; MAX_PLAYERS - 1];
             let update = StringsUpdate {
                 generation,
+                instrument,
                 specs,
                 designs,
                 player_designs,
@@ -903,7 +945,7 @@ impl TuningState {
 
     pub fn window(&mut self, ctx: &egui::Context, t: &Telemetry) {
         let mut open = self.open;
-        egui::Window::new(format!("Tuning: {}", INSTRUMENT.name))
+        egui::Window::new(format!("Tuning: {}", self.instrument.spec().name))
             .open(&mut open)
             .default_pos(pos2(440.0, 70.0))
             .default_size(vec2(470.0, 520.0))
@@ -1131,7 +1173,7 @@ impl TuningState {
         let _ = writeln!(
             out,
             "# Strings tuning, {}: {changed} of {} values changed",
-            INSTRUMENT.name,
+            self.instrument.spec().name,
             self.knobs.len()
         );
         for group in Group::ALL {
@@ -1202,8 +1244,14 @@ mod tests {
 
     #[test]
     fn every_knob_reads_and_writes_its_own_field() {
-        let defaults = Tuning::new(INSTRUMENT);
-        let knobs = knobs(&defaults);
+        for instrument in InstrumentParam::ALL {
+            every_knob_reads_and_writes_its_own_field_of(instrument.spec());
+        }
+    }
+
+    fn every_knob_reads_and_writes_its_own_field_of(spec: &InstrumentSpec) {
+        let defaults = Tuning::new(spec);
+        let knobs = knobs(spec, &defaults);
         for (i, k) in knobs.iter().enumerate() {
             let mut t = defaults;
             let value = if k.integer { 7.0 } else { 0.123 };
@@ -1226,10 +1274,13 @@ mod tests {
 
     #[test]
     fn defaults_are_inside_their_ranges() {
-        let defaults = Tuning::new(INSTRUMENT);
-        for k in knobs(&defaults) {
-            let v = (k.get)(&defaults);
-            assert!(k.range.contains(&v), "{} = {v}", k.path);
+        for instrument in InstrumentParam::ALL {
+            let spec = instrument.spec();
+            let defaults = Tuning::new(spec);
+            for k in knobs(spec, &defaults) {
+                let v = (k.get)(&defaults);
+                assert!(k.range.contains(&v), "{}: {} = {v}", spec.name, k.path);
+            }
         }
     }
 

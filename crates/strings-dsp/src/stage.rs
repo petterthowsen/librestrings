@@ -169,6 +169,21 @@ impl Placement {
     };
 }
 
+impl Placement {
+    /// The first violins on the audience's left, at the front.
+    pub const VIOLINS: Self = Self {
+        x: -3.5,
+        y: 1.5,
+        width: 4.0,
+        depth: 3.0,
+    };
+
+    /// Where a section of `spec` sits.
+    pub fn for_instrument(spec: &crate::InstrumentSpec) -> Self {
+        spec.seat
+    }
+}
+
 impl Default for Placement {
     fn default() -> Self {
         Self::CELLOS
