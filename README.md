@@ -96,7 +96,7 @@ Add `--help` to any command for all options.
 ### `play`: the solo cello from a score
 
 ```sh
-strings-render play phrase -o out/phrase.wav     # also: scale, legato, staccato, doublestops
+strings-render play phrase -o out/phrase.wav     # also: scale, legato, staccato, doublestops, ostinato
 strings-render play my.score -o out/my.wav       # a score file
 ```
 

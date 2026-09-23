@@ -82,7 +82,7 @@ enum Command {
     },
     /// Play a score on the solo cello through the performer and body. SCORE is a
     /// file (format in score.rs) or a built-in: scale, legato, staccato, phrase,
-    /// doublestops.
+    /// doublestops, ostinato.
     Play {
         score: String,
         #[arg(long, default_value_t = 48_000.0)]
@@ -290,6 +290,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "staccato" => include_str!("../scores/staccato.score").to_string(),
                 "phrase" => include_str!("../scores/phrase.score").to_string(),
                 "doublestops" => include_str!("../scores/doublestops.score").to_string(),
+                "ostinato" => include_str!("../scores/ostinato.score").to_string(),
                 path => std::fs::read_to_string(path)?,
             };
             let mut events = score::parse(&text)?;

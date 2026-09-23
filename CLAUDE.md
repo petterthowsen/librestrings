@@ -8,7 +8,7 @@ LibreStrings: a free, physically modeled bowed-string synthesizer in Rust: a DSP
 cargo test                                   # unit + physics tests (test profile is optimized)
 cargo clippy --all-targets                   # must be clean
 cargo fmt
-cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | file.score
+cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | ostinato | file.score
 cargo run --release -p strings-render -- bow --string A -o out/a.wav
 cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument cello for cello strings)
 cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate

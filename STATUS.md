@@ -91,6 +91,8 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 37. **Double stops are limited:** two notes, a fixed hand span (4 semitones at every position, where high positions allow more), and intonation by ear only on the older note. Chords of three or four strings (broken or with high force) aren't played.
 38. **The fingering modes are one number each** (how far above a lower string's open pitch a note stays on it). In a double stop they only rank the pairs of strings, so mid position can still take an open string when the other note would be past its bias.
 
+39. **Fast détaché chokes the open C string, and its bow changes land late.** In `strings-render play ostinato` (sixteenths at 150 bpm in the lowest octave), off the string: a note 20 ms after an 80 ms stroke comes before the bow has lifted (the contact only falls to 0.85), so the new stroke starts from a bow still moving the other way. `Performer::note_on` reverses it over the whole attack (35–120 ms), so the bow passes through zero 20–40 ms into the note, and all that time the force stays at the stroke's level (the speed floor is the target speed). On an accented open C2 after a stopped D2 on the same string, the string sticks to the bow and is dragged: the bridge force is almost all slow (the audio band 15–20 dB down) and the output falls to −38 and −50 dB for two notes, and again on the last C2. Crossings are unaffected: the new string's force fades in over 30 ms. On the string, every note speaks (within 7 dB).
+
 ## Open decisions
 
 The rest is in PLAN.md "Open questions": CC64 vs CC68 for legato, and renaming the crates.
