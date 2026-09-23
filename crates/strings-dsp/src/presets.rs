@@ -223,9 +223,18 @@ pub mod cello {
         },
     ];
 
-    /// Two "bridge hills": the in-situ bridge resonance at 1.2–1.5 kHz (Zhang
-    /// et al.) and a second rise at 2–2.3 kHz (euphonics.org, 5.3).
-    const HILLS: [Hill; 2] = [
+    /// A broad rise around 250 Hz, then two "bridge hills": the in-situ
+    /// bridge resonance at 1.2–1.5 kHz (Zhang et al.) and a second rise at
+    /// 2–2.3 kHz (euphonics.org, 5.3). The 250 Hz rise is not from
+    /// data: with the listed modes alone the body passed only 5–10% of the
+    /// power of D3 and A3 below 300 Hz, and low notes sounded light (30–50%
+    /// with it). To be judged by ear.
+    const HILLS: [Hill; 3] = [
+        Hill {
+            frequency: 250.0,
+            width: 0.6,
+            gain: 1.5,
+        },
         Hill {
             frequency: 1300.0,
             width: 0.8,
@@ -238,12 +247,14 @@ pub mod cello {
         },
     ];
 
+    /// The dense modes start at 150 Hz, among the listed ones: a real body has
+    /// many more modes there than the six measured ones.
     pub const BODY: BodySpec = BodySpec {
         modes: &SIGNATURE_MODES,
         dense: DenseModes {
-            from: 300.0,
+            from: 150.0,
             to: 6000.0,
-            count: 48,
+            count: 59,
             damping: 0.03,
             level: 0.35,
             rolloff: 3500.0,

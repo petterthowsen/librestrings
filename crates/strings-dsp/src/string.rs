@@ -53,7 +53,7 @@ pub struct StringSpec {
 }
 
 /// Torsional waves on the open string, as seen at the string's surface.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TorsionSpec {
     /// Torsional characteristic impedance referred to the surface, i.e. torque
     /// impedance over radius² (kg/s). Roughly `κ·μ·c_t`, with `κ·μ·r²` the
@@ -91,7 +91,7 @@ impl StringSpec {
 /// stiffness to frog and tip) and like a resistance at high frequencies (the
 /// wave impedance of the hairs, whose waves are strongly damped). A spring in
 /// parallel with a dashpot has both asymptotes.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BowHair {
     /// Spring stiffness (N/m).
     pub stiffness: f32,
@@ -129,13 +129,15 @@ pub struct BowedString {
     loss_filter: LossFilter,
     dispersion: DispersionAllpass,
     stiff: bool,
-    /// Loss and dispersion designs per semitone above `lowest_frequency`. Empty
-    /// for a flexible string with one-pole loss, which needs no fitting.
-    notes: Vec<NoteDesign>,
-    lowest_frequency: f32,
+    /// Loss and dispersion designs per semitone above the lowest frequency.
+    design: StringDesign,
     loop_gain: f32,
     bridge_gain: f32,
     nut_gain: f32,
+    /// The bridge reflection's share of the loop's DC loss.
+    bridge_share: f32,
+    /// Extra loss at the nut or stopping finger (nepers per reflection).
+    termination_loss: f32,
     bow: BowJunction,
     torsion: Option<Torsion>,
     hair: Option<BowHair>,
@@ -154,6 +156,15 @@ struct NoteDesign {
     loss: LossDesign,
     /// Dispersion allpass coefficient.
     dispersion: f32,
+}
+
+/// A string's loss and dispersion, fitted per semitone (see
+/// [`BowedString::design`]). Empty for a flexible string with one-pole loss,
+/// which needs no fitting.
+pub struct StringDesign {
+    notes: Vec<NoteDesign>,
+    lowest_frequency: f32,
+    sample_rate: f32,
 }
 
 /// Torsional waveguide: one round-trip line on each side of the bow.
@@ -198,34 +209,15 @@ impl BowedString {
     ) -> Self {
         let max_loop = (sample_rate / lowest_frequency).ceil() as usize + 4;
         let measured_loss = matches!(spec.loss, Loss::Measured(_));
-        // B grows with the square of the sounding pitch (it scales as 1/L²).
-        let b_open = spec.inharmonicity();
-        let stiff = b_open > 0.0;
-        let notes = if stiff || measured_loss {
-            let semitones = (12.0
-                * (Self::HIGHEST_ABOVE_OPEN * spec.frequency / lowest_frequency).log2())
-            .ceil()
-            .max(0.0) as usize;
-            let mut filter = LossFilter::new(sample_rate, measured_loss);
-            (0..=semitones)
-                .map(|i| {
-                    let f = lowest_frequency * 2f32.powf(i as f32 / 12.0);
-                    let loss = Self::loss_design(&spec.loss, f, sample_rate);
-                    filter.set(&loss);
-                    let b = b_open * (f / spec.frequency).powi(2);
-                    let dispersion =
-                        DispersionAllpass::design(f, sample_rate, b, |w| filter.phase_lag(w));
-                    NoteDesign { loss, dispersion }
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let stiff = spec.inharmonicity() > 0.0;
         let impedance = spec.impedance();
         let torsion = spec.torsion.map(|t| {
-            let max_torsion = (sample_rate / (t.frequency * lowest_frequency / spec.frequency))
-                .ceil() as usize
-                + 4;
+            // Room for the torsional fundamental to be tuned down to
+            // `LOWEST_TORSION_RATIO` × the transverse one while playing.
+            let lowest = t.frequency.min(Self::LOWEST_TORSION_RATIO * spec.frequency)
+                * lowest_frequency
+                / spec.frequency;
+            let max_torsion = (sample_rate / lowest).ceil() as usize + 4;
             Torsion {
                 spec: t,
                 impedance: t.impedance,
@@ -247,11 +239,12 @@ impl BowedString {
             loss_filter: LossFilter::new(sample_rate, measured_loss),
             dispersion: DispersionAllpass::new(),
             stiff,
-            notes,
-            lowest_frequency,
+            design: Self::design(spec, sample_rate, lowest_frequency),
             loop_gain: 1.0,
             bridge_gain: 1.0,
             nut_gain: 1.0,
+            bridge_share: 0.0,
+            termination_loss: 0.0,
             bow: BowJunction::new(friction),
             torsion,
             hair: None,
@@ -269,6 +262,79 @@ impl BowedString {
     /// Stopped notes can go this far above the open string (a ratio) with their
     /// stiffness and measured loss modeled; higher ones keep the top design.
     const HIGHEST_ABOVE_OPEN: f32 = 8.0;
+
+    /// The lowest torsional fundamental, as a multiple of the transverse one,
+    /// that [`Self::apply_design`] can tune to without more memory.
+    pub const LOWEST_TORSION_RATIO: f32 = 2.0;
+
+    /// Fits the loss and stiffness of `spec` per semitone from
+    /// `lowest_frequency` up. Slow (about 7 ms for a cello string) and
+    /// allocating: build it off the audio thread.
+    pub fn design(spec: &StringSpec, sample_rate: f32, lowest_frequency: f32) -> StringDesign {
+        let measured_loss = matches!(spec.loss, Loss::Measured(_));
+        // B grows with the square of the sounding pitch (it scales as 1/L²).
+        let b_open = spec.inharmonicity();
+        let notes = if b_open > 0.0 || measured_loss {
+            let semitones = (12.0
+                * (Self::HIGHEST_ABOVE_OPEN * spec.frequency / lowest_frequency).log2())
+            .ceil()
+            .max(0.0) as usize;
+            let mut filter = LossFilter::new(sample_rate, measured_loss);
+            (0..=semitones)
+                .map(|i| {
+                    let f = lowest_frequency * 2f32.powf(i as f32 / 12.0);
+                    let loss = Self::loss_design(&spec.loss, f, sample_rate);
+                    filter.set(&loss);
+                    let b = b_open * (f / spec.frequency).powi(2);
+                    let dispersion =
+                        DispersionAllpass::design(f, sample_rate, b, |w| filter.phase_lag(w));
+                    NoteDesign { loss, dispersion }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        StringDesign {
+            notes,
+            lowest_frequency,
+            sample_rate,
+        }
+    }
+
+    /// Takes the loss, stiffness and torsion of `spec` while the string plays,
+    /// with `design` made by [`Self::design`] for the same spec, sample rate and
+    /// lowest frequency. Real-time safe: the designs are swapped, so `design`
+    /// comes back holding the old one, to be dropped off the audio thread.
+    ///
+    /// The spec must keep the string's pitch and kind of loss, and torsion can
+    /// only be retuned (not added or removed); returns `false` and changes
+    /// nothing otherwise.
+    pub fn apply_design(&mut self, spec: &StringSpec, design: &mut StringDesign) -> bool {
+        let compatible = design.sample_rate == self.sample_rate
+            && design.lowest_frequency == self.design.lowest_frequency
+            && spec.frequency == self.open_frequency
+            && matches!(spec.loss, Loss::Measured(_)) == matches!(self.loss, Loss::Measured(_))
+            && spec.torsion.is_some() == self.torsion.is_some()
+            && spec
+                .torsion
+                .is_none_or(|t| t.frequency >= Self::LOWEST_TORSION_RATIO * spec.frequency);
+        if !compatible {
+            return false;
+        }
+        std::mem::swap(&mut self.design, design);
+        self.loss = spec.loss;
+        self.stiff = spec.inharmonicity() > 0.0;
+        self.impedance = spec.impedance();
+        if let (Some(t), Some(t_spec)) = (&mut self.torsion, spec.torsion) {
+            t.spec = t_spec;
+            t.impedance = t_spec.impedance;
+        }
+        if !self.stiff {
+            self.dispersion.reset();
+        }
+        self.update_delays();
+        true
+    }
 
     /// Transverse wave impedance (kg/s).
     pub fn impedance(&self) -> f32 {
@@ -309,8 +375,21 @@ impl BowedString {
 
     /// Makes the bow hair compliant; `None` (the default) grips rigidly.
     pub fn set_bow_hair(&mut self, hair: Option<BowHair>) {
+        if hair.is_none() || self.hair.is_none() {
+            self.hair_deflection = 0.0;
+        }
         self.hair = hair;
-        self.hair_deflection = 0.0;
+    }
+
+    pub fn set_friction(&mut self, friction: FrictionParams) {
+        self.bow.friction = friction;
+    }
+
+    /// Extra loss where the string is stopped (nepers per reflection at the
+    /// nut or finger), such as a fingertip's damping. Zero by default.
+    pub fn set_termination_loss(&mut self, nepers: f32) {
+        self.termination_loss = nepers.max(0.0);
+        self.update_gains();
     }
 
     pub fn reset(&mut self) {
@@ -454,9 +533,16 @@ impl BowedString {
             Loss::OnePole { t60, .. } => 10f32.powf(-3.0 / (t60 * self.frequency)),
             Loss::Measured(_) => (-note.loss.dc_loss).exp(),
         };
-        let bridge_share = 2.0 * self.bridge_delay / total;
-        self.bridge_gain = self.loop_gain.powf(bridge_share);
-        self.nut_gain = self.loop_gain.powf(1.0 - bridge_share);
+        self.bridge_share = 2.0 * self.bridge_delay / total;
+        self.update_gains();
+    }
+
+    /// Splits the loop's DC loss between the reflections in proportion to the
+    /// segment lengths, and adds the termination's own loss at the nut.
+    fn update_gains(&mut self) {
+        self.bridge_gain = self.loop_gain.powf(self.bridge_share);
+        self.nut_gain =
+            self.loop_gain.powf(1.0 - self.bridge_share) * (-self.termination_loss).exp();
     }
 
     /// Loss design for a loop tuned to `frequency`. One-pole loss is computed
@@ -474,14 +560,14 @@ impl BowedString {
 
     /// Loss and dispersion for the current pitch, interpolated between semitones.
     fn note_design(&self) -> NoteDesign {
-        let table = &self.notes;
+        let table = &self.design.notes;
         if table.is_empty() {
             return NoteDesign {
                 loss: Self::loss_design(&self.loss, self.frequency, self.sample_rate),
                 dispersion: 0.0,
             };
         }
-        let pos = (12.0 * (self.frequency / self.lowest_frequency).log2())
+        let pos = (12.0 * (self.frequency / self.design.lowest_frequency).log2())
             .clamp(0.0, (table.len() - 1) as f32);
         let i = (pos as usize).min(table.len().saturating_sub(2));
         let t = pos - i as f32;

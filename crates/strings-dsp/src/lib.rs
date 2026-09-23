@@ -16,9 +16,13 @@ pub mod performer;
 pub mod presets;
 pub mod string;
 
-pub use body::{Body, BodySpec};
+pub use body::{Body, BodyMode, BodySpec, BodyTuning, DenseModes, Hill};
 pub use bow::{BowJunction, ContactState, FrictionParams, schelleng_limits};
 pub use instrument::{ForceLimits, Instrument, InstrumentFrame, InstrumentSpec};
 pub use loss::{DampingCurve, Loss};
-pub use performer::{Articulation, Performer, PerformerFrame, PerformerSettings};
-pub use string::{BowHair, BowInput, BowedString, StringFrame, StringSpec, TorsionSpec};
+pub use performer::{
+    BowLift, Fingering, Performer, PerformerFrame, PerformerSettings, PerformerTuning, Polyphony,
+};
+pub use string::{
+    BowHair, BowInput, BowedString, StringDesign, StringFrame, StringSpec, TorsionSpec,
+};

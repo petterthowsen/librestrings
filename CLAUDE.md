@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-A physically modeled bowed-string synthesizer in Rust: a DSP library, an offline renderer, and a CLAP plugin (nih-plug, egui editor). [PLAN.md](PLAN.md) is the roadmap and design reference; read the relevant section before changing DSP.
+LibreStrings: a free, physically modeled bowed-string synthesizer in Rust: a DSP library, an offline renderer, and a CLAP plugin (nih-plug, egui editor). [PLAN.md](PLAN.md) is the roadmap and design reference; read the relevant section before changing DSP.
 
 ## Commands
 
@@ -8,12 +8,12 @@ A physically modeled bowed-string synthesizer in Rust: a DSP library, an offline
 cargo test                                   # unit + physics tests (test profile is optimized)
 cargo clippy --all-targets                   # must be clean
 cargo fmt
-cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | file.score
+cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | file.score
 cargo run --release -p strings-render -- bow --string A -o out/a.wav
 cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument cello for cello strings)
 cargo run --release -p strings-render -- calibrate             # cello force band (ForceLimits) from simulated maps
 cargo run --release -p strings-render -- measured              # vs measured cello string (needs scripts/fetch-reference-data.sh)
-cargo xtask bundle strings-plugin --release                     # CLAP bundle -> target/bundled/Strings.clap
+cargo xtask bundle strings-plugin --release                     # CLAP bundle -> target/bundled/LibreStrings.clap
 cargo run --release -p strings-plugin --features standalone -- --backend alsa   # play without a DAW (or jack; dummy is silent)
 cargo test --release -p strings-plugin cpu_cost -- --ignored --nocapture    # plugin engine CPU cost
 ```
@@ -26,7 +26,7 @@ Renders go in `out/` (gitignored).
 
 - `crates/strings-dsp`: the model. `string.rs` holds the waveguide (with stiffness, torsion and bow hair), `bow.rs` the friction junction and Schelleng limits, `loss.rs` the loop-loss models, `delay.rs` and `filters.rs` the building blocks, `body.rs` the body resonators, `instrument.rs` four strings and a body with the calibrated force band, `performer.rs` the gesture layer (notes and controllers to bow and finger), `presets.rs` the instrument data, and `analysis.rs` the offline measurements.
 - `crates/strings-render`: the CLI (clap, hound). `score.rs` is the text score format for `play`; `scores/` has examples.
-- `crates/strings-plugin`: the CLAP plugin. `lib.rs` holds the engine (performer, MIDI/CC/keyswitch handling, telemetry), `params.rs` the parameters, `shared.rs` the audio↔editor state (atomics and a lock-free note queue), `editor/` the egui GUI. `xtask/` bundles it.
+- `crates/strings-plugin`: the CLAP plugin. `lib.rs` holds the engine (performer, MIDI/CC/keyswitch handling: CC11 dynamics, CC1 vibrato, as in SWAM; telemetry), `params.rs` the parameters, `shared.rs` the audio↔editor state (atomics and lock-free queues), `tuning.rs` the numbers the tuning window edits, `editor/` the egui GUI (`tuning_window.rs`: the model's numbers, editable while playing, with "Copy changes" for pasting back into the presets). `xtask/` bundles it.
 - `docs/`: research notes, plus `Literature.md` (papers the model takes numbers from, with links). The research notes are **not fully reliable**; PLAN.md's "Research notes / corrections" lists known errors, such as swapped Schelleng formulas and commuted synthesis misapplied to bowing.
 
 ## Rules
@@ -49,4 +49,6 @@ Renders go in `out/` (gitignored).
 - The cello strings play flat at β ≈ 0.124–0.156 (a torsion effect), so the performer's β range stays below 0.115. Bowed pitch also drifts with force; the performer intonates stopped notes by ear (slip-period feedback), which is deliberate, not a tuning bug.
 - After changing the strings, bow or friction of the cello, re-run `calibrate` and paste its limits into `presets::cello::FORCE_LIMITS`.
 - On the measured cello string, bending stiffness and torsion (Phase 1b) *shrink* the Helmholtz region, through real extra slips, even with the measured damping. This is not a bug (PLAN.md "Phase 1b results"). Violin presets have neither and use the one-pole loss.
-- The measured loss (`Loss::Measured`) fits one filter per semitone in the constructor (about 7 ms per cello string). Don't construct strings on the audio thread.
+- The measured loss (`Loss::Measured`) fits one filter per semitone in the constructor (about 7 ms per cello string). Don't construct strings on the audio thread; to change a playing string, fit a `StringDesign` elsewhere and swap it in with `apply_design`.
+- Bowed open strings play 6–14 cents flat, so measure a bowed note's partials at its measured pitch, not at n × the nominal f0 (which misses the upper partials and looks like a spectral cliff).
+- The finger's damping and the bow's wander move the bowed pitch of high stopped notes by a few cents; the intonation test runs with the wander off.

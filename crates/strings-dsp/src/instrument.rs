@@ -4,9 +4,9 @@
 //! bow is applied per string, so a string crossing can bow two strings at
 //! once, and a string the bow has left rings on.
 
-use crate::body::{Body, BodySpec};
+use crate::body::{Body, BodySpec, BodyTuning};
 use crate::bow::FrictionParams;
-use crate::string::{BowHair, BowInput, BowedString, StringFrame, StringSpec};
+use crate::string::{BowHair, BowInput, BowedString, StringDesign, StringFrame, StringSpec};
 
 /// The Helmholtz band of bow force, calibrated per instrument (PLAN.md 4.2).
 ///
@@ -94,6 +94,60 @@ impl Instrument {
 
     pub fn string_mut(&mut self, i: usize) -> &mut BowedString {
         &mut self.strings[i]
+    }
+
+    /// Fits new loss and stiffness designs for `strings` (the instrument's
+    /// strings with other parameters). Slow (about 30 ms for a cello) and
+    /// allocating: call it off the audio thread, then [`Self::apply_strings`].
+    pub fn design_strings(strings: &[StringSpec; 4], sample_rate: f32) -> [StringDesign; 4] {
+        std::array::from_fn(|i| {
+            let s = &strings[i];
+            BowedString::design(s, sample_rate, s.frequency)
+        })
+    }
+
+    /// Takes new string parameters while playing (see
+    /// [`BowedString::apply_design`]). Real-time safe; `designs` comes back
+    /// holding the old designs. Returns `false` if any string didn't take its
+    /// spec (a different pitch or kind of loss); those keep their old one.
+    pub fn apply_strings(
+        &mut self,
+        strings: &[StringSpec; 4],
+        designs: &mut [StringDesign; 4],
+    ) -> bool {
+        let mut all = true;
+        for (i, (spec, design)) in strings.iter().zip(designs.iter_mut()).enumerate() {
+            if self.strings[i].apply_design(spec, design) {
+                self.spec.strings[i] = *spec;
+            } else {
+                all = false;
+            }
+        }
+        all
+    }
+
+    pub fn set_friction(&mut self, friction: FrictionParams) {
+        self.spec.friction = friction;
+        for s in &mut self.strings {
+            s.set_friction(friction);
+        }
+    }
+
+    pub fn set_hair(&mut self, hair: Option<BowHair>) {
+        self.spec.hair = hair;
+        for s in &mut self.strings {
+            s.set_bow_hair(hair);
+        }
+    }
+
+    /// Retunes the body while playing (real-time safe). The spec keeps its
+    /// original body; the tuning replaces it only in sound.
+    pub fn set_body(&mut self, body: &BodyTuning) {
+        self.body.set(body);
+    }
+
+    pub fn body(&self) -> &Body {
+        &self.body
     }
 
     pub fn reset(&mut self) {

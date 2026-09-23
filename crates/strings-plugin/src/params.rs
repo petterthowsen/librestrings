@@ -1,51 +1,110 @@
 //! Host-visible parameters and the editor's persisted settings.
 //!
-//! The four performance controls are parameters so the host can automate
-//! them. MIDI CCs drive the same controls (PLAN.md 4.1); whichever changed
-//! last wins, see `Engine::apply_params`.
+//! The performance controls are parameters so the host can automate them.
+//! MIDI CCs drive the same controls (PLAN.md 4.1); whichever changed last
+//! wins, see `Engine::apply_params`.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32};
 
 use nih_plug::prelude::*;
 use nih_plug_egui::EguiState;
-use strings_dsp::{Articulation, PerformerSettings};
+use strings_dsp::{BowLift, Fingering, Polyphony};
 
+/// What the bow does at the end of a detached note (SWAM's bow lift).
 #[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ArticulationParam {
-    Sustain,
-    Staccato,
-    Spiccato,
+pub enum BowLiftParam {
+    #[name = "Off string"]
+    OffString,
+    #[name = "On string"]
+    OnString,
 }
 
-impl ArticulationParam {
-    pub const ALL: [Self; 3] = [Self::Sustain, Self::Staccato, Self::Spiccato];
+impl BowLiftParam {
+    pub const ALL: [Self; 2] = [Self::OffString, Self::OnString];
 
     pub fn name(self) -> &'static str {
         match self {
-            Self::Sustain => "Sustain",
-            Self::Staccato => "Staccato",
-            Self::Spiccato => "Spiccato",
+            Self::OffString => "Off string",
+            Self::OnString => "On string",
         }
     }
 }
 
-impl From<ArticulationParam> for Articulation {
-    fn from(a: ArticulationParam) -> Self {
-        match a {
-            ArticulationParam::Sustain => Articulation::Sustain,
-            ArticulationParam::Staccato => Articulation::Staccato,
-            ArticulationParam::Spiccato => Articulation::Spiccato,
+impl From<BowLiftParam> for BowLift {
+    fn from(b: BowLiftParam) -> Self {
+        match b {
+            BowLiftParam::OffString => BowLift::OffString,
+            BowLiftParam::OnString => BowLift::OnString,
         }
     }
 }
 
-impl From<Articulation> for ArticulationParam {
-    fn from(a: Articulation) -> Self {
-        match a {
-            Articulation::Sustain => Self::Sustain,
-            Articulation::Staccato => Self::Staccato,
-            Articulation::Spiccato => Self::Spiccato,
+impl From<BowLift> for BowLiftParam {
+    fn from(b: BowLift) -> Self {
+        match b {
+            BowLift::OffString => Self::OffString,
+            BowLift::OnString => Self::OnString,
+        }
+    }
+}
+
+#[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PolyphonyParam {
+    Mono,
+    #[name = "Double stops"]
+    DoubleStops,
+}
+
+impl PolyphonyParam {
+    pub const ALL: [Self; 2] = [Self::Mono, Self::DoubleStops];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Mono => "Mono",
+            Self::DoubleStops => "Double stops",
+        }
+    }
+}
+
+impl From<PolyphonyParam> for Polyphony {
+    fn from(p: PolyphonyParam) -> Self {
+        match p {
+            PolyphonyParam::Mono => Polyphony::Mono,
+            PolyphonyParam::DoubleStops => Polyphony::DoubleStops,
+        }
+    }
+}
+
+/// Where the left hand plays (SWAM's fingering modes).
+#[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FingeringParam {
+    #[name = "Near the nut & open"]
+    NutAndOpen,
+    #[name = "Mid position"]
+    Mid,
+    #[name = "Near the bridge"]
+    Bridge,
+}
+
+impl FingeringParam {
+    pub const ALL: [Self; 3] = [Self::NutAndOpen, Self::Mid, Self::Bridge];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::NutAndOpen => "Near the nut & open",
+            Self::Mid => "Mid position",
+            Self::Bridge => "Near the bridge",
+        }
+    }
+}
+
+impl From<FingeringParam> for Fingering {
+    fn from(f: FingeringParam) -> Self {
+        match f {
+            FingeringParam::NutAndOpen => Fingering::NutAndOpen,
+            FingeringParam::Mid => Fingering::Mid,
+            FingeringParam::Bridge => Fingering::Bridge,
         }
     }
 }
@@ -68,14 +127,17 @@ pub struct StringsParams {
 
     #[id = "dynamics"]
     pub dynamics: FloatParam,
-    #[id = "expression"]
-    pub expression: FloatParam,
     #[id = "vibrato"]
     pub vibrato: FloatParam,
+    /// Flautando at 0, normal at 0.5, scratch at 1.
     #[id = "pressure"]
     pub pressure: FloatParam,
-    #[id = "articulation"]
-    pub articulation: EnumParam<ArticulationParam>,
+    #[id = "bow-lift"]
+    pub bow_lift: EnumParam<BowLiftParam>,
+    #[id = "polyphony"]
+    pub polyphony: EnumParam<PolyphonyParam>,
+    #[id = "fingering"]
+    pub fingering: EnumParam<FingeringParam>,
     #[id = "volume"]
     pub volume: FloatParam,
 }
@@ -97,10 +159,11 @@ impl Default for StringsParams {
             key_velocity: Arc::new(AtomicI32::new(90)),
 
             dynamics: unit("Dynamics", 0.5),
-            expression: unit("Expression", 1.0),
             vibrato: unit("Vibrato", 0.0),
-            pressure: unit("Pressure", PerformerSettings::default().pressure),
-            articulation: EnumParam::new("Articulation", ArticulationParam::Sustain),
+            pressure: unit("Pressure", 0.5),
+            bow_lift: EnumParam::new("Bow lift", BowLiftParam::OffString),
+            polyphony: EnumParam::new("Polyphony", PolyphonyParam::Mono),
+            fingering: EnumParam::new("Fingering", FingeringParam::NutAndOpen),
             volume: FloatParam::new(
                 "Volume",
                 util::db_to_gain(0.0),

@@ -112,8 +112,8 @@ pub fn show(ui: &mut egui::Ui, t: &Telemetry, state: &mut ViewState) {
     // The bow moves along its length with the bow velocity and turns at its ends.
     let v = t.bow_velocity.load(Relaxed);
     state.bow_offset = (state.bow_offset + v * dt).clamp(-BOW_LENGTH / 2.0, BOW_LENGTH / 2.0);
-    let contact = t.strings[bowed].contact.load(Relaxed);
-    draw_bow(&painter, &g, bowed, bow_x, state.bow_offset, contact);
+    let contacts = std::array::from_fn(|i| t.strings[i].contact.load(Relaxed));
+    draw_bow(&painter, &g, bowed, bow_x, state.bow_offset, contacts);
 }
 
 fn draw_body(painter: &egui::Painter, g: &Geometry) {
@@ -283,8 +283,9 @@ fn draw_bow(
     bowed: usize,
     x: f32,
     offset: f32,
-    contact: f32,
+    contacts: [f32; 4],
 ) {
+    let contact = contacts[bowed];
     let h = g.height();
     let y = g.string_y(bowed, x);
     // Screen length of the hair; the offset moves it along its length.
@@ -324,12 +325,15 @@ fn draw_bow(
         Color32::from_gray(225),
     );
 
-    if contact > 0.01 {
-        let alpha = (contact * 200.0) as u8;
-        painter.circle_filled(
-            pos2(x, y),
-            6.0,
-            Color32::from_rgba_unmultiplied(240, 170, 60, alpha),
-        );
+    // Every string the bow touches: a double stop, or both in a crossing.
+    for (i, contact) in contacts.into_iter().enumerate() {
+        if contact > 0.01 {
+            let alpha = (contact.min(1.0) * 200.0) as u8;
+            painter.circle_filled(
+                pos2(x, g.string_y(i, x)),
+                6.0,
+                Color32::from_rgba_unmultiplied(240, 170, 60, alpha),
+            );
+        }
     }
 }

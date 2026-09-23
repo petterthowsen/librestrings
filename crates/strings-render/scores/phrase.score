@@ -1,4 +1,4 @@
-# A short mixed phrase: legato opening, détaché, staccato close.
+# A short mixed phrase: legato opening, détaché, staccato close (bow on the string).
 tempo 72
 0 dyn 0.45
 0 vib 0.6
@@ -12,8 +12,8 @@ tempo 72
 6 note F#3 0.9 80
 7 note D3 0.9 80
 8 note E3 0.9 80
-9 art staccato
-9 note A2 0.3 100
-9.5 note C#3 0.3 90
-10 note E3 0.3 90
-10.5 note A3 0.3 110
+9 bow on
+9 note A2 0.15 100
+9.5 note C#3 0.15 90
+10 note E3 0.15 90
+10.5 note A3 0.15 110

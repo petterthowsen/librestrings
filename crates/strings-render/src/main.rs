@@ -13,8 +13,8 @@ mod score;
 use strings_dsp::analysis::{Regime, bow_steady, classify, classify_bridge_force};
 use strings_dsp::presets::{cello, reference, violin};
 use strings_dsp::{
-    BowHair, BowInput, BowedString, DampingCurve, FrictionParams, Loss, Performer,
-    PerformerSettings, StringFrame, StringSpec, TorsionSpec, schelleng_limits,
+    BowHair, BowInput, BowedString, DampingCurve, Fingering, FrictionParams, Loss, Performer,
+    PerformerSettings, Polyphony, StringFrame, StringSpec, TorsionSpec, schelleng_limits,
 };
 
 #[derive(Parser)]
@@ -81,7 +81,8 @@ enum Command {
         loss_lowpass: Option<f32>,
     },
     /// Play a score on the solo cello through the performer and body. SCORE is a
-    /// file (format in score.rs) or a built-in: scale, legato, staccato, phrase.
+    /// file (format in score.rs) or a built-in: scale, legato, staccato, phrase,
+    /// doublestops.
     Play {
         score: String,
         #[arg(long, default_value_t = 48_000.0)]
@@ -89,13 +90,18 @@ enum Command {
         /// Seconds rendered after the last event.
         #[arg(long, default_value_t = 2.0)]
         tail: f32,
-        /// Position in the Helmholtz band, 0–1 (default: the performer's).
+        /// Position in the Helmholtz band of normal pressure, 0–1 (default:
+        /// the performer's). The score's `pressure` moves from there.
         #[arg(long)]
         pressure: Option<f32>,
-        /// Play notes up to this many semitones above a lower string's open
-        /// pitch on that lower string.
-        #[arg(long, default_value_t = 0.0)]
-        string_bias: f32,
+        /// Where the left hand plays: nut (with open strings), mid or bridge.
+        /// The score's `fingering` changes it.
+        #[arg(long, default_value = "nut", value_parser = score::fingering)]
+        fingering: Fingering,
+        /// Play overlapping notes as double stops where one hand can (the
+        /// score's `poly` changes it).
+        #[arg(long)]
+        double_stops: bool,
         #[arg(long, short)]
         out: PathBuf,
         /// Also write the summed bridge force (before the body) to this WAV file.
@@ -268,7 +274,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             sample_rate,
             tail,
             pressure,
-            string_bias,
+            fingering,
+            double_stops,
             out,
             bridge_out,
         } => {
@@ -277,16 +284,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "legato" => include_str!("../scores/legato.score").to_string(),
                 "staccato" => include_str!("../scores/staccato.score").to_string(),
                 "phrase" => include_str!("../scores/phrase.score").to_string(),
+                "doublestops" => include_str!("../scores/doublestops.score").to_string(),
                 path => std::fs::read_to_string(path)?,
             };
-            let events = score::parse(&text)?;
-            let mut settings = PerformerSettings {
-                string_bias,
-                ..PerformerSettings::default()
-            };
+            let mut events = score::parse(&text)?;
+            let mut settings = PerformerSettings::default();
             if let Some(p) = pressure {
                 settings.pressure = p;
             }
+            let polyphony = if double_stops {
+                Polyphony::DoubleStops
+            } else {
+                Polyphony::Mono
+            };
+            // The options come first; the score may change them.
+            let modes = [
+                (0.0, score::Event::Fingering(fingering)),
+                (0.0, score::Event::Polyphony(polyphony)),
+            ];
+            events.splice(0..0, modes);
             play(
                 &events,
                 settings,
@@ -374,10 +390,11 @@ fn play(
                 Event::On(note, velocity) => performer.note_on(note, velocity),
                 Event::Off(note) => performer.note_off(note),
                 Event::Dynamics(v) => performer.set_dynamics(v),
-                Event::Expression(v) => performer.set_expression(v),
                 Event::Vibrato(v) => performer.set_vibrato(v),
                 Event::Pressure(v) => performer.set_pressure(v),
-                Event::Articulation(a) => performer.set_articulation(a),
+                Event::BowLift(b) => performer.set_bow_lift(b),
+                Event::Fingering(f) => performer.set_fingering(f),
+                Event::Polyphony(p) => performer.set_polyphony(p),
             }
             next += 1;
         }

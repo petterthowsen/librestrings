@@ -12,7 +12,7 @@
 
 use crate::filters::OnePoleLowpass;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Loss {
     OnePole {
         /// Decay time to −60 dB of the fundamental on the open string (s).
@@ -29,7 +29,7 @@ pub enum Loss {
 ///
 /// It describes the free string, so it holds for stopped notes too, but only
 /// within the frequency range it was fitted over; above that it extrapolates.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DampingCurve {
     pub floor: f32,
     pub at_1khz: f32,

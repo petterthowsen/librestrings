@@ -20,23 +20,15 @@ pub fn faders(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter, t
         ui,
         &params.dynamics,
         "Dynamics",
-        "CC1",
-        live(&t.dynamics),
-        setter,
-    );
-    fader(
-        ui,
-        &params.expression,
-        "Expression",
         "CC11",
-        live(&t.expression),
+        live(&t.dynamics),
         setter,
     );
     fader(
         ui,
         &params.vibrato,
         "Vibrato",
-        "CC21",
+        "CC1",
         live(&t.vibrato),
         setter,
     );

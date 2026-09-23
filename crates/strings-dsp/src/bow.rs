@@ -15,7 +15,7 @@
 //! solution (Friedlander's construction): stay stuck while the required force
 //! is within static friction, stay slipping while a slip solution exists.
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FrictionParams {
     /// Static friction coefficient.
     pub mu_s: f32,

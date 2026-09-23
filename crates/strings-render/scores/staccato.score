@@ -1,25 +1,25 @@
-# Staccato (bow stops on the string) in eighths, then the same line spiccato
-# (bow thrown, strings ring).
+# Short notes on the string (the bow stops on it: staccato, martelé where
+# pressed hard), then the same line off the string (thrown off, the strings ring).
 tempo 100
 0 dyn 0.6
 0 vib 0.3
-0 art staccato
-0 note D3 0.4 90
-0.5 note E3 0.4 80
-1 note F#3 0.4 80
-1.5 note G3 0.4 80
-2 note A3 0.4 90
-2.5 note G3 0.4 80
-3 note F#3 0.4 80
-3.5 note E3 0.4 80
-4 note D3 0.4 100
-6 art spiccato
-6 note D3 0.4 90
-6.5 note E3 0.4 80
-7 note F#3 0.4 80
-7.5 note G3 0.4 80
-8 note A3 0.4 90
-8.5 note G3 0.4 80
-9 note F#3 0.4 80
-9.5 note E3 0.4 80
-10 note D3 0.4 100
+0 bow on
+0 note D3 0.2 110
+0.5 note E3 0.2 80
+1 note F#3 0.2 80
+1.5 note G3 0.2 80
+2 note A3 0.2 90
+2.5 note G3 0.2 80
+3 note F#3 0.2 80
+3.5 note E3 0.2 80
+4 note D3 0.2 120
+6 bow off
+6 note D3 0.12 90
+6.5 note E3 0.12 80
+7 note F#3 0.12 80
+7.5 note G3 0.12 80
+8 note A3 0.12 90
+8.5 note G3 0.12 80
+9 note F#3 0.12 80
+9.5 note E3 0.12 80
+10 note D3 0.12 100

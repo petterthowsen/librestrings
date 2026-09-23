@@ -365,3 +365,61 @@ fn bow_hair_is_passive() {
     assert!(energy.iter().all(|e| e.is_finite()));
     assert!(energy.windows(2).all(|w| w[1] <= w[0]), "{energy:?}");
 }
+
+/// Retuning a string's loss, stiffness and torsion while it plays gives the
+/// string built with them, sample for sample.
+#[test]
+fn applied_design_matches_a_new_string() {
+    let old = cello::STRINGS[1];
+    let new = StringSpec {
+        loss: Loss::Measured(strings_dsp::DampingCurve {
+            floor: 2e-3,
+            at_1khz: 2e-4,
+            exponent: 2.5,
+        }),
+        bending_stiffness: 1e-4,
+        torsion: old.torsion.map(|t| strings_dsp::TorsionSpec {
+            impedance: 2.0 * t.impedance,
+            frequency: 4.0 * old.frequency,
+            q: 80.0,
+        }),
+        ..old
+    };
+    let f0 = old.frequency * 2f32.powf(5.0 / 12.0);
+    let mut retuned = new_string(&old, FS);
+    let mut design = BowedString::design(&new, FS, 50.0);
+    assert!(retuned.apply_design(&new, &mut design));
+    let mut fresh = new_string(&new, FS);
+    for s in [&mut retuned, &mut fresh] {
+        s.set_frequency(f0);
+        s.set_bow_position(0.1);
+    }
+    assert_eq!(pluck(&mut retuned, FS, 0.5), pluck(&mut fresh, FS, 0.5));
+
+    // A different pitch or kind of loss is refused.
+    let mut design = BowedString::design(&violin::STRINGS[0], FS, 50.0);
+    assert!(!retuned.apply_design(&violin::STRINGS[0], &mut design));
+}
+
+/// A loss at the stopping finger adds its nepers per period to the decay.
+#[test]
+fn termination_loss_shortens_the_decay() {
+    let spec = cello::STRINGS[2];
+    let f0 = spec.frequency * 2f32.powf(4.0 / 12.0);
+    let decay_db = |loss: f32| {
+        let mut s = new_string(&spec, FS);
+        s.set_frequency(f0);
+        s.set_bow_position(0.1);
+        s.set_termination_loss(loss);
+        let out = pluck(&mut s, FS, 1.2);
+        let at =
+            |t: f32| partial_amplitude(&out[(t * FS) as usize..((t + 0.2) * FS) as usize], FS, f0);
+        20.0 * (at(0.2) / at(0.9)).log10()
+    };
+    let extra = decay_db(0.02) - decay_db(0.0);
+    let expected = 20.0 * std::f32::consts::LOG10_E * 0.02 * f0 * 0.7;
+    assert!(
+        (extra / expected - 1.0).abs() < 0.1,
+        "{extra:.1} dB, expected {expected:.1}"
+    );
+}

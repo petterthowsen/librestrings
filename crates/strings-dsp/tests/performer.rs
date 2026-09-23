@@ -1,9 +1,13 @@
 //! The solo cello played through the performer: string choice, Helmholtz
-//! motion and intonation across the range, legato, and the short articulations.
+//! motion and intonation across the range, legato, the bow lift, double stops
+//! and the pressure range.
 
 use strings_dsp::analysis::{Regime, cents, classify, measure_frequency};
 use strings_dsp::presets::cello;
-use strings_dsp::{Articulation, ContactState, Performer, PerformerFrame, PerformerSettings};
+use strings_dsp::{
+    BowLift, ContactState, Fingering, Performer, PerformerFrame, PerformerSettings,
+    PerformerTuning, Polyphony,
+};
 
 const FS: f32 = 48_000.0;
 
@@ -66,32 +70,73 @@ fn picks_the_string_with_the_lowest_position() {
         assert_eq!(p.process_frame().string, string, "note {note}");
         p.note_off(note);
     }
-    // A bias toward lower strings plays D3 on the G string.
-    let mut sul_g = Performer::new(
-        &cello::INSTRUMENT,
-        PerformerSettings {
-            string_bias: 8.0,
-            ..PerformerSettings::default()
+}
+
+/// The fingering modes: open strings near the nut, none but the C string in
+/// mid position, and high positions on lower strings near the bridge.
+#[test]
+fn fingering_modes_choose_the_strings() {
+    let mut p = performer();
+    // (note, strings near the nut, mid, bridge)
+    let cases = [
+        (43u8, [1, 0, 0]), // G2: open G, else stopped on the C string
+        (50, [2, 1, 1]),   // D3: open D, else on the G string
+        (57, [3, 2, 2]),   // A3
+        (62, [3, 3, 2]),   // D4: an octave up the D string near the bridge
+        (36, [0, 0, 0]),   // C2 is only on the C string
+    ];
+    for (note, strings) in cases {
+        for (fingering, string) in [Fingering::NutAndOpen, Fingering::Mid, Fingering::Bridge]
+            .into_iter()
+            .zip(strings)
+        {
+            p.reset();
+            p.set_fingering(fingering);
+            p.note_on(note, 0.5);
+            assert_eq!(p.process_frame().string, string, "{note} {fingering:?}");
+            p.note_off(note);
+        }
+    }
+}
+
+/// A performer whose bow holds perfectly still (no wander).
+fn steady_performer() -> Performer {
+    let settings = PerformerSettings {
+        tuning: PerformerTuning {
+            wander_pressure: 0.0,
+            wander_speed: 0.0,
+            wander_beta: 0.0,
+            ..PerformerTuning::default()
         },
-        FS,
-    );
-    sul_g.note_on(50, 0.5);
-    assert_eq!(sul_g.process_frame().string, 1);
+        ..PerformerSettings::default()
+    };
+    Performer::new(&cello::INSTRUMENT, settings, FS)
 }
 
 /// Across the range and dynamics every note settles into Helmholtz motion
-/// within 150 ms. Stopped notes are intonated by ear to within 5 cents; open
-/// strings can't be, and flatten with bow force (STATUS.md).
+/// within 150 ms. With a steady bow, stopped notes are intonated by ear to
+/// within 5 cents; open strings can't be, and flatten with bow force
+/// (STATUS.md).
 #[test]
 fn notes_across_the_range_are_helmholtz_and_in_tune() {
-    let mut p = performer();
+    check_range(&mut steady_performer(), 5.0);
+}
+
+/// The bow's wander moves the pitch a little (bowed pitch depends on force and
+/// position), but notes stay Helmholtz and within 10 cents.
+#[test]
+fn notes_stay_helmholtz_while_the_bow_wanders() {
+    check_range(&mut performer(), 10.0);
+}
+
+fn check_range(p: &mut Performer, stopped_tolerance: f32) {
     for dynamics in [0.1, 0.5, 0.9] {
         for note in [36u8, 40, 43, 47, 50, 55, 57, 64, 72, 76] {
             p.reset();
             p.set_dynamics(dynamics);
-            run(&mut p, 0.1);
+            run(p, 0.1);
             p.note_on(note, 0.6);
-            let frames = run(&mut p, 1.5);
+            let frames = run(p, 1.5);
             let target = frequency(note);
             let period = FS / target;
             let steady = &frames[(0.7 * FS) as usize..];
@@ -112,7 +157,7 @@ fn notes_across_the_range_are_helmholtz_and_in_tune() {
             let open = cello::STRINGS
                 .iter()
                 .any(|s| cents(s.frequency, target).abs() < 1.0);
-            let tolerance = if open { 20.0 } else { 5.0 };
+            let tolerance = if open { 20.0 } else { stopped_tolerance };
             assert!(err.abs() < tolerance, "{what}: {err:.1} cents");
         }
     }
@@ -202,16 +247,16 @@ fn vibrato_only_on_stopped_notes() {
     }
 }
 
-/// Staccato: the bow stops on the string and the note ends quickly. Spiccato:
-/// the bow leaves the string ringing.
+/// Short notes. On the string the bow stops on it and the note ends quickly
+/// (staccato); off the string it is thrown off and the string rings on.
 #[test]
-fn staccato_stops_and_spiccato_rings() {
+fn on_string_stops_and_off_string_rings() {
     let mut p = performer();
     for note in [43u8, 50, 62] {
-        for articulation in [Articulation::Staccato, Articulation::Spiccato] {
+        for bow_lift in [BowLift::OnString, BowLift::OffString] {
             p.reset();
             p.set_dynamics(0.6);
-            p.set_articulation(articulation);
+            p.set_bow_lift(bow_lift);
             run(&mut p, 0.1);
             p.note_on(note, 0.7);
             let stroke = run(&mut p, 0.1);
@@ -222,13 +267,72 @@ fn staccato_stops_and_spiccato_rings() {
                 .chain(rest.chunks((0.02 * FS) as usize))
                 .map(rms)
                 .fold(0.0, f32::max);
-            // The stroke has ended well before 0.3 s; measure 100 ms later.
-            let later = rms(&rest[(0.3 * FS) as usize..(0.32 * FS) as usize]);
-            let db = 20.0 * (later / peak).log10();
-            match articulation {
-                Articulation::Staccato => assert!(db < -25.0, "staccato {note}: {db:.1} dB"),
-                _ => assert!(db > -20.0, "spiccato {note}: {db:.1} dB"),
+            let db_at = |from: f32| {
+                let later = rms(&rest[(from * FS) as usize..((from + 0.02) * FS) as usize]);
+                20.0 * (later / peak).log10()
+            };
+            match bow_lift {
+                // The stop is over by 0.04 s; measure well after.
+                BowLift::OnString => {
+                    let db = db_at(0.3);
+                    assert!(db < -25.0, "on string {note}: {db:.1} dB");
+                    assert_eq!(p.note(), None);
+                    assert!(p.contact(p.bowed_string()) > 0.99, "the bow stays on");
+                }
+                // The bow has left by 0.1 s and the string rings on (a
+                // stopped one until the finger eases off).
+                BowLift::OffString => {
+                    let db = db_at(0.1);
+                    assert!(db > -15.0, "off string {note}: {db:.1} dB");
+                    assert!(p.contact(p.bowed_string()) < 1e-6);
+                }
             }
+        }
+    }
+}
+
+/// However short the key press, the bow plays a stroke of `min_stroke`.
+#[test]
+fn a_tap_plays_a_short_stroke() {
+    for bow_lift in [BowLift::OnString, BowLift::OffString] {
+        let mut p = performer();
+        p.set_bow_lift(bow_lift);
+        p.note_on(50, 0.9);
+        run(&mut p, 0.002);
+        p.note_off(50);
+        let early = run(&mut p, 0.03);
+        assert_eq!(p.note(), Some(50), "{bow_lift:?}");
+        assert!(early.iter().any(|f| f.bow_velocity.abs() > 0.05));
+        run(&mut p, 0.3);
+        assert_eq!(p.note(), None);
+    }
+}
+
+/// Once the key is up, the finger eases off: a stopped note dies away while an
+/// open string rings on.
+#[test]
+fn stopped_notes_are_damped_after_release() {
+    let mut p = performer();
+    p.set_dynamics(0.6);
+    // (note, stopped): E3 and B3 stopped on the D and A strings; D3 open.
+    for (note, stopped) in [(52u8, true), (59, true), (50, false)] {
+        p.reset();
+        run(&mut p, 0.05);
+        // A short note, thrown off the string.
+        p.note_on(note, 0.7);
+        let stroke = run(&mut p, 0.1);
+        p.note_off(note);
+        let rest = run(&mut p, 1.0);
+        let peak = stroke
+            .chunks((0.02 * FS) as usize)
+            .map(rms)
+            .fold(0.0, f32::max);
+        let later = rms(&rest[(0.6 * FS) as usize..(0.62 * FS) as usize]);
+        let db = 20.0 * (later / peak).log10();
+        if stopped {
+            assert!(db < -40.0, "stopped {note}: {db:.1} dB");
+        } else {
+            assert!(db > -20.0, "open {note}: {db:.1} dB");
         }
     }
 }
@@ -251,4 +355,191 @@ fn release_all_ends_a_legato_line() {
     p.note_off(55);
     p.note_off(57);
     assert_eq!(p.note(), None);
+}
+
+/// Pitch (Hz) of string `i` at each control-rate step of a run.
+fn string_pitch(p: &mut Performer, i: usize, seconds: f32) -> Vec<f32> {
+    (0..(seconds * FS) as usize)
+        .map(|_| {
+            p.process_frame();
+            p.instrument().string(i).frequency()
+        })
+        .collect()
+}
+
+/// Seconds until `pitch` is within 10 cents of where it ends for good (the
+/// string's tuning includes the ear's correction).
+fn settle_time(pitch: &[f32]) -> f32 {
+    let target = pitch[pitch.len() - 1];
+    let last_off = pitch
+        .iter()
+        .rposition(|&f| cents(f, target).abs() > 10.0)
+        .map_or(0, |i| i + 1);
+    last_off as f32 / FS
+}
+
+/// Legato: the landing note's velocity sets the transition. Pressed hard, a
+/// note within the hand changes as a finger drops, and a shift slides only
+/// quickly; pressed softly, the finger slides slowly (portamento).
+#[test]
+fn legato_velocity_sets_the_slide() {
+    // (from, to, string, velocity, fastest, slowest) in seconds to settle.
+    let cases = [
+        (45u8, 47u8, 1, 0.8, 0.0, 0.012), // A2 to B2 on the G string, in the hand
+        (45, 47, 1, 0.1, 0.12, 0.3),      // the same, soft: portamento
+        (64, 60, 3, 0.8, 0.012, 0.04),    // E4 down to C4 on the A string: a shift
+    ];
+    for (from, to, string, velocity, fastest, slowest) in cases {
+        let mut p = steady_performer();
+        p.note_on(from, 0.8);
+        run(&mut p, 0.4);
+        p.note_on(to, velocity);
+        p.note_off(from);
+        assert_eq!(p.process_frame().string, string);
+        let pitch = string_pitch(&mut p, string, 0.4);
+        assert!(cents(pitch[pitch.len() - 1], frequency(to)).abs() < 30.0);
+        let time = settle_time(&pitch);
+        assert!(
+            (fastest..slowest).contains(&time),
+            "{from} to {to} at {velocity}: {:.0} ms",
+            time * 1000.0
+        );
+    }
+}
+
+/// Double stops: a second held note joins on the adjacent string, both strings
+/// sound in Helmholtz motion at their pitches, and releasing either leaves
+/// the other playing alone.
+#[test]
+fn double_stops_play_two_strings() {
+    let mut p = steady_performer();
+    p.set_polyphony(Polyphony::DoubleStops);
+    // D3 open and A3 open: a fifth on the D and A strings.
+    p.note_on(50, 0.6);
+    p.note_on(57, 0.6);
+    run(&mut p, 0.8);
+    assert_eq!(p.note(), Some(50));
+    assert_eq!(p.second(), Some((57, 3)));
+    for (string, note) in [(2, 50), (3, 57)] {
+        assert!(p.contact(string) > 0.99, "string {string}");
+        let frames: Vec<_> = (0..(0.4 * FS) as usize)
+            .map(|_| {
+                p.process_frame();
+                p.string_frames()[string]
+            })
+            .collect();
+        let period = FS / frequency(note);
+        assert_eq!(classify(&frames, period), Regime::Helmholtz, "{note}");
+    }
+    // Releasing the lower note leaves the upper one, on its string.
+    p.note_off(50);
+    run(&mut p, 0.3);
+    assert_eq!((p.note(), p.second()), (Some(57), None));
+    assert_eq!(p.bowed_string(), 3);
+    assert!(p.contact(2) < 1e-3);
+    p.note_off(57);
+    run(&mut p, 0.5);
+    assert_eq!(p.note(), None);
+}
+
+/// A pair one hand can't play (a semitone apart with both stopped would need
+/// strings a fifth apart; two notes on one string) plays legato instead; mono
+/// never plays two.
+#[test]
+fn double_stops_only_where_the_hand_can() {
+    let mut p = performer();
+    p.set_polyphony(Polyphony::DoubleStops);
+    // C2 and D2 are both on the C string only.
+    p.note_on(36, 0.6);
+    run(&mut p, 0.2);
+    p.note_on(38, 0.6);
+    run(&mut p, 0.2);
+    assert_eq!((p.note(), p.second()), (Some(38), None));
+    p.release_all();
+    run(&mut p, 0.5);
+
+    // E3 and B3: E on the D string and B on the A string, both stopped two
+    // semitones up: one hand.
+    p.note_on(52, 0.6);
+    p.note_on(59, 0.6);
+    run(&mut p, 0.1);
+    assert_eq!(p.second(), Some((59, 3)));
+    // A third note leads on from the nearer one: G3 replaces E3 on the D
+    // string, under B3.
+    p.note_on(55, 0.6);
+    run(&mut p, 0.1);
+    assert_eq!((p.note(), p.second()), (Some(59), Some((55, 2))));
+    p.release_all();
+    run(&mut p, 0.5);
+
+    // A line over a held note: D3 open, A3 then B3 above it on the A string.
+    p.note_on(50, 0.6);
+    p.note_on(57, 0.6);
+    run(&mut p, 0.1);
+    p.note_on(59, 0.6);
+    p.note_off(57);
+    run(&mut p, 0.1);
+    assert_eq!((p.note(), p.second()), (Some(50), Some((59, 3))));
+    p.release_all();
+    run(&mut p, 0.5);
+    assert_eq!(p.note(), None);
+
+    let mut mono = performer();
+    mono.note_on(50, 0.6);
+    mono.note_on(57, 0.6);
+    run(&mut mono, 0.1);
+    assert_eq!((mono.note(), mono.second()), (Some(57), None));
+}
+
+/// A chord on the string: both notes grip together and play in one stroke;
+/// the bow then stops on both, and lifts off both when the bow lift goes off.
+#[test]
+fn double_stop_on_the_string() {
+    let mut p = performer();
+    p.set_polyphony(Polyphony::DoubleStops);
+    p.set_bow_lift(BowLift::OnString);
+    p.note_on(43, 0.7);
+    p.note_on(50, 0.7);
+    let frames = run(&mut p, 0.01);
+    assert_eq!(p.second(), Some((50, 2)));
+    assert!(frames.last().is_some_and(|f| f.string == 1));
+    assert!(p.contact(1) > 0.3 && (p.contact(1) - p.contact(2)).abs() < 1e-6);
+    run(&mut p, 0.1);
+    p.note_off(43);
+    p.note_off(50);
+    run(&mut p, 0.3);
+    assert_eq!(p.note(), None);
+    assert!(p.contact(1) > 0.99 && p.contact(2) > 0.99);
+    p.set_bow_lift(BowLift::OffString);
+    run(&mut p, 0.3);
+    assert!(p.contact(1) == 0.0 && p.contact(2) == 0.0);
+}
+
+/// The pressure control runs from the band's lower edge (flautando) through
+/// normal to scratch, above the band, where the motion turns raucous.
+#[test]
+fn pressure_runs_from_flautando_to_scratch() {
+    let regime = |pressure: f32| {
+        let mut p = steady_performer();
+        p.set_dynamics(0.5);
+        p.set_pressure(pressure);
+        run(&mut p, 0.1);
+        p.note_on(50, 0.6);
+        let frames = run(&mut p, 1.0);
+        let steady: Vec<_> = frames[(0.5 * FS) as usize..]
+            .iter()
+            .map(|f| f.frame)
+            .collect();
+        (
+            classify(&steady, FS / frequency(50)),
+            rms(&frames[(0.5 * FS) as usize..]),
+        )
+    };
+    let (flautando, soft) = regime(0.0);
+    let (normal, mid) = regime(0.5);
+    let (scratch, loud) = regime(1.0);
+    assert_eq!(flautando, Regime::Helmholtz);
+    assert_eq!(normal, Regime::Helmholtz);
+    assert_eq!(scratch, Regime::Raucous);
+    assert!(soft < mid && mid < loud, "{soft} {mid} {loud}");
 }

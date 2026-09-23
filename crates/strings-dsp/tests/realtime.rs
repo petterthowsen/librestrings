@@ -8,7 +8,10 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
 use strings_dsp::presets::cello;
-use strings_dsp::{Articulation, Performer, PerformerSettings};
+use strings_dsp::{
+    BodyTuning, BowHair, BowLift, DampingCurve, Fingering, FrictionParams, Instrument, Loss,
+    Performer, PerformerSettings, Polyphony,
+};
 
 struct Counting;
 
@@ -56,7 +59,7 @@ fn playing_never_allocates() {
     let count = allocations_during(|| {
         p.set_dynamics(0.7);
         p.set_vibrato(0.8);
-        p.set_expression(0.9);
+        p.set_pressure(0.9);
         // Détaché, legato across strings, and a long held-note stack.
         p.note_on(36, 0.5);
         block(&mut p, 0.2);
@@ -68,8 +71,8 @@ fn playing_never_allocates() {
             p.note_off(note);
             block(&mut p, 0.01);
         }
-        for articulation in [Articulation::Staccato, Articulation::Spiccato] {
-            p.set_articulation(articulation);
+        for bow_lift in [BowLift::OnString, BowLift::OffString] {
+            p.set_bow_lift(bow_lift);
             for note in [50, 57, 64] {
                 p.note_on(note, 0.8);
                 block(&mut p, 0.05);
@@ -77,8 +80,68 @@ fn playing_never_allocates() {
                 block(&mut p, 0.1);
             }
         }
+        // Double stops, a line over a held note, and the other fingerings.
+        p.set_polyphony(Polyphony::DoubleStops);
+        p.set_fingering(Fingering::Bridge);
+        p.note_on(50, 0.6);
+        p.note_on(57, 0.6);
+        block(&mut p, 0.1);
+        for note in [59, 61, 62] {
+            p.note_on(note, 0.6);
+            block(&mut p, 0.05);
+        }
+        p.release_all();
+        block(&mut p, 0.2);
         p.reset();
         block(&mut p, 0.05);
     });
     assert_eq!(count, 0, "allocations on the audio path");
+}
+
+/// The tuning window's changes are applied on the audio thread: retuning the
+/// body, bow and performer, and swapping in refitted strings, never allocate.
+#[test]
+fn retuning_never_allocates() {
+    let fs = 48_000.0;
+    let mut p = Performer::new(&cello::INSTRUMENT, PerformerSettings::default(), fs);
+    // Built off the audio thread: a body with every dense mode, and refitted strings.
+    let mut body = BodyTuning::from(&cello::BODY);
+    body.dense.count = strings_dsp::body::MAX_DENSE_MODES;
+    body.dense.from = 80.0;
+    let strings = cello::STRINGS.map(|s| strings_dsp::StringSpec {
+        loss: Loss::Measured(DampingCurve {
+            floor: 2e-3,
+            at_1khz: 1e-3,
+            exponent: 3.0,
+        }),
+        bending_stiffness: 1e-4,
+        ..s
+    });
+    let mut designs = Instrument::design_strings(&strings, fs);
+    let mut settings = PerformerSettings::default();
+    settings.tuning.attack_bite = 0.4;
+    settings.tuning.finger_loss = 0.05;
+
+    p.note_on(52, 0.8);
+    let count = allocations_during(|| {
+        for _ in 0..4800 {
+            std::hint::black_box(p.process());
+        }
+        p.set_settings(settings);
+        let instrument = p.instrument_mut();
+        instrument.set_body(&body);
+        instrument.set_friction(FrictionParams {
+            mu_s: 0.9,
+            ..cello::INSTRUMENT.friction
+        });
+        instrument.set_hair(Some(BowHair {
+            stiffness: 2000.0,
+            damping: 5.0,
+        }));
+        assert!(instrument.apply_strings(&strings, &mut designs));
+        for _ in 0..4800 {
+            std::hint::black_box(p.process());
+        }
+    });
+    assert_eq!(count, 0, "allocations while retuning");
 }

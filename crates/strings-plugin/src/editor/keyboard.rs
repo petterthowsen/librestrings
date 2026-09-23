@@ -6,8 +6,8 @@
 //! taken by physical position, so the layout works with any keymap.
 //!
 //! The piano plays with the mouse: the lower on a key, the louder; dragging
-//! across keys plays legato. Keyswitches (the white keys from C1) select the
-//! articulation.
+//! across keys plays legato. Keyswitches (the white keys from C1) set the
+//! bow lift.
 
 use std::sync::atomic::Ordering::Relaxed;
 
@@ -37,6 +37,11 @@ const KEYS: [(Key, &str); 17] = [
     (Key::P, "P"),
 ];
 
+/// How long a key release waits for a following press before it counts.
+/// X11 auto-repeat sends a release and a press for every repeat, and baseview
+/// never marks them as repeats, so a held key would retrigger its note.
+const RELEASE_DEBOUNCE: f64 = 0.02;
+
 /// Transpose range in octaves around C3.
 const TRANSPOSE: (i32, i32) = (-2, 3);
 /// Range of the on-screen keyboard: C1 (the keyswitches) to C6.
@@ -50,6 +55,9 @@ pub struct KeyboardState {
     /// The note each computer key started, so a transpose while it is held
     /// still releases the right one.
     computer: [Option<u8>; KEYS.len()],
+    /// When each held key's release arrived, while it waits out
+    /// [`RELEASE_DEBOUNCE`].
+    released_at: [Option<f64>; KEYS.len()],
 }
 
 pub fn note_name(note: u8) -> String {
@@ -82,6 +90,7 @@ fn release_computer_keys(shared: &Shared, state: &mut KeyboardState) {
             shared.send(GuiEvent::NoteOff { note });
         }
     }
+    state.released_at = [None; KEYS.len()];
 }
 
 /// Reads the computer keyboard (while the editor has focus).
@@ -99,7 +108,7 @@ pub fn computer_keys(
         return;
     }
     let velocity = params.key_velocity.load(Relaxed) as f32 / 127.0;
-    let events = ctx.input(|i| i.events.clone());
+    let (events, now) = ctx.input(|i| (i.events.clone(), i.time));
     for event in events {
         let egui::Event::Key {
             key,
@@ -111,7 +120,10 @@ pub fn computer_keys(
         else {
             continue;
         };
-        if repeat || modifiers.command || modifiers.alt {
+        // Releases always count, or a note would hang. Alt is not checked:
+        // on X11 baseview reports the left mouse button as Alt, which would
+        // mute the keys while a fader is dragged.
+        if pressed && (repeat || modifiers.command) {
             continue;
         }
         let key = physical_key.unwrap_or(key);
@@ -126,16 +138,33 @@ pub fn computer_keys(
                     continue;
                 };
                 if pressed {
+                    // A press right after a release is auto-repeat: keep the note.
+                    state.released_at[i] = None;
                     if state.computer[i].is_none() {
                         let note = first_mapped(params) + i as u8;
                         state.computer[i] = Some(note);
                         shared.send(GuiEvent::NoteOn { note, velocity });
                     }
-                } else if let Some(note) = state.computer[i].take() {
-                    shared.send(GuiEvent::NoteOff { note });
+                } else if state.computer[i].is_some() {
+                    state.released_at[i] = Some(now);
                 }
             }
         }
+    }
+    let mut waiting = false;
+    for (held, released) in state.computer.iter_mut().zip(&mut state.released_at) {
+        let Some(t) = *released else { continue };
+        if now - t >= RELEASE_DEBOUNCE {
+            *released = None;
+            if let Some(note) = held.take() {
+                shared.send(GuiEvent::NoteOff { note });
+            }
+        } else {
+            waiting = true;
+        }
+    }
+    if waiting {
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(RELEASE_DEBOUNCE));
     }
 }
 
@@ -212,7 +241,7 @@ pub fn piano(
     }
 
     let sounding = t.note();
-    let articulation = t.articulation();
+    let bow_lift = t.bow_lift();
     let first = first_mapped(params);
     let computer = params.computer_keys.load(Relaxed);
     let held = |note: u8| state.mouse_note == Some(note) || state.computer.contains(&Some(note));
@@ -239,7 +268,7 @@ pub fn piano(
         } else if held(note) {
             held_color
         } else if let Some(a) = keyswitch(INSTRUMENT, note) {
-            switch_color(a == articulation)
+            switch_color(a == bow_lift)
         } else if playable(note) {
             Color32::from_gray(235)
         } else {

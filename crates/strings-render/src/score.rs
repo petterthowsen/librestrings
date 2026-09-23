@@ -4,8 +4,10 @@
 //!
 //! ```text
 //! tempo 72                 # beats per minute (default 60: beats are seconds)
-//! 0    dyn 0.6             # dynamics 0–1 (also: expr, vib, pressure)
-//! 0    art sustain         # sustain | staccato | spiccato
+//! 0    dyn 0.6             # dynamics 0–1 (also: vib, pressure; pressure 0.5 is normal)
+//! 0    bow on              # bow lift: on (stops on the string) | off (lifts, the default)
+//! 0    fingering mid       # nut | mid | bridge
+//! 0    poly on             # on: overlapping notes are double stops where they can be
 //! 0    note C3 1.0 80      # note, length in beats, velocity 1–127 (default 64)
 //! 1    on D3 90            # note on (velocity optional) ...
 //! 2.1  off D3              # ... and off; overlapping notes play legato
@@ -13,17 +15,28 @@
 //!
 //! Notes are named with an octave, C4 being middle C (MIDI 60): `C2`, `F#3`, `Bb2`.
 
-use strings_dsp::Articulation;
+use strings_dsp::{BowLift, Fingering, Polyphony};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Event {
     On(u8, f32),
     Off(u8),
     Dynamics(f32),
-    Expression(f32),
     Vibrato(f32),
     Pressure(f32),
-    Articulation(Articulation),
+    BowLift(BowLift),
+    Fingering(Fingering),
+    Polyphony(Polyphony),
+}
+
+/// A fingering mode by name: nut, mid or bridge.
+pub fn fingering(name: &str) -> Result<Fingering, String> {
+    match name {
+        "nut" => Ok(Fingering::NutAndOpen),
+        "mid" => Ok(Fingering::Mid),
+        "bridge" => Ok(Fingering::Bridge),
+        _ => Err("expected nut, mid or bridge".into()),
+    }
 }
 
 /// Events with their times in seconds, sorted by time (stable, so events at the
@@ -65,17 +78,27 @@ pub fn parse(text: &str) -> Result<Vec<(f32, Event)>, String> {
                 ));
             }
             Some("dyn") => events.push((time, Event::Dynamics(value()?))),
-            Some("expr") => events.push((time, Event::Expression(value()?))),
             Some("vib") => events.push((time, Event::Vibrato(value()?))),
             Some("pressure") => events.push((time, Event::Pressure(value()?))),
-            Some("art") => {
-                let a = match arg(2) {
-                    Some("sustain") => Articulation::Sustain,
-                    Some("staccato") => Articulation::Staccato,
-                    Some("spiccato") => Articulation::Spiccato,
-                    _ => return Err(err("expected sustain, staccato or spiccato")),
+            Some("bow") => {
+                let lift = match arg(2) {
+                    Some("on") => BowLift::OnString,
+                    Some("off") => BowLift::OffString,
+                    _ => return Err(err("expected on or off")),
                 };
-                events.push((time, Event::Articulation(a)));
+                events.push((time, Event::BowLift(lift)));
+            }
+            Some("fingering") => {
+                let f = fingering(arg(2).unwrap_or("")).map_err(|e| err(&e))?;
+                events.push((time, Event::Fingering(f)));
+            }
+            Some("poly") => {
+                let p = match arg(2) {
+                    Some("on") => Polyphony::DoubleStops,
+                    Some("off") => Polyphony::Mono,
+                    _ => return Err(err("expected on or off")),
+                };
+                events.push((time, Event::Polyphony(p)));
             }
             _ => return Err(err("unknown event")),
         }

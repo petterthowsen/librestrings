@@ -10,19 +10,21 @@ use nih_plug::prelude::*;
 use nih_plug_egui::egui::{self, Color32, RichText};
 use nih_plug_egui::{EguiState, create_egui_editor};
 
-use crate::params::{ArticulationParam, StringsParams};
+use crate::params::{BowLiftParam, FingeringParam, PolyphonyParam, StringsParams};
 use crate::shared::{GuiEvent, Shared, Telemetry};
 use crate::{INSTRUMENT, keyswitch_base};
 
 mod fader;
 mod instrument_view;
 mod keyboard;
+mod tuning_window;
 
 /// Editor-only state, kept while the window is open.
 #[derive(Default)]
 struct EditorState {
     keyboard: keyboard::KeyboardState,
     view: instrument_view::ViewState,
+    tuning: tuning_window::TuningState,
 }
 
 pub fn create(params: Arc<StringsParams>, shared: Arc<Shared>) -> Option<Box<dyn Editor>> {
@@ -34,8 +36,10 @@ pub fn create(params: Arc<StringsParams>, shared: Arc<Shared>) -> Option<Box<dyn
         move |ctx, setter, state| {
             let t = &shared.telemetry;
             keyboard::computer_keys(ctx, &params, &shared, &mut state.keyboard);
+            state.tuning.sync(ctx, &shared);
 
-            egui::TopBottomPanel::top("status").show(ctx, |ui| status_row(ui, &params, t));
+            egui::TopBottomPanel::top("status")
+                .show(ctx, |ui| status_row(ui, &params, t, &mut state.tuning.open));
             egui::TopBottomPanel::top("selection").show(ctx, |ui| {
                 selection_row(ui, &params, setter, &shared);
             });
@@ -57,6 +61,9 @@ pub fn create(params: Arc<StringsParams>, shared: Arc<Shared>) -> Option<Box<dyn
             egui::CentralPanel::default().show(ctx, |ui| {
                 instrument_view::show(ui, t, &mut state.view);
             });
+            if state.tuning.open {
+                state.tuning.window(ctx, t);
+            }
 
             // The strings animate.
             ctx.request_repaint();
@@ -64,7 +71,7 @@ pub fn create(params: Arc<StringsParams>, shared: Arc<Shared>) -> Option<Box<dyn
     )
 }
 
-fn status_row(ui: &mut egui::Ui, params: &StringsParams, t: &Telemetry) {
+fn status_row(ui: &mut egui::Ui, params: &StringsParams, t: &Telemetry, tuning: &mut bool) {
     ui.horizontal(|ui| {
         let small = |text: String| RichText::new(text).small().monospace();
         ui.label(small(format!("Strings {}", env!("CARGO_PKG_VERSION"))));
@@ -107,6 +114,8 @@ fn status_row(ui: &mut egui::Ui, params: &StringsParams, t: &Telemetry) {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             toggle(ui, &params.debug_view, "Debug");
             toggle(ui, &params.computer_keys, "Computer keys");
+            ui.checkbox(tuning, RichText::new("Tuning").small())
+                .on_hover_text("The model's numbers, editable while playing");
         });
     });
 }
@@ -146,22 +155,87 @@ fn selection_row(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter
             });
         ui.add_space(24.0);
 
-        ui.label("Articulation");
-        let live = shared.telemetry.articulation();
+        ui.label("Bow lift");
+        let live = shared.telemetry.bow_lift();
         let base = keyswitch_base(INSTRUMENT);
-        for (i, a) in ArticulationParam::ALL.into_iter().enumerate() {
+        for (i, b) in BowLiftParam::ALL.into_iter().enumerate() {
             let key = keyboard::note_name(base + 2 * i as u8);
+            let what = match b {
+                BowLiftParam::OffString => {
+                    "The bow leaves the string at the end of a note, which rings on. Short \
+                     notes are thrown off (spiccato-like)."
+                }
+                BowLiftParam::OnString => {
+                    "The bow stops on the string at the end of a note: short notes are \
+                     staccato. Notes start from a grip; pressed hard, a martelé."
+                }
+            };
             let response = ui
-                .selectable_label(live == a, a.name())
-                .on_hover_text(format!("Keyswitch {key}"));
+                .selectable_label(live == b, b.name())
+                .on_hover_text(format!("{what}\nKeyswitch {key}"));
             if response.clicked() {
-                setter.begin_set_parameter(&params.articulation);
-                setter.set_parameter(&params.articulation, a);
-                setter.end_set_parameter(&params.articulation);
-                shared.send(GuiEvent::Articulation(a));
+                setter.begin_set_parameter(&params.bow_lift);
+                setter.set_parameter(&params.bow_lift, b);
+                setter.end_set_parameter(&params.bow_lift);
+                shared.send(GuiEvent::BowLift(b));
             }
         }
     });
+    ui.horizontal(|ui| {
+        ui.label("Polyphony");
+        enum_combo(
+            ui,
+            setter,
+            &params.polyphony,
+            &PolyphonyParam::ALL,
+            PolyphonyParam::name,
+            110.0,
+        )
+        .on_hover_text(
+            "Double stops: a note held with another plays with it on the next string, \
+             where one hand can play both. Otherwise it plays legato.",
+        );
+        ui.add_space(12.0);
+        ui.label("Fingering");
+        enum_combo(
+            ui,
+            setter,
+            &params.fingering,
+            &FingeringParam::ALL,
+            FingeringParam::name,
+            160.0,
+        )
+        .on_hover_text(
+            "Where the left hand plays. Near the nut: open strings and low positions. \
+             Mid position: no open strings but the lowest. Near the bridge: high \
+             positions on lower strings, a darker sound.",
+        );
+    });
+}
+
+/// A drop-down for an enum parameter.
+fn enum_combo<T: Enum + PartialEq + Copy + 'static>(
+    ui: &mut egui::Ui,
+    setter: &ParamSetter,
+    param: &EnumParam<T>,
+    all: &[T],
+    name: fn(T) -> &'static str,
+    width: f32,
+) -> egui::Response {
+    let current = param.value();
+    egui::ComboBox::from_id_salt(param.name())
+        .selected_text(name(current))
+        .width(width)
+        .show_ui(ui, |ui| {
+            for &value in all {
+                if ui.selectable_label(value == current, name(value)).clicked() {
+                    setter.begin_set_parameter(param);
+                    setter.set_parameter(param, value);
+                    setter.end_set_parameter(param);
+                }
+            }
+        })
+        .response
 }
 
 /// The performer's state in numbers, beside the instrument.
@@ -176,9 +250,13 @@ fn readout(ui: &mut egui::Ui, params: &StringsParams, t: &Telemetry) {
     let slips = t.slips_per_period.load(Relaxed);
 
     ui.add_space(4.0);
-    let note = match t.note() {
-        Some(n) => keyboard::note_name(n),
-        None => "–".into(),
+    let note = match (t.note(), t.second_note()) {
+        (Some(n), Some(second)) => {
+            let (lo, hi) = (n.min(second), n.max(second));
+            format!("{} {}", keyboard::note_name(lo), keyboard::note_name(hi))
+        }
+        (Some(n), None) => keyboard::note_name(n),
+        (None, _) => "–".into(),
     };
     ui.label(RichText::new(note).size(28.0).strong());
     ui.add_space(4.0);
@@ -274,7 +352,6 @@ fn debug_view(ui: &mut egui::Ui, t: &Telemetry, bowed: usize, v: f32, beta: f32)
     ui.add_space(6.0);
     let controls = [
         ("dynamics", &t.dynamics),
-        ("expression", &t.expression),
         ("vibrato", &t.vibrato),
         ("pressure", &t.pressure),
     ];

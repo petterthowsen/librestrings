@@ -1,4 +1,4 @@
-# Physically Modeled Strings — Plan
+# LibreStrings — Plan
 
 A CLAP instrument plugin, written in Rust, that synthesizes bowed string instruments by physical modeling.
 
@@ -38,7 +38,7 @@ crates/
       string.rs            # one DWG string (bridge seg + nut seg + bow junction)
       body.rs              # biquad-bank body resonator
       instrument.rs        # 4 strings + body; calibrated bow-force band
-      performer.rs         # gesture layer: string choice, fingering, articulations, bow strokes, vibrato
+      performer.rs         # gesture layer: string choice, fingering, bow strokes and lift, legato, vibrato
       section.rs           # (later) N players + humanization + stage placement
       presets.rs           # per-instrument physical data (violin, cello; later viola, bass)
   strings-render/          # CLI: scores -> WAV (+ CSV of internal signals), playability maps
@@ -187,11 +187,13 @@ A physical model is only as playable as its control mapping. This layer turns MI
 
 | Control | Default CC | Maps to |
 |---|---|---|
-| **Dynamics** | CC1 (mod wheel) | A path through (`v_b`, `F_b`, `β`) space. See 4.2 |
-| **Expression** | CC11 | Output gain (post-body), for phrasing and fades |
-| **Vibrato depth** | CC21 | Depth of finger-position modulation. 0 means none. Rate is a parameter. CC21 is the usual vibrato CC in orchestral sample libraries; General MIDI assigns vibrato to CC1, but here CC1 is dynamics |
-| Velocity | — | Attack intensity for short notes; legato transition speed |
-| Keyswitches | White keys, starting at the first C below the instrument's lowest note (cello: C1 D1 E1 F1; violin: C3 D3 E3 F3; C4 = middle C) | Articulation selection. If more keyswitches are needed than fit below the range, start one octave lower |
+| **Dynamics** | CC11 (expression pedal) | A path through (`v_b`, `F_b`, `β`) space. See 4.2. As in SWAM, there is no separate expression gain: the plugin's Volume is the only gain |
+| **Vibrato depth** | CC1 (mod wheel) | Depth of finger-position modulation. 0 means none. Rate is a parameter |
+| **Pressure** | — (parameter) | Flautando at 0, normal at 0.5, scratch at 1. See 4.2 |
+| Velocity | — | Detached notes: the attack (how fast the bow gets going and how hard it bites). Legato: the transition, from instant (hard) to a slow portamento (soft). See 4.3 |
+| **Polyphony** | — (parameter) | Mono, or double stops (4.3) |
+| **Fingering** | — (parameter) | Near the nut & open, mid position, near the bridge: which strings play (4.3) |
+| **Bow lift** | Keyswitches: white keys from the first C below the instrument's lowest note (cello: C1 off string, D1 on string; violin: C3, D3; C4 = middle C). Also a parameter | What the bow does at the end of a note (4.3) |
 
 Later: MPE (per-note pressure and pitch) and CLAP note expressions.
 
@@ -207,23 +209,24 @@ F_b   = F_min^(1−p) · F_max^p
 
 - These are the corrected formulas; the research doc has the β dependence the wrong way round.
 - The default `p` is around 0.4–0.6.
-- A "bow pressure" parameter biases `p`: toward 0 gives a flautando, surface sound; toward 1 gives a crunchy, pressed sound.
+- A "bow pressure" parameter biases `p`: toward 0 gives a flautando, surface sound; toward 1 gives a crunchy, pressed sound. **As built:** the pressure control runs from flautando (band position 0, the lower edge) through normal (0.65 at the control's middle) to scratch (1.3, above the band, raucous); see "Phase 3 notes: playing like SWAM".
 - As players do, the bow also moves slightly toward the bridge at high dynamics.
 - `R` has to be derived from the bridge loss filter. Calibrate empirically in the renderer.
 - **Measured in Phase 1:** the simulated upper edge follows `F_max` closely, but the lower edge sits about 5–10× above the formula's `F_min` (same 1/β² slope). The dynamics mapping should anchor on `F_max` or on a calibrated lower edge, not on the raw `F_min`.
 - **Against a real string** (see "Measured comparison" under Phase 0–1 notes): the measured lower edge follows roughly 1/β (fitted exponents −0.9 to −1.3), not 1/β². This is in line with Schoonderwaldt et al. (2008) and Mansour et al. (2017). A calibrated lower edge should be fitted to measurements, not derived from the formula.
-- **As built (Phase 2):** `instrument::ForceLimits` stores both edges per string as `F = c·Z·v_b·β^α`, fitted by `strings-render calibrate` to the model's own simulated maps (the performer needs forces where the *model* plays Helmholtz). The measured lower edge is lower still; see "Phase 2 notes". The performer uses p = 0.65, tilted to 0.8 at pp and 0.5 at ff.
+- **As built (Phase 2):** `instrument::ForceLimits` stores both edges per string as `F = c·Z·v_b·β^α`, fitted by `strings-render calibrate` to the model's own simulated maps (the performer needs forces where the *model* plays Helmholtz). The measured lower edge is lower still; see "Phase 2 notes". The performer uses p = 0.65, tilted to 0.8 at pp and 0.5 at ff, with a bite at the start of each stroke and a slow wander (see "Phase 3 notes: tuning and first listening").
 
-### 4.3 Articulations (initial set)
+### 4.3 Articulations: one way of playing
 
-| Articulation | How it is triggered | Physics |
-|---|---|---|
-| **Legato** | Overlapping notes (mono per instrument) | No new bow stroke. Finger moves: the nut-side delay glides to the new length over ~10–40 ms. Velocity sets speed; low velocity gives a slower, portamento-like slide. If the new note is on another string, it is a string crossing: bow force ramps from the old string to the new one |
-| **Détaché / sustain** | Non-overlapping note, default | New bow stroke, bow direction alternates. `v_b` rises over ~30–80 ms; `F_b` follows the dynamics mapping |
-| **Staccato** (on the string) | Keyswitch | Force is pre-loaded before bow speed bursts (a martelé-style bite). The bow then **stops on the string**, and the stuck bow damps the string, so the note ends quickly and physically |
-| **Spiccato** | Keyswitch | The bow is thrown: a short bell-shaped `F_b` pulse (~20–60 ms) with a speed burst. The bow **leaves the string**, so the string rings on with its natural decay. Phase 4: replace the scripted pulse with a bouncing bow (a mass on a spring) |
+As in SWAM, there are no articulation modes. How a note is played follows from whether it overlaps the last one, its velocity, its length and the bow lift (off string or on string, a parameter and keyswitches).
 
-**Choosing short articulations.** A real-time plugin can't know a note's length at note-on, so short articulations come from keyswitches, with an optional "velocity above X means short" mode. Legato is detected automatically from overlap while in sustain mode.
+| Played as | Physics |
+|---|---|
+| **Detached note** (no overlap) | A new bow stroke; the direction alternates. Velocity sets the attack: off the string, the bow lands (12 ms) and accelerates over 35–120 ms with a bite of 0.2 × velocity in the band; on the string, the force grips for 15 ms before the bow moves, then it accelerates over 8–100 ms with a bite of 0.25 × velocity (hard presses are a martelé). The stroke lasts as long as the key, at least 40 ms |
+| **End of a note, off string** | The bow lifts as it slows (150 ms), and the string rings on. A note shorter than that is thrown off as quickly as it was played, still moving: spiccato-like. Phase 4: a bouncing bow (a mass on a spring) |
+| **End of a note, on string** | The bow **stops on the string** (40 ms) and stays there until the next note; the stopped bow damps the string, so short notes are staccato |
+| **Legato** (overlapping notes) | No new bow stroke. The landing note's velocity sets the transition: pressed hard, a finger drops or lifts within the hand's position (6 ms) and a shift of the hand slides quickly (20 ms); below velocity 0.6 the finger slides, up to 250 ms at velocity 0 (portamento). Only between stopped notes; to or from an open string the finger is placed. A note on another string is a crossing: the bow force ramps from the old string to the new one |
+| **Double stops** (overlapping notes, double-stop polyphony) | Two notes on adjacent strings, bowed together, if one hand can reach both (stopped notes within 4 semitones of each other). A third note leads on from the nearer note and pairs with the farther one (a line over a held note). A pair that doesn't fit plays legato |
 
 All CC and keyswitch assignments are defaults; they become user-adjustable once there is a GUI.
 
@@ -235,7 +238,7 @@ All CC and keyswitch assignments are defaults; they become user-adjustable once 
 
 ### 4.5 Deferred
 
-Tremolo, trills, double stops, pizzicato (pluck exciter on the same string engine), harmonics, col legno, con sordino, automatic bow changes when the bow runs out.
+Tremolo, trills, chords of three or four strings, pizzicato (pluck exciter on the same string engine), harmonics, col legno, con sordino, automatic bow changes when the bow runs out.
 
 ---
 
@@ -298,8 +301,8 @@ Each phase ends with something audible.
 | **1. One bowed string** ✅ | DWG string, bow junction and hysteresis, bridge loss, tuning compensation | A violin A string produces stable Helmholtz motion; the Schelleng sweep behaves as expected; tuning within ±1 cent |
 | **1b. Measured string physics** ⚠️ | Bending stiffness, torsional waves (3.6) and measured frequency-dependent damping, checked against the measured cello G string with `strings-render measured` | Simulated Helmholtz region close to the measured one at all three bow speeds (area within about ±30%, Helmholtz present at small β); physics tests still pass. **Not met:** all three are implemented and verified. The damping gets closest, at about half the measured area; stiffness and torsion still shrink it. See "Phase 1b results" |
 | **2. Solo cello (offline)** ⚠️ | Cello presets for C2 G2 D3 A3 (G from the measured string; the others from published string data), 4 strings, string selection, fingering, legato, vibrato, biquad body, performer layer with the 4 articulations and its force mapping calibrated on the measured limits (4.2), bow-hair damping so a bow stopped on the string silences it quickly | Scripted phrases (scales, legato lines, staccato runs) sound like a cello, not a synth. **Built and tested objectively; not yet judged by ear.** See "Phase 2 notes" |
-| **3. CLAP plugin** ⚠️ | nih-plug wrapper, CLAP-only export, CC1/CC11/vibrato mapping, keyswitches, parameters, real-time safety | Playable in Bitwig and Reaper; no allocations in the audio thread; CPU cost measured. **Built:** plugin, editor and standalone app; engine at 2.1% of real time. **Not yet tried in Bitwig or Reaper.** See "Phase 3 notes" |
-| **4. Realism pass** | Thermal friction, finger damping at note changes, bow noise, oversampling decision, bouncing-bow spiccato, sympathetic string coupling | A/B against recordings; clear improvement on attacks and legato transitions (the mdw attack data gives a measured target for attacks) |
+| **3. CLAP plugin** ⚠️ | nih-plug wrapper, CLAP-only export, CC1/CC11/vibrato mapping, keyswitches, parameters, real-time safety | Playable in Bitwig and Reaper; no allocations in the audio thread; CPU cost measured. **Built:** plugin, editor and standalone app; engine at 2.1% of real time; a tuning window for the model's numbers. **Not yet tried in Bitwig or Reaper.** See "Phase 3 notes" |
+| **4. Realism pass** | Thermal friction, finger damping at note changes (a first, frequency-independent version is in: "Phase 3 notes: tuning and first listening"), bow noise, oversampling decision, bouncing-bow spiccato, sympathetic string coupling | A/B against recordings; clear improvement on attacks and legato transitions (the mdw attack data gives a measured target for attacks) |
 | **5. More instruments** | Violin, viola and double bass presets and bodies | Each instrument is convincing across its range |
 | **6. Sections** | N-player engine, humanization, stage placement, SIMD across players | 12-player section within the CPU budget; sounds like a section, not a chorus effect |
 | **7. Extended techniques** | Tremolo, trills, pizzicato, double stops, harmonics, mutes, MPE | — |
@@ -416,17 +419,67 @@ Build the bundle with `cargo xtask bundle strings-plugin --release` (writes `tar
 **Plugin** (`crates/strings-plugin/src/lib.rs`)
 - nih-plug (pinned to a September 2026 commit; the project is active), CLAP export only, egui editor. Mono instrument, the same signal on every output channel (stereo or mono layouts).
 - The performer is built in `initialize` (about 30 ms), only again if the sample rate changes. `process` handles MIDI sample-accurately, never allocates (nih-plug's `assert_process_allocs` aborts on an allocation in debug builds) and returns `KeepAlive` so strings ring on. nih-plug sets flush-to-zero. A non-finite output resets the instrument and counts the reset (shown in the status row).
-- **Controls:** CC1 dynamics, CC11 expression, CC21 vibrato, CC123 releases all notes gracefully (`Performer::release_all`), CC120 silences at once. Dynamics, expression, vibrato, pressure, articulation and volume are also host parameters. **Whichever changed last wins:** a parameter only acts when its value changes, so a CC keeps its value until the parameter moves.
-- **Keyswitches:** the white keys from the first C below the lowest note (cello: C1 sustain, D1 staccato, E1 spiccato).
+- **Controls:** CC11 dynamics, CC1 vibrato (changed from CC1/CC11/CC21 after comparing with SWAM; see "Phase 3 notes: playing like SWAM"), CC123 releases all notes gracefully (`Performer::release_all`), CC120 silences at once. Dynamics, vibrato, pressure, bow lift, polyphony, fingering and volume are also host parameters. **Whichever changed last wins:** a parameter only acts when its value changes, so a CC keeps its value until the parameter moves.
+- **Keyswitches:** the white keys from the first C below the lowest note (cello: C1 off string, D1 on string; they chose sustain, staccato and spiccato until "Phase 3 notes: playing like SWAM").
 - **CPU:** 2.1% of real time on one core at 48 kHz for the engine (performer plus telemetry, 256-sample blocks, notes changing every 0.5 s; `cargo test --release -p strings-plugin cpu_cost -- --ignored --nocapture`). The standalone's load meter showed about 4% while idle-playing a note; probably CPU frequency scaling under light real-time load. To confirm in a DAW.
 
 **Editor** (`crates/strings-plugin/src/editor/`, layout from ROADMAP.md)
 - Status row: sample rate, block size, DSP load (smoothed and peak, yellow above the 3% budget), output peak, NaN resets; toggles for the computer keyboard and a debug view.
-- Instrument and ensemble selection (only cello and solo are enabled), articulation buttons that follow keyswitches.
+- Instrument and ensemble selection (only cello and solo are enabled), bow-lift buttons that follow keyswitches, polyphony and fingering.
 - The instrument view is a placeholder drawing. The strings are drawn in parts (nut to finger, finger to bridge, afterlength) from the performer's state: the finger where the vibrating length starts, the bow at β moving along its length with the bow velocity, and Helmholtz motion (a corner on a parabolic envelope) on the vibrating part, slowed down for display with an amplitude from the string's bridge force. It is stylized, not the simulated string shape.
 - Readout: note, string, position, pitch, β, bow speed and force, and the motion from slips per period (Helmholtz at one per period, timed from slip onsets; exact for periodic motion). The debug view adds the calibrated force band and the bow's position in it, and per-string pitch, contact and level.
 - Bottom: a piano from C1 to C6 (mouse: lower on a key is louder, dragging plays legato; keyswitches colored, out-of-range keys grey), the computer keyboard in the tracker layout (Q = C, 2 = C♯ … P = E, by physical key position; Z/X transpose by octave) with a velocity setting, and faders for the parameters. A marker on a fader shows the performer's value when a CC has moved it away from the parameter.
 - Editor and audio thread share only atomics (telemetry, published once per block) and a lock-free queue (notes from the editor).
+
+### Phase 3 notes: tuning and first listening (September 2026)
+
+**First listening** (the plugin, played from the computer keyboard): pitch and releases fine. Attacks lack the thick bite of a cello; held notes are static; low notes lack weight ("more violin than cello"); spiccato sounds plucked. There is no room yet (Phase 6, with the sections), so the instrument is heard dry.
+
+**Measuring bowed spectra.** Measure harmonics at the *measured* pitch. Open strings play 6–14 cents flat at mf–ff (STATUS.md), so a probe at n × the nominal f0 misses the upper partials, which then look like a 40–50 dB cliff above h5–h8. At the measured pitch the bridge force is a clean sawtooth: h2–h8 within about 5 dB of 1/n on all four strings, open and 7 semitones up, at dynamics 0.1–0.9 and band positions 0.25–0.65, with and without bow hair. The string isn't what makes the cello sound light; the body is.
+
+**Body.** With the six listed modes and dense modes from 300 Hz, the body passed 6–9% of the power of D3 and A3 below 300 Hz, and the low harmonics sat 7–15 dB under the 400 Hz–1 kHz ones. The dense modes now start at 150 Hz (59 modes, the same density) under a broad rise at 250 Hz (0.6 octave, gain 1.5): 52% and 32% below 300 Hz, centroids 839 → 571 Hz (D3) and 991 → 626 Hz (A3), C2 13% → 62%. The output gain drops from 0.1 to 0.065 to keep the level (the new body is about 4 dB louder). The rise is an estimate, to be judged by ear.
+
+**Performer** (`PerformerTuning`, which now holds the timing constants)
+- **Bite:** a détaché stroke starts `attack_bite` = 0.2 × velocity higher in the band, fading over 80 ms (raised cosine). Every tested note still reaches Helmholtz motion within 150 ms.
+- **Wander:** pressure ±0.06 of the band, bow speed ±8% and bow position ±3% drift on raised-cosine segments (mean 0.8, 1.1 and 1.4 s), never above the β mapping's top. ±5% β moved E4 at pp 8.7 cents: the bowed pitch of high stopped notes depends on β (stiffness). With a steady bow stopped notes still end within ±5 cents; with the wander within ±10.
+- **Finger damping:** a stopped string loses `finger_loss` = 0.015 Np per reflection at the finger (t60 about 1.6 s at D4, 2.8 s at E3), so a spiccato or a released note no longer rings like an open string. When the note is over (key up and the bow off, or the bow gone to another string) the finger eases off: another 0.08 Np, fading in over 50 ms (t60 about 0.25 s at D4). Open strings ring on. 0.02 Np moved E4's bowed pitch at pp out of tolerance. Both values are estimates: the fingertip's loss is really frequency dependent (Phase 4). `BowedString::set_termination_loss` scales the nut-side reflection; the Schelleng maps are unchanged with it at zero.
+
+**Tuning window** (`crates/strings-plugin/src/tuning.rs`, `editor/tuning_window.rs`; "Tuning" in the status row)
+- About 90 numbers in groups: the performer's timings and gestures (`PerformerSettings` and `PerformerTuning`), friction and bow hair, the body (listed modes, dense modes, hills, output gain) with its response plotted over the preset's and the partials of the playing note, and the strings' damping curve, bending stiffness and torsion (shared by the four strings as in `presets::cello::string`).
+- Changed values are marked; "Copy changes" copies them as `field = value  # was …`, where the field is a path in `tuning::Tuning` (`live.performer.*`: the performer defaults; `live.body.*`, `live.friction.*`, `live.hair.*`, `strings.*`: `presets::cello`).
+- Live changes reach the audio thread as one `LiveTuning` copy through a lock-free queue. `Body::set` retunes the resonators in place, keeping their state, with room for 12 listed and 200 dense modes.
+- The strings' filters take about 30 ms to fit. The editor fits them on a thread of its own when the mouse is released, and `BowedString::apply_design` swaps them in without allocating; the string rings on. The old filters go back to the editor to be freed. Torsion can be tuned down to 2 × f0 (the delay memory allows it).
+- Changes aren't saved with the plugin. A new engine (a new sample rate) gets them again from the editor.
+
+### Phase 3 notes: playing like SWAM (September 2026)
+
+Changes to the controls after looking at how Audio Modeling's SWAM strings are played (ROADMAP.md "Plugin playing").
+
+**Controls.** CC11 (the expression pedal) plays the dynamics and CC1 (the mod wheel) the vibrato. The expression control, a gain after the body, is gone: dynamics already sets loudness through the bow, and Volume remains. CC21 no longer does anything. Velocity already shaped the attack (the bow's acceleration, 35–120 ms, and the bite, 0.2 × velocity in the band) and the staccato and spiccato strokes; that is unchanged.
+
+**Pressure** (`PerformerSettings::pressure_range`). The control runs from flautando (0) through normal (0.5) to scratch (1), piecewise linear in band position: 0.0 → 0.65 → 1.3. Dynamics tilt, wander and bite add on top, clamped to that range. Measured with a steady bow, six notes C2–C5 at three dynamics:
+- Below the lower edge (p < 0) notes break into multiple slips, and at pp several miss their pitch by up to a semitone, so flautando stops at the edge. There most notes are still Helmholtz, 3–8 dB quieter than normal.
+- p = 1.0 is already 25–40 cents flat at mf–ff (the flattening effect); by 1.2 nearly every note is raucous. At 1.3–1.4 all are raucous, 5–10 dB louder than normal, with the pitch unsteady (tens of cents). That is scratch.
+- The model can't play a real flautando: players also move toward the fingerboard, but β stays below 0.115 (the flat zone). Flautando here is only the lower force.
+
+**Hand position and legato slides.** A legato line used to glide on every step on one string: 50 ms at velocity 90 for a whole tone, where a cellist drops a finger. String crossings were clean (the new string's finger is placed before the bow arrives). The performer now keeps a hand position, the lowest finger position it covers, shared by all strings, with `hand_span` = 4 semitones (first to fourth finger with an extension). A legato note within it changes in the finger-placement time (6 ms); only a shift slides, and only between two stopped notes (to or from an open string, the finger is just placed). The landing velocity now adds a portamento on top (see "One way of playing" below). Shifting up puts the new note under the first finger, shifting down under the last. Tested: a whole tone within the hand settles in under 12 ms, a shift at low velocity takes over 60 ms.
+
+**Fingering modes** (`Fingering`, replacing `string_bias`). Each mode plays notes up to a number of semitones above a lower string's open pitch on that lower string: 0 near the nut (the lowest positions, open strings), 7.5 in mid position (just past a fifth, so every open string but C is played stopped on the string below), 12.5 near the bridge (up to an octave up the lower string). Ties go to the lower string. Legato still stays on its string within `legato_stick`.
+
+**Double stops** (`Polyphony::DoubleStops`).
+- While a note sounds, a new one joins it on the adjacent string: the lower note on the lower string, stopped notes within `hand_span` of each other (an open string pairs with anything). The sounding note keeps its string if any pair allows it; otherwise the cheapest pair by the fingering's cost.
+- With two sounding, the new note leads on from the nearer one (moving its finger, as a voice) and pairs with the farther one; if that doesn't fit, it pairs with the nearer one; if nothing fits, it plays legato from the nearer note alone.
+- Releasing either note leaves the other on its string, unless the other key follows within `chord` (30 ms): then the stroke ends on both, as a chord released on a keyboard should (on the string, the bow stops on both). Notes pressed together join in the grip or the attack.
+- Both strings get the same bow speed and position; each gets the force of its own band. Vibrato moves both fingers together; intonation by ear listens to the older note, and the other string uses the correction learned on it.
+- The editor shows both notes and a contact mark on each string the bow touches. `strings-render play doublestops` renders an example.
+
+**One way of playing** (`BowLift`, replacing the sustain, staccato and spiccato articulations; PLAN.md 4.3). A detached note is a new stroke whose velocity sets the attack; its end depends on the bow lift; overlapping notes play legato with the landing velocity setting the transition. The articulations follow from the gesture: staccato is short notes on the string, martelé the same pressed hard, spiccato-like short notes off the string, détaché long notes off it, portamento soft legato.
+- The old staccato played a fixed stroke (100–160 ms) whatever the key length, and spiccato a scripted sin² touch; both are gone. Now a stroke lasts as long as the key, at least `min_stroke` (40 ms), so a tap still plays.
+- On the string the stroke starts from a grip (15 ms of force before the bow moves) and accelerates over `grip_attack` = 100 ms at velocity 0 to 8 ms at 1; the old staccato always took 8–20 ms. At the end the bow stops (40 ms) and rests on the string until the next note, however long (it used to lift after 0.4 s). Switching to off string lifts a resting bow.
+- Off the string, a stroke shorter than the release (150 ms) lifts over its own length without slowing, so a short note is thrown off and rings; a longer one slows to 40% as it lifts, as before.
+- Checked with 120 ms notes at velocities 0.2–0.9 on D3, D4 and C5: in both bow lifts every stroke reaches Helmholtz motion in 35–86 ms, a little later when soft. C2 and G2 are too low to judge in 120 ms. On the string, G2, D3 and D4 are more than 25 dB down 0.3 s after the key; off it they ring within 15 dB of the stroke's peak 0.1 s after.
+- Legato transitions: a whole tone within the hand settles in under 12 ms pressed hard and 120–300 ms at velocity 0.1; a shift pressed hard takes 12–40 ms. This replaces the velocity glide of the hand-position change above, which made every soft or medium legato slide.
+- The bow direction alternates with every detached note, as SWAM's drawing shows; it already did, and the editor's bow moves with it.
 
 ## 8. Alternatives to explore later
 
@@ -478,4 +531,4 @@ Errors and gaps in `docs/Real-Time Physical Modeling Techniques for Audio Synthe
 
 - Whether CC64 or CC68 toggles legato.
 - Whether to use the whole-string 2× oversampling mode by default.
-- The product name (it replaces the `strings-*` crate placeholders).
+- Whether to rename the `strings-*` crates to match the product name, LibreStrings (decided September 2026; CLAP ID `io.github.petterthowsen.librestrings`).
