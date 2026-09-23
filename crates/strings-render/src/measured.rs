@@ -8,7 +8,7 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use strings_dsp::analysis::{Regime, bow_steady, classify_bridge_force};
-use strings_dsp::{BowedString, FrictionParams, StringSpec};
+use strings_dsp::{BowHair, BowedString, FrictionParams, StringSpec};
 
 /// The dataset's sample rate; the simulation runs at the same rate.
 const SAMPLE_RATE: f32 = 50_000.0;
@@ -53,6 +53,7 @@ pub fn run(
     dir: &Path,
     spec: &StringSpec,
     friction: FrictionParams,
+    hair: Option<BowHair>,
     csv: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let points = read_index(&dir.join("index.csv"))?;
@@ -80,7 +81,8 @@ pub fn run(
             None => "none".into(),
         }
     );
-    let results = classify_all(dir, spec, friction, &points)?;
+    println!("  bow hair: {hair:?}");
+    let results = classify_all(dir, spec, friction, hair, &points)?;
 
     let mut speeds: Vec<f32> = points.iter().map(|p| p.vb_nominal).collect();
     speeds.sort_by(f32::total_cmp);
@@ -187,6 +189,7 @@ fn classify_all(
     dir: &Path,
     spec: &StringSpec,
     friction: FrictionParams,
+    hair: Option<BowHair>,
     points: &[Point],
 ) -> Result<Vec<Classified>, Box<dyn std::error::Error>> {
     let period = SAMPLE_RATE / spec.frequency;
@@ -198,6 +201,7 @@ fn classify_all(
             .map(|chunk| {
                 scope.spawn(move || -> Result<Vec<Classified>, String> {
                     let mut string = BowedString::new(spec, friction, SAMPLE_RATE, spec.frequency);
+                    string.set_bow_hair(hair);
                     chunk
                         .iter()
                         .map(|p| {

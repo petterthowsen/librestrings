@@ -7,12 +7,14 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 
+mod calibrate;
 mod measured;
+mod score;
 use strings_dsp::analysis::{Regime, bow_steady, classify, classify_bridge_force};
-use strings_dsp::presets::{reference, violin};
+use strings_dsp::presets::{cello, reference, violin};
 use strings_dsp::{
-    BowInput, BowedString, DampingCurve, FrictionParams, Loss, StringFrame, StringSpec,
-    TorsionSpec, schelleng_limits,
+    BowHair, BowInput, BowedString, DampingCurve, FrictionParams, Loss, Performer,
+    PerformerSettings, StringFrame, StringSpec, TorsionSpec, schelleng_limits,
 };
 
 #[derive(Parser)]
@@ -61,7 +63,9 @@ enum Command {
     },
     /// Sweep bow force and position, print the regime map next to Schelleng's prediction.
     Schelleng {
-        /// Open string to bow: G, D, A or E.
+        #[arg(long, default_value = "violin")]
+        instrument: Family,
+        /// Open string to bow (violin: G D A E; cello: C G D A).
         #[arg(long, default_value = "A")]
         string: String,
         #[arg(long, default_value_t = 48_000.0)]
@@ -75,6 +79,34 @@ enum Command {
         /// Override the string's bridge lowpass pole (at 48 kHz).
         #[arg(long)]
         loss_lowpass: Option<f32>,
+    },
+    /// Play a score on the solo cello through the performer and body. SCORE is a
+    /// file (format in score.rs) or a built-in: scale, legato, staccato, phrase.
+    Play {
+        score: String,
+        #[arg(long, default_value_t = 48_000.0)]
+        sample_rate: f32,
+        /// Seconds rendered after the last event.
+        #[arg(long, default_value_t = 2.0)]
+        tail: f32,
+        /// Position in the Helmholtz band, 0–1 (default: the performer's).
+        #[arg(long)]
+        pressure: Option<f32>,
+        /// Play notes up to this many semitones above a lower string's open
+        /// pitch on that lower string.
+        #[arg(long, default_value_t = 0.0)]
+        string_bias: f32,
+        #[arg(long, short)]
+        out: PathBuf,
+        /// Also write the summed bridge force (before the body) to this WAV file.
+        #[arg(long)]
+        bridge_out: Option<PathBuf>,
+    },
+    /// Fit an instrument's bow-force band (the performer's force mapping) to
+    /// simulated Schelleng maps of all its strings.
+    Calibrate {
+        #[arg(long, default_value_t = 48_000.0)]
+        sample_rate: f32,
     },
     /// Compare the model with a measured Schelleng diagram (mdw cello string A T1),
     /// point by point. Fetch the data with scripts/fetch-reference-data.sh.
@@ -117,6 +149,12 @@ enum Command {
         /// Override the torsional quality factor.
         #[arg(long)]
         torsion_q: Option<f32>,
+        /// Make the bow hair compliant with this stiffness (N/m).
+        #[arg(long, requires = "hair_damping")]
+        hair_stiffness: Option<f32>,
+        /// Bow hair damping (kg/s), with --hair-stiffness.
+        #[arg(long, requires = "hair_stiffness")]
+        hair_damping: Option<f32>,
         /// Write every point's parameters and both regimes to this CSV file.
         #[arg(long)]
         csv: Option<PathBuf>,
@@ -125,7 +163,9 @@ enum Command {
 
 #[derive(Args)]
 struct Common {
-    /// Violin string: G, D, A or E.
+    #[arg(long, default_value = "violin")]
+    instrument: Family,
+    /// Open string (violin: G D A E; cello: C G D A).
     #[arg(long, default_value = "A")]
     string: String,
     /// Semitones above the open string (stopped note).
@@ -138,6 +178,21 @@ struct Common {
     loss_lowpass: Option<f32>,
     #[arg(long, short)]
     out: PathBuf,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum Family {
+    Violin,
+    Cello,
+}
+
+/// An open string and the bow hair it is played with.
+fn open_string(family: Family, name: &str) -> Result<(StringSpec, Option<BowHair>), String> {
+    let found = match family {
+        Family::Violin => violin::string(name).map(|s| (*s, None)),
+        Family::Cello => cello::string_named(name).map(|s| (*s, cello::INSTRUMENT.hair)),
+    };
+    found.ok_or_else(|| format!("unknown string {name}"))
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -196,6 +251,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Command::Schelleng {
+            instrument,
             string,
             sample_rate,
             speed,
@@ -203,12 +259,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cols,
             loss_lowpass,
         } => {
-            let spec = with_loss(
-                violin::string(&string).ok_or("unknown string")?,
-                loss_lowpass,
-            );
-            schelleng(&spec, sample_rate, speed, rows, cols);
+            let (spec, hair) = open_string(instrument, &string)?;
+            let spec = with_loss(&spec, loss_lowpass);
+            schelleng(&spec, hair, sample_rate, speed, rows, cols);
         }
+        Command::Play {
+            score,
+            sample_rate,
+            tail,
+            pressure,
+            string_bias,
+            out,
+            bridge_out,
+        } => {
+            let text = match score.as_str() {
+                "scale" => include_str!("../scores/scale.score").to_string(),
+                "legato" => include_str!("../scores/legato.score").to_string(),
+                "staccato" => include_str!("../scores/staccato.score").to_string(),
+                "phrase" => include_str!("../scores/phrase.score").to_string(),
+                path => std::fs::read_to_string(path)?,
+            };
+            let events = score::parse(&text)?;
+            let mut settings = PerformerSettings {
+                string_bias,
+                ..PerformerSettings::default()
+            };
+            if let Some(p) = pressure {
+                settings.pressure = p;
+            }
+            play(
+                &events,
+                settings,
+                sample_rate,
+                tail,
+                &out,
+                bridge_out.as_deref(),
+            )?;
+        }
+        Command::Calibrate { sample_rate } => calibrate::run(&cello::INSTRUMENT, sample_rate),
         Command::Measured {
             data,
             loss_lowpass,
@@ -222,6 +310,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             torsion_impedance,
             torsion_ratio,
             torsion_q,
+            hair_stiffness,
+            hair_damping,
             csv,
         } => {
             let base = reference::MONOCHORD_CELLO_G_A_T1;
@@ -253,9 +343,89 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 mu_d: mu_d.unwrap_or(d.mu_d),
                 v0: v0.unwrap_or(d.v0),
             };
-            measured::run(&data, &spec, friction, csv.as_deref())?;
+            let hair = hair_stiffness
+                .zip(hair_damping)
+                .map(|(stiffness, damping)| BowHair { stiffness, damping });
+            measured::run(&data, &spec, friction, hair, csv.as_deref())?;
         }
     }
+    Ok(())
+}
+
+fn play(
+    events: &[(f32, score::Event)],
+    settings: PerformerSettings,
+    fs: f32,
+    tail: f32,
+    out: &Path,
+    bridge_out: Option<&Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use score::Event;
+    let mut performer = Performer::new(&cello::INSTRUMENT, settings, fs);
+    let end = events.last().map_or(0.0, |e| e.0) + tail;
+    let total = (end * fs) as usize;
+    let mut output = Vec::with_capacity(total);
+    let mut bridge = Vec::with_capacity(total);
+    let mut next = 0;
+    let started = std::time::Instant::now();
+    for i in 0..total {
+        while next < events.len() && events[next].0 * fs <= i as f32 {
+            match events[next].1 {
+                Event::On(note, velocity) => performer.note_on(note, velocity),
+                Event::Off(note) => performer.note_off(note),
+                Event::Dynamics(v) => performer.set_dynamics(v),
+                Event::Expression(v) => performer.set_expression(v),
+                Event::Vibrato(v) => performer.set_vibrato(v),
+                Event::Pressure(v) => performer.set_pressure(v),
+                Event::Articulation(a) => performer.set_articulation(a),
+            }
+            next += 1;
+        }
+        let frame = performer.process_frame();
+        output.push(frame.output);
+        bridge.push(frame.bridge_force);
+    }
+    let elapsed = started.elapsed().as_secs_f32();
+    println!(
+        "rendered {end:.1} s in {elapsed:.2} s ({:.1}% of real time)",
+        100.0 * elapsed / end
+    );
+    let peak = output.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+    println!("output peak {peak:.3} (not normalized)");
+    write_samples(out, &output, fs, 1.0)?;
+    if let Some(path) = bridge_out {
+        write_samples(
+            path,
+            &bridge,
+            fs,
+            0.891 / bridge.iter().fold(1e-9f32, |m, v| m.max(v.abs())),
+        )?;
+    }
+    Ok(())
+}
+
+/// Writes 32-bit float mono samples times `gain`.
+fn write_samples(
+    path: &Path,
+    samples: &[f32],
+    fs: f32,
+    gain: f32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: fs as u32,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut w = hound::WavWriter::create(path, spec)?;
+    for &s in samples {
+        w.write_sample(s * gain)?;
+    }
+    w.finalize()?;
+    println!("wrote {}", path.display());
     Ok(())
 }
 
@@ -269,9 +439,10 @@ fn with_loss(spec: &StringSpec, loss_lowpass: Option<f32>) -> StringSpec {
 }
 
 fn build(common: &Common) -> Result<(StringSpec, BowedString), Box<dyn std::error::Error>> {
-    let spec = violin::string(&common.string).ok_or("unknown string (use G, D, A or E)")?;
-    let spec = with_loss(spec, common.loss_lowpass);
+    let (spec, hair) = open_string(common.instrument, &common.string)?;
+    let spec = with_loss(&spec, common.loss_lowpass);
     let mut string = BowedString::new(&spec, FrictionParams::default(), common.sample_rate, 50.0);
+    string.set_bow_hair(hair);
     string.set_frequency(spec.frequency * 2f32.powf(common.semitones / 12.0));
     Ok((spec, string))
 }
@@ -328,8 +499,16 @@ fn render_note(
         .collect()
 }
 
-fn schelleng(spec: &StringSpec, fs: f32, speed: f32, rows: usize, cols: usize) {
+fn schelleng(
+    spec: &StringSpec,
+    hair: Option<BowHair>,
+    fs: f32,
+    speed: f32,
+    rows: usize,
+    cols: usize,
+) {
     let mut string = BowedString::new(spec, FrictionParams::default(), fs, 50.0);
+    string.set_bow_hair(hair);
     let period = fs / spec.frequency;
     let betas: Vec<f32> = (0..cols)
         .map(|c| log_lerp(0.04, 0.25, c as f32 / (cols - 1) as f32))

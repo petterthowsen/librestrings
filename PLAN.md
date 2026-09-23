@@ -37,11 +37,12 @@ crates/
       bow.rs               # friction curve + junction solver + stick/slip state
       string.rs            # one DWG string (bridge seg + nut seg + bow junction)
       body.rs              # biquad-bank body resonator
-      instrument.rs        # N strings + string selection + fingering + body
-      performer.rs         # gesture layer: articulations, bow strokes, vibrato
+      instrument.rs        # 4 strings + body; calibrated bow-force band
+      performer.rs         # gesture layer: string choice, fingering, articulations, bow strokes, vibrato
       section.rs           # (later) N players + humanization + stage placement
-      presets/             # per-instrument physical data (violin, viola, cello, bass)
-  strings-render/          # CLI: gesture script / MIDI file -> WAV (+ CSV of internal signals)
+      presets.rs           # per-instrument physical data (violin, cello; later viola, bass)
+  strings-render/          # CLI: scores -> WAV (+ CSV of internal signals), playability maps
+    scores/                # example scores for `play`
   strings-plugin/          # nih-plug wrapper, CLAP export, param + MIDI mapping
 docs/
 PLAN.md
@@ -119,7 +120,8 @@ F     = F_b · μ(Δv)
   - B1− and B1+ at about 450–550 Hz
   - the "bridge hill" at about 2–3 kHz
   - plus a broadband tail
-- Cello first: the same mode families sit lower. Source published cello mode frequencies before Phase 2.
+- Cello first: the same mode families sit lower. Phase 2 uses 97 Hz (A0), 173 Hz (the main body resonance, at the wolf note of that cello), 200, 209 and 281 Hz from Zhang, Woodhouse & Stoppani (JASA 2016), T1 at 140 Hz from Bynum & Rossing, and bridge hills at about 1.3 and 2.2 kHz. Damping and levels are estimates.
+- **Above the listed modes** a seeded bank of 48 modes (300 Hz–6 kHz, random frequencies, signs and levels around a smooth envelope with the bridge hills) stands in for the dense modal region, following Woodhouse's statistical view. The seed makes the body reproducible, and sections can vary it per player.
 - **Alternative:** partitioned convolution with a measured bridge-admittance or radiation IR. It is more realistic, but licensing and data sourcing are open (see caveats).
 - For sections, each player gets small random variations of mode frequencies and Q, so the section doesn't sound like one instrument copied 12 times.
 
@@ -209,6 +211,7 @@ F_b   = F_min^(1−p) · F_max^p
 - `R` has to be derived from the bridge loss filter. Calibrate empirically in the renderer.
 - **Measured in Phase 1:** the simulated upper edge follows `F_max` closely, but the lower edge sits about 5–10× above the formula's `F_min` (same 1/β² slope). The dynamics mapping should anchor on `F_max` or on a calibrated lower edge, not on the raw `F_min`.
 - **Against a real string** (see "Measured comparison" under Phase 0–1 notes): the measured lower edge follows roughly 1/β (fitted exponents −0.9 to −1.3), not 1/β². This is in line with Schoonderwaldt et al. (2008) and Mansour et al. (2017). A calibrated lower edge should be fitted to measurements, not derived from the formula.
+- **As built (Phase 2):** `instrument::ForceLimits` stores both edges per string as `F = c·Z·v_b·β^α`, fitted by `strings-render calibrate` to the model's own simulated maps (the performer needs forces where the *model* plays Helmholtz). The measured lower edge is lower still; see "Phase 2 notes". The performer uses p = 0.65, tilted to 0.8 at pp and 0.5 at ff.
 
 ### 4.3 Articulations (initial set)
 
@@ -265,7 +268,7 @@ A section is **N independent players**. Each player is a full `Instrument` plus 
 
 ## 6. Real-time and engineering rules
 
-- No allocation, locks or I/O in `process()`. Enforce it with [`assert_no_alloc`](https://crates.io/crates/assert_no_alloc) in debug builds.
+- No allocation, locks or I/O in `process()`. Checked by `tests/realtime.rs`, a counting global allocator around a scripted performance (Phase 2); [`assert_no_alloc`](https://crates.io/crates/assert_no_alloc) remains an option for the plugin's audio thread.
 - Allocate all delay lines at `initialize()` for the lowest note at the highest supported sample rate.
 - Handle denormals: flush-to-zero, or add a tiny DC or noise offset in the feedback loops.
 - Smooth every control that reaches the physics. A jump in `F_b` or `v_b` is audible and can destabilize the model.
@@ -293,7 +296,7 @@ Each phase ends with something audible.
 | **0. Scaffold** ✅ | Cargo workspace, `strings-dsp`, `strings-render` CLI writing WAV (`hound`) plus CSV of internal signals | `cargo test` passes; the renderer writes a plucked (free) string to WAV |
 | **1. One bowed string** ✅ | DWG string, bow junction and hysteresis, bridge loss, tuning compensation | A violin A string produces stable Helmholtz motion; the Schelleng sweep behaves as expected; tuning within ±1 cent |
 | **1b. Measured string physics** ⚠️ | Bending stiffness, torsional waves (3.6) and measured frequency-dependent damping, checked against the measured cello G string with `strings-render measured` | Simulated Helmholtz region close to the measured one at all three bow speeds (area within about ±30%, Helmholtz present at small β); physics tests still pass. **Not met:** all three are implemented and verified. The damping gets closest, at about half the measured area; stiffness and torsion still shrink it. See "Phase 1b results" |
-| **2. Solo cello (offline)** | Cello presets for C2 G2 D3 A3 (G from the measured string; the others from published string data), 4 strings, string selection, fingering, legato, vibrato, biquad body, performer layer with the 4 articulations and its force mapping calibrated on the measured limits (4.2), bow-hair damping so a bow stopped on the string silences it quickly | Scripted phrases (scales, legato lines, staccato runs) sound like a cello, not a synth |
+| **2. Solo cello (offline)** ⚠️ | Cello presets for C2 G2 D3 A3 (G from the measured string; the others from published string data), 4 strings, string selection, fingering, legato, vibrato, biquad body, performer layer with the 4 articulations and its force mapping calibrated on the measured limits (4.2), bow-hair damping so a bow stopped on the string silences it quickly | Scripted phrases (scales, legato lines, staccato runs) sound like a cello, not a synth. **Built and tested objectively; not yet judged by ear.** See "Phase 2 notes" |
 | **3. CLAP plugin** | nih-plug wrapper, CLAP-only export, CC1/CC11/vibrato mapping, keyswitches, parameters, real-time safety | Playable in Bitwig and Reaper; no allocations in the audio thread; CPU cost measured |
 | **4. Realism pass** | Thermal friction, finger damping at note changes, bow noise, oversampling decision, bouncing-bow spiccato, sympathetic string coupling | A/B against recordings; clear improvement on attacks and legato transitions (the mdw attack data gives a measured target for attacks) |
 | **5. More instruments** | Violin, viola and double bass presets and bodies | Each instrument is convincing across its range |
@@ -374,6 +377,37 @@ Helmholtz points per bow speed (0.05 / 0.1 / 0.2 m/s; measured 701 / 700 / 392).
   - `--damping-exponent`;
   - `--bending-stiffness`, `--no-torsion`, `--torsion-impedance`, `--torsion-ratio` and `--torsion-q`.
 
+### Phase 2 notes: solo cello (September 2026)
+
+Run `cargo run --release -p strings-render -- play <scale|legato|staccato|phrase|file.score> -o out/x.wav` (score format in `strings-render/src/score.rs`, examples in `crates/strings-render/scores/`). The whole instrument (4 strings, body, performer) runs at about 2.4% of real time on one core at 48 kHz, measured by the renderer (no `criterion` benchmark yet).
+
+**Cello presets** (`presets::cello`)
+- G is the measured string A T1. C, D and A take Larsen Standard tensions (700 mm) and share the G's bending stiffness, damping curve and torsion estimates (f_t = 5.5·f0, Z_t = 3.3·Z, Q 50).
+- The damping floor is raised by 7e-4 for energy lost into the body (the monochord has rigid terminations): the open G decays in about 11 s instead of 39 s. An estimate.
+
+**Bow hair** (`string::BowHair`, off by default, on in the cello preset)
+- A spring and dashpot (Kelvin–Voigt) between the bow stick and the contact. It keeps the closed-form junction solve and the Friedlander hysteresis: the bow sees `v_h + k·x/R` and an admittance raised by `1/R`; the deflection is integrated with backward Euler.
+- **It doesn't silence a stopped bow.** With plausible values (k = 10⁴–10⁵ N/m, R = 3–30 kg/s) the spring reactance k/ω dominates at the string's frequencies, so little energy reaches the dashpot; soft hair lets the string ring as if the bow were lifted. More fundamentally, a point damper near the bridge barely reaches the low modes.
+- **What stops a note is the stroke:** if the force eases with the bow speed as the bow decelerates, the string stays in the Helmholtz band and its amplitude follows the bow down (−30 to −55 dB within 100 ms of the stop, against a few dB with the force held). The performer does this (force band evaluated at the current speed, with a 15% floor).
+- **It enlarges the Helmholtz region** of the measured string: `measured --hair-stiffness 1000 --hair-damping 3` gives 304 / 317 / 181 Helmholtz points (0.05 / 0.1 / 0.2 m/s), against 119 / 154 / 107 with a rigid bow (measured 701 / 700 / 392), and 274 at β < 0.05 (261 agreeing with the measurement; rigid bow 127, measured 529); H/not-H agreement 79 / 76 / 85%. It plateaus for k = 300–1000 N/m at R ≈ 3 kg/s. R is close to the wave impedance of the hairs in contact; k is softer than the hair ribbon alone and stands for the whole contact. Both are fitted, not measured.
+
+**Force calibration** (`strings-render calibrate`, about 6 s)
+- Upper edges follow β^−0.5 (c = 8.0–11.4), not Schelleng's β^−1; lower edges β^−0.9 (C) to β^−1.6 (A). For the G at β = 0.1, v_b = 0.1 m/s the band is 1.0–3.1 N, the measured one 0.31–1.89 N.
+- Band positions 0.5–0.8 give Helmholtz motion in 92–97% of checked open-string cells.
+
+**Pitch of the bowed string**
+- The model's bowed pitch drifts from the string's tuning: it flattens with force (−5 to −15 cents at p 0.65 for β < 0.12) and high stopped notes sharpen at low force (stiffness: the Helmholtz pitch locks above f0).
+- **Flat zone at β ≈ 0.124–0.156** (1/β ≈ 6.4–8.1) on the cello strings with hair and torsion: up to 45 cents flat, still one slip per period. It needs torsion; hair alone has a raucous zone at β ≈ 0.09–0.116 instead; the torsional Q (8–50) doesn't change it. The dynamics mapping keeps β at 0.115–0.07.
+- **Intonation by ear:** the performer measures the period between slips on the bowed string and corrects the finger (time constant 0.15 s), as a player does. Stopped notes end within ±5 cents; open strings can't be corrected and stay 6–14 cents flat at mf–ff.
+
+**Performer** (`performer.rs`)
+- Dynamics drives bow speed (0.04–0.5 m/s, log) and β (0.115–0.07); force is the band position times the band at the current speed.
+- Attacks: the force leads the speed (the full band force from the start) and the speed rises as a quarter sine (finite initial acceleration). Quiet attacks only start cleanly high in the band and slowly, so the pressure tilts up and the attack lengthens at low dynamics. Every tested note (C2–E5, pp–ff) reaches Helmholtz motion within 35–100 ms.
+- Détaché alternates bow direction. Overlapping notes play legato: a finger glide on the same string (12–140 ms by velocity), or a string crossing that moves the force over 30 ms. The string with the lowest position is chosen, with 5 semitones of hysteresis in legato and an optional bias toward lower strings.
+- Staccato grips, bites (extra pressure for 30 ms), accelerates, and stops on the string: 25–48 dB down 100 ms after the stop. Spiccato is a sin²-shaped touch (30–65 ms) at full speed and leaves the string ringing.
+- Vibrato: finger modulation with delayed onset, slow random drift of rate and depth, none on open strings.
+- Pitch and bow position update at 3 kHz; the bow every sample. A counting-allocator test checks that playing never allocates.
+
 ## 8. Alternatives to explore later
 
 | Technique | What it buys | Why not now |
@@ -383,7 +417,7 @@ Helmholtz points per bow speed (0.05 / 0.1 / 0.2 m/s; measured 701 / 700 / 392).
 | **Torsional waves** | A second waveguide per string, coupled at the bow. Known to affect the stick/slip trigger and attack quality (Woodhouse) | Implemented in Phase 1b (3.6); it doesn't help until the damping is realistic |
 | **Thermal friction model** (Woodhouse) | Friction depends on the rosin's temperature, giving better attacks and hysteresis | Planned for Phase 4. Needs its own solver work |
 | **LuGre / elasto-plastic friction** | Micro-slip, dynamic hysteresis, smooth transitions | Multi-state, so there is no closed-form solve and it needs iteration; high CPU cost for sections |
-| **Finite bow width / 3D bow-hair ribbon** | A realistic contact patch, hair compliance, the torsional interaction of the hair | Beyond real-time today. A finite width (a few contact points) is a cheaper approximation worth trying |
+| **Finite bow width / 3D bow-hair ribbon** | A realistic contact patch, hair compliance, the torsional interaction of the hair | Beyond real-time today. A lumped hair compliance is in since Phase 2 (`BowHair`); a finite width (a few contact points) is a cheaper next step worth trying |
 | **Two transverse polarizations** | Realistic decay, beating, fingerboard contact | Doubles the cost. Mostly matters for pizzicato and decays |
 | **Port-Hamiltonian formulation** | Passivity guaranteed by construction; robust under fast parameter changes | A heavier framework. Adopt only if stability problems appear with the DWG |
 | **Lambert-W bow solver** | Closed-form solve for the *exponential* friction curve | The hyperbolic curve gives a quadratic, which is simpler. Revisit only if we switch curves |
@@ -401,7 +435,7 @@ Helmholtz points per bow speed (0.05 / 0.1 / 0.2 m/s; measured 701 / 700 / 392).
 - **Stick/slip hysteresis bugs** are easy to write and hard to hear in isolation. Test them explicitly (section 6).
 - **Aliasing** from stick/slip corners at high bow force. Decide on oversampling by measurement.
 - **High-frequency loss shapes playability.** With too little loss in the bridge filter, the sharp Helmholtz corner fragments the slip phase into extra slips, even well inside the Schelleng range. Loss pole 0.5 (at 48 kHz) gives a clean Helmholtz band without oversampling; brightness must come back through the body, not by thinning the loss.
-- **A rigidly sticking bow traps energy.** With the bow stopped on the string, the nut-side segment only decays at the string's own rate (about −19 dB after 200 ms on the A string). Real staccato stops are faster because the bow hair is compliant and lossy; this needs modeling in Phase 2.
+- **A rigidly sticking bow traps energy.** With the bow stopped on the string, the nut-side segment only decays at the string's own rate (about −19 dB after 200 ms on the A string). Bow-hair compliance doesn't change that much (Phase 2 notes); a stop is clean when the force eases with the bow speed, so the Helmholtz motion follows the bow down.
 - **Body data.** Sourcing measured body IRs (cello first) under a usable license is unsolved. The biquad bank tuned from published mode frequencies is the fallback.
 - **CLAP-only host coverage.** Hosts without CLAP (for example Logic, which is AU only, and Pro Tools, which is AAX) can't load it. nih-plug can also export VST3, but its VST3 bindings are GPLv3, which is a licensing decision. CLAP-only keeps the licensing simple (nih-plug itself is ISC).
 - **nih-plug maintenance.** Check the project's current activity before committing to it. `clack` is the fallback.

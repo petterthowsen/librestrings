@@ -1,0 +1,19 @@
+# A short mixed phrase: legato opening, détaché, staccato close.
+tempo 72
+0 dyn 0.45
+0 vib 0.6
+0 note A2 1.05 60
+1 note E3 1.05 60
+2 note C#4 1.55 75
+2 dyn 0.65
+3.5 note B3 0.55 75
+4 note A3 2 70
+4 dyn 0.45
+6 note F#3 0.9 80
+7 note D3 0.9 80
+8 note E3 0.9 80
+9 art staccato
+9 note A2 0.3 100
+9.5 note C#3 0.3 90
+10 note E3 0.3 90
+10.5 note A3 0.3 110

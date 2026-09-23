@@ -29,3 +29,13 @@ Papers the model takes numbers or methods from, and what was used from each. Dat
 - A. Lampis, V. Chatziioannou, G. Scavone, "Experimental analysis of cello string types", Proc. Mtgs. Acoust. 58, 035013 (2025), [doi:10.1121/2.0002111](https://doi.org/10.1121/2.0002111). CC BY 4.0, kept in [papers/](papers/).
   - Table 1 gives T, μ, Z, d and EI for the reference string.
   - Fig. 1 gives the damping per mode. The A T1 values digitized from it are in `presets::reference`.
+
+## Cello body and strings (Phase 2)
+
+- **A. Zhang, J. Woodhouse, G. Stoppani, "Motion of the cello bridge", J. Acoust. Soc. Am. 140(4), 2636 (2016).** DOI [10.1121/1.4964609](https://doi.org/10.1121/1.4964609). [PDF (Cambridge repository)](https://api.repository.cam.ac.uk/server/api/core/bitstreams/197ed526-2c6c-4c8d-9045-cf35c404dc87/content).
+  - Modal analysis of three cellos' bridges: resonances at 97 Hz, 173 Hz (the wolf note of cello 1), 200, 209 and 281 Hz; in-situ bridge resonance at about 1.2, 1.5 and 1.35 kHz on the three cellos.
+  - Used for: the listed modes and the first bridge hill of `presets::cello::BODY`.
+- **E. Bynum, T. D. Rossing, "Holographic studies of cello vibrations"** (Proc. Institute of Acoustics) and Rossing's summary for the ASA ([Modal analysis of violins and cellos](https://acoustics.org/pressroom/httpdocs/135th/rossing.htm)): A0 about 100 Hz, T1 about 140 Hz, C3 about 180 Hz. Used for: T1 at 140 Hz.
+- **J. Woodhouse, [euphonics.org](https://euphonics.org/5-3-signature-modes-and-formants/) §5.3:** cello bridge admittances show two hills, around 1 kHz and 2–2.3 kHz. Used for: the second bridge hill (2.2 kHz). The statistical treatment of the dense modes follows the same book.
+- **Cello string tensions:** [Aitchison & Mnatzaganian tension chart](https://www.aitchisoncellos.com/string-tensions-charts/), Larsen Standard at 700 mm: A 39.3 lb, D 29.7 lb, G 27.6 lb, C 30.1 lb. Used for: the C, D and A strings of `presets::cello` (the G is the measured string).
+

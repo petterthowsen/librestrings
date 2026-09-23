@@ -6,13 +6,19 @@
 //! Units are SI throughout: velocities in m/s, forces in N, impedances in kg/s.
 
 pub mod analysis;
+pub mod body;
 pub mod bow;
 pub mod delay;
 pub mod filters;
+pub mod instrument;
 pub mod loss;
+pub mod performer;
 pub mod presets;
 pub mod string;
 
+pub use body::{Body, BodySpec};
 pub use bow::{BowJunction, ContactState, FrictionParams, schelleng_limits};
+pub use instrument::{ForceLimits, Instrument, InstrumentFrame, InstrumentSpec};
 pub use loss::{DampingCurve, Loss};
-pub use string::{BowInput, BowedString, StringFrame, StringSpec, TorsionSpec};
+pub use performer::{Articulation, Performer, PerformerFrame, PerformerSettings};
+pub use string::{BowHair, BowInput, BowedString, StringFrame, StringSpec, TorsionSpec};

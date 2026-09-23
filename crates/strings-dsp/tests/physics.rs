@@ -5,7 +5,7 @@ use strings_dsp::analysis::{
     Regime, bow_steady, cents, classify, classify_bridge_force, measure_frequency, measure_partial,
     partial_amplitude, slip_stats,
 };
-use strings_dsp::presets::{reference, violin};
+use strings_dsp::presets::{cello, reference, violin};
 use strings_dsp::{BowInput, BowedString, FrictionParams, Loss, StringSpec, schelleng_limits};
 
 const FS: f32 = 48_000.0;
@@ -283,4 +283,85 @@ fn bridge_force_classifier_on_ideal_signals() {
     assert_eq!(classify_bridge_force(&double, period), Regime::MultiSlip);
     assert_eq!(classify_bridge_force(&sine, period), Regime::NoSlip);
     assert_eq!(classify_bridge_force(&noise, period), Regime::Raucous);
+}
+
+/// Cello strings (measured loss, stiffness and torsion) stay in tune when
+/// stopped, from the open string up to two octaves.
+#[test]
+fn cello_strings_are_in_tune() {
+    for fs in [44_100.0, 96_000.0] {
+        for spec in &cello::STRINGS {
+            for semitones in [0.0, 5.0, 12.0, 24.0] {
+                let f0 = spec.frequency * 2f32.powf(semitones / 12.0);
+                let mut s = BowedString::new(spec, FrictionParams::default(), fs, spec.frequency);
+                s.set_frequency(f0);
+                s.set_bow_position(0.1);
+                let out = pluck(&mut s, fs, 1.0);
+                let err = cents(measure_frequency(&out[(0.1 * fs) as usize..], fs, f0), f0);
+                assert!(
+                    err.abs() < 1.0,
+                    "{} +{semitones} @ {fs}: {err:.2} cents",
+                    spec.name
+                );
+            }
+        }
+    }
+}
+
+/// Every cello string, with the preset's bow hair, gives Helmholtz motion in
+/// the middle of its calibrated force band.
+#[test]
+fn cello_bowing_produces_helmholtz_motion() {
+    let instrument = &cello::INSTRUMENT;
+    let (beta, speed) = (0.1, 0.1);
+    for (spec, limits) in instrument.strings.iter().zip(&instrument.force_limits) {
+        let mut s = BowedString::new(spec, instrument.friction, FS, spec.frequency);
+        s.set_bow_hair(instrument.hair);
+        s.set_bow_position(beta);
+        let force = limits.force(spec.impedance(), speed, beta, 0.65);
+        let frames = bow_steady(&mut s, FS, speed, force, 1.5, 0.05);
+        let frames = &frames[(0.5 * FS) as usize..];
+        let period = FS / spec.frequency;
+        assert_eq!(classify(frames, period), Regime::Helmholtz, "{}", spec.name);
+        let stats = slip_stats(frames, period);
+        assert!(
+            (stats.slips_per_period - 1.0).abs() < 0.05,
+            "{}: {stats:?}",
+            spec.name
+        );
+        let bridge: Vec<f32> = frames.iter().map(|f| f.bridge_force).collect();
+        let pitch = cents(
+            measure_frequency(&bridge, FS, spec.frequency),
+            spec.frequency,
+        );
+        assert!(pitch.abs() < 15.0, "{}: {pitch:.1} cents", spec.name);
+    }
+}
+
+/// Compliant bow hair is passive: a bow held still on a plucked string only
+/// takes energy out.
+#[test]
+fn bow_hair_is_passive() {
+    let spec = &cello::STRINGS[1];
+    let mut s = BowedString::new(spec, FrictionParams::default(), FS, spec.frequency);
+    s.set_bow_hair(cello::INSTRUMENT.hair);
+    s.set_bow_position(0.1);
+    let pulse = (0.0005 * FS) as usize;
+    let out: Vec<f32> = (0..(1.0 * FS) as usize)
+        .map(|i| {
+            let bow = BowInput {
+                velocity: 0.0,
+                force: if i < pulse { 0.0 } else { 0.5 },
+            };
+            s.process(bow, if i < pulse { 0.5 } else { 0.0 })
+                .bridge_force
+        })
+        .collect();
+    let block = (0.1 * FS) as usize;
+    let energy: Vec<f32> = out
+        .chunks(block)
+        .map(|c| c.iter().map(|x| x * x).sum())
+        .collect();
+    assert!(energy.iter().all(|e| e.is_finite()));
+    assert!(energy.windows(2).all(|w| w[1] <= w[0]), "{energy:?}");
 }

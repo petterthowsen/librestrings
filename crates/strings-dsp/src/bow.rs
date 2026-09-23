@@ -44,9 +44,10 @@ impl FrictionParams {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ContactState {
     /// Bow not touching the string.
+    #[default]
     Off,
     /// String moves with the bow.
     Stick,

@@ -1,0 +1,22 @@
+# A slow legato line: overlapping notes slur without a new bow stroke.
+# Swells with the dynamics control; vibrato grows on the long notes.
+tempo 60
+0 dyn 0.35
+0 vib 0.7
+0 note G2 1.05 60
+1 note D3 1.05 60
+2 note B3 2.05 70
+2 dyn 0.55
+4 note A3 0.55 80
+4.5 note G3 0.55 80
+5 note F#3 0.55 80
+5.5 note G3 0.55 80
+6 note E3 2.05 60
+6 dyn 0.4
+8 note D3 1.05 50
+9 note C3 1.05 50
+10 note B2 0.55 60
+10.5 note C3 0.55 60
+11 note D3 3 70
+11.5 dyn 0.6
+13 dyn 0.3

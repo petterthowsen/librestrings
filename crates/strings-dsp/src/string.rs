@@ -24,8 +24,13 @@
 //! side of the bow. They couple to the transverse waves only at the bow: the
 //! friction force drives both, and the bow sees the sum of their velocities at
 //! the string's surface. The bridge force (the output) is transverse only.
+//!
+//! Bow hair, when enabled, is a spring and dashpot (Kelvin–Voigt) between the
+//! bow stick and the contact point. The hairs at the contact move with the
+//! string while sticking, so a bow stopped on the string no longer clamps it
+//! rigidly: the dashpot absorbs the waves that would otherwise stay trapped.
 
-use crate::bow::{BowJunction, ContactState, FrictionParams};
+use crate::bow::{BowJunction, ContactState, FrictionParams, JunctionResult};
 use crate::delay::DelayLine;
 use crate::filters::DispersionAllpass;
 use crate::loss::{Loss, LossDesign, LossFilter};
@@ -80,6 +85,20 @@ impl StringSpec {
     }
 }
 
+/// Compliance of the bow hair in the bowing direction, at the contact point.
+///
+/// The hair ribbon behaves like a spring at low frequencies (its longitudinal
+/// stiffness to frog and tip) and like a resistance at high frequencies (the
+/// wave impedance of the hairs, whose waves are strongly damped). A spring in
+/// parallel with a dashpot has both asymptotes.
+#[derive(Clone, Copy, Debug)]
+pub struct BowHair {
+    /// Spring stiffness (N/m).
+    pub stiffness: f32,
+    /// Dashpot resistance (kg/s).
+    pub damping: f32,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BowInput {
     /// Bow velocity (m/s). The sign sets the bow direction.
@@ -88,7 +107,7 @@ pub struct BowInput {
     pub force: f32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct StringFrame {
     /// Transverse force the string exerts on the bridge (N): the audio output.
     pub bridge_force: f32,
@@ -119,6 +138,9 @@ pub struct BowedString {
     nut_gain: f32,
     bow: BowJunction,
     torsion: Option<Torsion>,
+    hair: Option<BowHair>,
+    /// Deflection of the hair at the contact point relative to the bow stick (m).
+    hair_deflection: f32,
 
     open_frequency: f32,
     frequency: f32,
@@ -232,6 +254,8 @@ impl BowedString {
             nut_gain: 1.0,
             bow: BowJunction::new(friction),
             torsion,
+            hair: None,
+            hair_deflection: 0.0,
             open_frequency: spec.frequency,
             frequency: spec.frequency,
             beta: 0.1,
@@ -283,7 +307,14 @@ impl BowedString {
         self.update_delays();
     }
 
+    /// Makes the bow hair compliant; `None` (the default) grips rigidly.
+    pub fn set_bow_hair(&mut self, hair: Option<BowHair>) {
+        self.hair = hair;
+        self.hair_deflection = 0.0;
+    }
+
     pub fn reset(&mut self) {
+        self.hair_deflection = 0.0;
         self.nut.clear();
         self.to_bridge.clear();
         self.from_bridge.clear();
@@ -311,17 +342,28 @@ impl BowedString {
 
         let v_h = from_nut + from_bridge + external_force / (2.0 * z);
         let j = match &mut self.torsion {
-            None => self.bow.solve(v_h, bow.velocity, bow.force, z),
+            None => Self::solve_bow(
+                &mut self.bow,
+                self.hair,
+                &mut self.hair_deflection,
+                self.sample_rate,
+                v_h,
+                bow,
+                z,
+            ),
             Some(t) => {
                 let from_t_nut = -t.nut_gain * t.nut.read(t.nut_delay);
                 let from_t_bridge = -t.bridge_gain * t.bridge.read(t.bridge_delay);
                 // The bow sees the transverse and torsional impedances in parallel.
                 let z_t = t.impedance;
                 let z_bow = z * z_t / (z + z_t);
-                let j = self.bow.solve(
+                let j = Self::solve_bow(
+                    &mut self.bow,
+                    self.hair,
+                    &mut self.hair_deflection,
+                    self.sample_rate,
                     v_h + from_t_nut + from_t_bridge,
-                    bow.velocity,
-                    bow.force,
+                    bow,
                     z_bow,
                 );
                 let half_t = j.force / (2.0 * z_t);
@@ -346,6 +388,42 @@ impl BowedString {
             bow_point_velocity: j.string_velocity,
             friction_force: j.force,
             state: j.state,
+        }
+    }
+
+    /// Solves the bow junction for a string of impedance `z` whose incoming waves
+    /// alone would move the contact point at `v_h`.
+    ///
+    /// With compliant hair the hairs at the contact move at `v_b + ẋ`, where `x`
+    /// is their deflection and `F = −(k·x + R·ẋ)` the force they pass to the
+    /// string. Eliminating `ẋ` leaves the same load line as a rigid bow, with
+    /// `v_h` shifted by `k·x/R` and the string admittance `1/(2Z)` raised by
+    /// `1/R`. The deflection is integrated with backward Euler, which puts
+    /// `k/fs` in series with `R`.
+    fn solve_bow(
+        junction: &mut BowJunction,
+        hair: Option<BowHair>,
+        deflection: &mut f32,
+        sample_rate: f32,
+        v_h: f32,
+        bow: BowInput,
+        z: f32,
+    ) -> JunctionResult {
+        let Some(hair) = hair else {
+            return junction.solve(v_h, bow.velocity, bow.force, z);
+        };
+        if bow.force <= 0.0 {
+            *deflection = 0.0;
+            return junction.solve(v_h, bow.velocity, bow.force, z);
+        }
+        let r = hair.damping + hair.stiffness / sample_rate;
+        let spring = hair.stiffness * *deflection;
+        let z_eff = 0.5 / (0.5 / z + 1.0 / r);
+        let j = junction.solve(v_h + spring / r, bow.velocity, bow.force, z_eff);
+        *deflection -= (j.force + spring) / (r * sample_rate);
+        JunctionResult {
+            string_velocity: v_h + j.force / (2.0 * z),
+            ..j
         }
     }
 
