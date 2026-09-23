@@ -35,11 +35,12 @@ enum Group {
     Intonation,
     Bow,
     Body,
+    Section,
     Strings,
 }
 
 impl Group {
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 11] = [
         Self::Attack,
         Self::Sustain,
         Self::Release,
@@ -49,6 +50,7 @@ impl Group {
         Self::Intonation,
         Self::Bow,
         Self::Body,
+        Self::Section,
         Self::Strings,
     ];
 
@@ -63,6 +65,7 @@ impl Group {
             Self::Intonation => "Intonation",
             Self::Bow => "Bow",
             Self::Body => "Body",
+            Self::Section => "Section: how the players differ (not player 0)",
             Self::Strings => "Strings (refitted on release, about 30 ms)",
         }
     }
@@ -683,6 +686,59 @@ fn knobs(defaults: &Tuning) -> Vec<Knob> {
         Knob::new(Body, "Output gain", field!(live.performer.output_gain))
             .log(0.01, 0.5)
             .help("After the body, before expression and volume."),
+        Knob::new(Section, "Detune", field!(live.humanization.detune))
+            .range(0.0, 15.0)
+            .unit(" cents")
+            .help(
+                "Each player's own tuning, up to this far either way. Too much beats like a \
+                 chorus on held notes.",
+            ),
+        Knob::new(Section, "Detune drift", field!(live.humanization.detune_drift))
+            .range(0.0, 10.0)
+            .unit(" cents")
+            .help("Slow wandering around each player's tuning, up to this far either way."),
+        Knob::new(Section, "Drift time", field!(live.humanization.detune_time))
+            .log(0.5, 20.0)
+            .unit(" s")
+            .help("About how long each drift takes."),
+        Knob::new(Section, "Lateness", field!(live.humanization.delay))
+            .range(0.0, 0.08)
+            .unit(" s")
+            .help("Each player comes in up to this late. Player 0 is never late."),
+        Knob::new(Section, "Jitter", field!(live.humanization.jitter))
+            .range(0.0, 0.03)
+            .unit(" s")
+            .help("Each note, up to this much either way around the player's lateness."),
+        Knob::new(Section, "Vibrato rate", field!(live.humanization.vibrato_rate))
+            .range(0.0, 0.3)
+            .unit(" ×")
+            .help("Each player's vibrato rate, up to this fraction either way."),
+        Knob::new(Section, "Vibrato depth", field!(live.humanization.vibrato_depth))
+            .range(0.0, 0.6)
+            .unit(" ×")
+            .help("Each player's vibrato depth, up to this fraction either way."),
+        Knob::new(Section, "Dynamics", field!(live.humanization.dynamics))
+            .range(0.0, 0.2)
+            .help("Each player's dynamics offset, either way (the control runs 0–1)."),
+        Knob::new(Section, "Bow position", field!(live.humanization.beta))
+            .range(0.0, 0.3)
+            .unit(" ×")
+            .help("Each player bows up to this fraction closer to the bridge (never farther)."),
+        Knob::new(Section, "Pressure", field!(live.humanization.pressure))
+            .range(0.0, 0.3)
+            .help("Each player's pressure offset in the Helmholtz band, either way."),
+        Knob::new(Section, "Timing", field!(live.humanization.timing))
+            .range(0.0, 0.5)
+            .unit(" ×")
+            .help("Each player's attack, legato and portamento times, up to this fraction either way."),
+        Knob::new(Section, "Body frequencies", field!(live.humanization.body_frequency))
+            .range(0.0, 0.1)
+            .unit(" ×")
+            .help("Each player's body modes, moved up to this fraction either way."),
+        Knob::new(Section, "Body damping", field!(live.humanization.body_damping))
+            .range(0.0, 0.5)
+            .unit(" ×")
+            .help("Each player's body mode damping, up to this fraction either way."),
         Knob::new(Strings, "Damping floor", field!(strings.damping.floor))
             .log(1e-4, 1e-2)
             .unit(" ζ")

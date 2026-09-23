@@ -276,6 +276,9 @@ impl Engine {
     }
 
     fn set_live_tuning(&mut self, live: &LiveTuning) {
+        if *self.section.humanization() != live.humanization {
+            self.section.set_humanization(live.humanization);
+        }
         self.section.set_settings(live.performer);
         for i in 0..MAX_PLAYERS {
             let instrument = self.section.player_mut(i).instrument_mut();
@@ -732,6 +735,7 @@ mod tests {
         tuning.live.performer.tuning.attack_bite = 0.33;
         tuning.live.performer.pressure = 0.7;
         tuning.live.friction.mu_s = 0.9;
+        tuning.live.humanization.detune = 1.5;
         assert!(shared.live_tuning.push(tuning.live).is_ok());
         tuning.strings.damping.floor = 2e-3;
         let specs = tuning.strings.apply_to(&INSTRUMENT.strings);
@@ -763,6 +767,7 @@ mod tests {
             assert_eq!(instrument.spec().friction.mu_s, 0.9);
             assert_eq!(instrument.spec().strings[2].loss, specs[2].loss);
         }
+        assert_eq!(engine.section.humanization().detune, 1.5);
         // The band position of normal pressure is the tuning's.
         assert_eq!(engine.section.player(0).settings().pressure, 0.7);
         assert_eq!(shared.telemetry.strings_generation.load(Relaxed), 7);

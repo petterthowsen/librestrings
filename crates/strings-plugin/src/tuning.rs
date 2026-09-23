@@ -8,8 +8,8 @@
 //! and sends the old one back to be freed.
 
 use strings_dsp::{
-    BodyTuning, BowHair, DampingCurve, FrictionParams, InstrumentSpec, Loss, PerformerSettings,
-    StringDesign, StringSpec, TorsionSpec,
+    BodyTuning, BowHair, DampingCurve, FrictionParams, Humanization, InstrumentSpec, Loss,
+    PerformerSettings, StringDesign, StringSpec, TorsionSpec,
 };
 
 /// Everything the audio thread can take at once.
@@ -19,6 +19,8 @@ pub struct LiveTuning {
     pub friction: FrictionParams,
     pub hair: Option<BowHair>,
     pub body: BodyTuning,
+    /// How far a section's players spread around player 0.
+    pub humanization: Humanization,
 }
 
 /// The strings' parameters, shared by all four strings as in the cello preset
@@ -92,6 +94,7 @@ impl Tuning {
                 friction: spec.friction,
                 hair: spec.hair,
                 body: BodyTuning::from(&spec.body),
+                humanization: Humanization::default(),
             },
             strings: StringsTuning::from_spec(spec),
         }

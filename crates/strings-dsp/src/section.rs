@@ -72,20 +72,20 @@ pub struct Humanization {
 }
 
 impl Default for Humanization {
-    /// First guesses, to be judged by ear.
+    /// Tuned by ear in Bitwig (September 2026), from first guesses.
     fn default() -> Self {
         Self {
-            detune: 5.0,
-            detune_drift: 2.0,
-            detune_time: 3.0,
+            detune: 7.0,
+            detune_drift: 4.0,
+            detune_time: 2.0,
             delay: 0.025,
             jitter: 0.008,
-            vibrato_rate: 0.1,
+            vibrato_rate: 0.17,
             vibrato_depth: 0.25,
-            dynamics: 0.05,
+            dynamics: 0.1,
             beta: 0.12,
-            pressure: 0.08,
-            timing: 0.2,
+            pressure: 0.12,
+            timing: 0.29,
             body_frequency: 0.03,
             body_damping: 0.15,
         }
