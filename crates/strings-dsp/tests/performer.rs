@@ -163,7 +163,7 @@ fn notes_stay_helmholtz_across_wander_seeds() {
                 .map(|f| format!("seed {seed}, {f}")),
         );
     }
-    let notes = 24 * 30;
+    let notes = 24 * 3 * RANGE_NOTES.len();
     eprintln!(
         "{} failed checks over {notes} notes:\n{}",
         failures.len(),
@@ -177,14 +177,37 @@ fn check_range(p: &mut Performer, stopped_tolerance: f32) {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// Notes the range checks play: the fingering's choice across the range, then
+/// high positions on the lower strings (18–24 semitones up, "sul C" to
+/// "sul D"), where the bow must keep its distance from the bridge.
+const RANGE_NOTES: [(u8, Option<usize>); 16] = [
+    (36, None),
+    (40, None),
+    (43, None),
+    (47, None),
+    (50, None),
+    (55, None),
+    (57, None),
+    (64, None),
+    (72, None),
+    (76, None),
+    (54, Some(0)),
+    (59, Some(0)),
+    (62, Some(1)),
+    (67, Some(1)),
+    (71, Some(2)),
+    (74, Some(2)),
+];
+
 /// Plays notes across the range at three dynamics and lists every one that
 /// isn't Helmholtz, settles later than 150 ms or misses its pitch (open
 /// strings may be 20 cents flat).
 fn range_failures(p: &mut Performer, stopped_tolerance: f32) -> Vec<String> {
     let mut failures = Vec::new();
     for dynamics in [0.1, 0.5, 0.9] {
-        for note in [36u8, 40, 43, 47, 50, 55, 57, 64, 72, 76] {
+        for (note, string) in RANGE_NOTES {
             p.reset();
+            p.set_string(string);
             p.set_dynamics(dynamics);
             run(p, 0.1);
             p.note_on(note, 0.6);
@@ -204,9 +227,8 @@ fn range_failures(p: &mut Performer, stopped_tolerance: f32) -> Vec<String> {
             }
             let bridge: Vec<f32> = steady.iter().map(|f| f.frame.bridge_force).collect();
             let err = cents(measure_frequency(&bridge, FS, target), target);
-            let open = cello::STRINGS
-                .iter()
-                .any(|s| cents(s.frequency, target).abs() < 1.0);
+            let played = &cello::STRINGS[frames.last().unwrap().string];
+            let open = cents(played.frequency, target).abs() < 1.0;
             let tolerance = if open { 20.0 } else { stopped_tolerance };
             if err.abs() >= tolerance {
                 failures.push(format!("{what}: {err:.1} cents"));

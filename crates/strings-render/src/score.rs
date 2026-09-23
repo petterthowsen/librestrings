@@ -7,6 +7,7 @@
 //! 0    dyn 0.6             # dynamics 0–1 (also: vib, pressure; pressure 0.5 is normal)
 //! 0    bow on              # bow lift: on (stops on the string) | off (lifts, the default)
 //! 0    fingering mid       # nut | mid | bridge
+//! 0    string G            # play on this string where it can ("sul G"): C | G | D | A | any
 //! 0    poly on             # on: overlapping notes are double stops where they can be
 //! 0    note C3 1.0 80      # note, length in beats, velocity 1–127 (default 64)
 //! 1    on D3 90            # note on (velocity optional) ...
@@ -26,6 +27,8 @@ pub enum Event {
     Pressure(f32),
     BowLift(BowLift),
     Fingering(Fingering),
+    /// A named string (0 = C), or `None` to let the fingering choose.
+    String(Option<usize>),
     Polyphony(Polyphony),
 }
 
@@ -91,6 +94,19 @@ pub fn parse(text: &str) -> Result<Vec<(f32, Event)>, String> {
             Some("fingering") => {
                 let f = fingering(arg(2).unwrap_or("")).map_err(|e| err(&e))?;
                 events.push((time, Event::Fingering(f)));
+            }
+            Some("string") => {
+                let string = match arg(2) {
+                    Some("any") => None,
+                    Some(name) => Some(
+                        ["C", "G", "D", "A"]
+                            .iter()
+                            .position(|s| s.eq_ignore_ascii_case(name))
+                            .ok_or_else(|| err("expected C, G, D, A or any"))?,
+                    ),
+                    None => return Err(err("expected C, G, D, A or any")),
+                };
+                events.push((time, Event::String(string)));
             }
             Some("poly") => {
                 let p = match arg(2) {
@@ -173,5 +189,14 @@ mod tests {
         assert!(matches!(events[3].1, Event::On(50, _)));
         assert!(parse("0 jump C3").is_err());
         assert!(matches!(parse("0 on F#3").unwrap()[0].1, Event::On(54, _)));
+        assert!(matches!(
+            parse("0 string g").unwrap()[0].1,
+            Event::String(Some(1))
+        ));
+        assert!(matches!(
+            parse("0 string any").unwrap()[0].1,
+            Event::String(None)
+        ));
+        assert!(parse("0 string E").is_err());
     }
 }

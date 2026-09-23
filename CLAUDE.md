@@ -8,7 +8,7 @@ LibreStrings: a free, physically modeled bowed-string synthesizer in Rust: a DSP
 cargo test                                   # unit + physics tests (test profile is optimized)
 cargo clippy --all-targets                   # must be clean
 cargo fmt
-cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | ostinato | file.score
+cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | ostinato | sul | file.score
 cargo run --release -p strings-render -- bow --string A -o out/a.wav
 cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument cello for cello strings)
 cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate
@@ -54,4 +54,5 @@ Renders go in `out/` (gitignored).
 - On the measured cello string, bending stiffness and torsion (Phase 1b) *shrink* the Helmholtz region a little, through real extra slips, even with the measured damping and the constant-Q torsional loss. This is not a bug (PLAN.md "Phase 1b results" and "Constant-Q torsional loss"). Violin presets have neither and use the one-pole loss.
 - The measured loss (`Loss::Measured`) fits one filter per semitone in the constructor (about 7 ms per cello string). Don't construct strings on the audio thread; to change a playing string, fit a `StringDesign` elsewhere and swap it in with `apply_design`.
 - Bowed open strings play 6–14 cents flat, so measure a bowed note's partials at its measured pitch, not at n × the nominal f0 (which misses the upper partials and looks like a spectral cliff).
+- High on a string β rises above the dynamics mapping (up to about 0.15), because the bow keeps its distance from the bridge (`PerformerSettings::bow_distance`, scaled by string impedance). Closer, the bow hair makes high positions on the C and G strings sharp and raucous (PLAN.md "High positions: the bow's distance from the bridge"); retuning the hair instead breaks attacks and stops.
 - The finger's damping and the bow's wander move the bowed pitch of high stopped notes by a few cents; the intonation test runs with the wander off.

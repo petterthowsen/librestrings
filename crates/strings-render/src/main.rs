@@ -83,7 +83,7 @@ enum Command {
     },
     /// Play a score on the solo cello through the performer and body. SCORE is a
     /// file (format in score.rs) or a built-in: scale, legato, staccato, phrase,
-    /// doublestops, ostinato.
+    /// doublestops, ostinato, sul.
     Play {
         score: String,
         #[arg(long, default_value_t = 48_000.0)]
@@ -118,6 +118,12 @@ enum Command {
     Calibrate {
         #[arg(long, default_value_t = 48_000.0)]
         sample_rate: f32,
+        /// Override the bow hair's stiffness (N/m), with --hair-damping.
+        #[arg(long, requires = "hair_damping")]
+        hair_stiffness: Option<f32>,
+        /// Override the bow hair's damping (kg/s), with --hair-stiffness.
+        #[arg(long, requires = "hair_stiffness")]
+        hair_damping: Option<f32>,
     },
     /// Compare the solo cello with recorded notes (University of Iowa, arco):
     /// each note played again on the same string at the same dynamic, both
@@ -317,6 +323,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "phrase" => include_str!("../scores/phrase.score").to_string(),
                 "doublestops" => include_str!("../scores/doublestops.score").to_string(),
                 "ostinato" => include_str!("../scores/ostinato.score").to_string(),
+                "sul" => include_str!("../scores/sul.score").to_string(),
                 path => std::fs::read_to_string(path)?,
             };
             let mut events = score::parse(&text)?;
@@ -364,7 +371,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             velocity: velocity / 127.0,
             csv,
         })?,
-        Command::Calibrate { sample_rate } => calibrate::run(&cello::INSTRUMENT, sample_rate),
+        Command::Calibrate {
+            sample_rate,
+            hair_stiffness,
+            hair_damping,
+        } => {
+            let mut spec = cello::INSTRUMENT;
+            if let (Some(stiffness), Some(damping)) = (hair_stiffness, hair_damping) {
+                spec.hair = Some(BowHair { stiffness, damping });
+            }
+            calibrate::run(&spec, sample_rate)
+        }
         Command::Measured {
             data,
             loss_lowpass,
@@ -446,6 +463,7 @@ fn play(
                 Event::Pressure(v) => performer.set_pressure(v),
                 Event::BowLift(b) => performer.set_bow_lift(b),
                 Event::Fingering(f) => performer.set_fingering(f),
+                Event::String(s) => performer.set_string(s),
                 Event::Polyphony(p) => performer.set_polyphony(p),
             }
             next += 1;

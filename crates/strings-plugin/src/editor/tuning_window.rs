@@ -247,6 +247,18 @@ fn knobs(defaults: &Tuning) -> Vec<Knob> {
             .unit(" β"),
         Knob::new(
             Sustain,
+            "Closest to the bridge",
+            field!(live.performer.bow_distance),
+        )
+        .range(0.0, 0.05)
+        .unit(" m·s/kg")
+        .help(
+            "The bow's closest distance to the bridge per unit of string impedance \
+             (0.024: 3.5 cm on the C string, 1.4 cm on the A), so β rises high on a string. \
+             Below about 0.02 notes high up the C and G strings play sharp and noisy.",
+        ),
+        Knob::new(
+            Sustain,
             "Wander: pressure",
             field!(live.performer.tuning.wander_pressure),
         )

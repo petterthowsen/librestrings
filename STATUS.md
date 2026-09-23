@@ -12,9 +12,20 @@ Open issues as of September 2026, end of Phase 2 (built, not yet judged by ear).
 | 2. Solo cello | Built: cello presets, bow hair, body, instrument, performer (legato, détaché, the bow lift, double stops), calibrated force band, `play` renderer with example scores. Objective checks pass (`tests/performer.rs`). **First listening done** (Phase 3 notes); the "sounds like a cello" criterion is open |
 | 3. CLAP plugin | Built: nih-plug CLAP plugin with MIDI, CCs, keyswitches, parameters and an egui editor (status, instrument view, keyboard, faders, tuning window); standalone app. Tests pass and the engine runs at 4.8% of real time (strings at 2×). **Plays in Bitwig** (September 2026); not yet tried in Reaper |
 
+## Next steps
+
+In this order, from the comparison with recorded notes (items 40–45). The high positions on a lower string (item 41) are fixed: the bow keeps its distance from the bridge (PLAN.md "High positions: the bow's distance from the bridge").
+
+1. **The low strings' presence (item 43).** Check whether the weak fundamental comes from the string (bridge force) or the body (the estimated low end and the 250 Hz rise), then fix it there.
+2. **Soft, dark pp (item 40).** Find what makes the model brightest at pp (the pressure tilt at low dynamics, force, β) and make the spectrum brighten with the dynamics, as the recording does by about 10 dB from pp to ff.
+3. **Bow noise (item 42),** in the sustain and more at the attack: the target is the recording's HNR (26–34 dB) and the brighter, more obvious onset heard at mf.
+4. **Attacks against measured data (item 44):** the Guettler attack waveforms (mdw), then attack length and bite by ear.
+
+Re-run `strings-render compare` after each and A/B the listening files.
+
 ## Listening
 
-1. **First listening only.** Pitch and releases sound right; attacks lacked bite, held notes were static, low notes lacked weight and spiccato sounded plucked (PLAN.md "Phase 3 notes: tuning and first listening"). The fixes for those (attack bite, bow wander, a heavier body, finger damping) are in. A second, informal listening in the standalone app (September 2026) found nothing that stood out, and the A/B renders of the force band, the torsional loss and 2× oversampling all favored the change. The first comparison against recorded notes is measured but not yet listened to (items 40–44).
+1. **First listening only.** Pitch and releases sound right; attacks lacked bite, held notes were static, low notes lacked weight and spiccato sounded plucked (PLAN.md "Phase 3 notes: tuning and first listening"). The fixes for those (attack bite, bow wander, a heavier body, finger damping) are in. A second, informal listening in the standalone app (September 2026) found nothing that stood out, and the A/B renders of the force band, the torsional loss and 2× oversampling all favored the change. The first comparison against recorded notes (items 40–44) has been measured and listened to.
 2. **Short notes off the string may sound plucked on low notes.** The scripted spiccato touch is gone (PLAN.md 4.3): a short note is now a real stroke of at least 40 ms, thrown off the string. That is still only a few periods of C2–G2, shorter than the 35–100 ms an attack needs to settle. A bouncing bow is Phase 4.
 
 ## Playability vs the measured cello string
@@ -38,7 +49,7 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 ## Pitch of the bowed string
 
 7. **Open strings play flat at mf–ff: 6–14 cents** in the performer (the flattening effect grows with force). Stopped notes are corrected by the performer's intonation by ear; open strings can't be.
-8. **Flat zone at β ≈ 0.124–0.156** (1/β ≈ 6.4–8.1): with hair and torsion the cello strings play up to 45 cents flat there, still with one slip per period. It needs torsion; the torsional Q doesn't change it. The dynamics mapping stays below β = 0.115, which also rules out real sul tasto for now.
+8. **Flat zone at β ≈ 0.124–0.156** (1/β ≈ 6.4–8.1): with hair and torsion the cello strings play up to 45 cents flat there, still with one slip per period. It needs torsion; the torsional Q doesn't change it. The dynamics mapping stays below β = 0.115, which also rules out real sul tasto for now. High stopped notes go above it, because the bow keeps its distance from the bridge; the ear corrects stopped notes.
 9. **Short stopped notes aren't intonated.** The performer listens only after the finger has settled in a held stroke, so short notes mostly use the correction learned on that string so far.
 
 ## Uncertain data
@@ -71,7 +82,7 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 23. **Filter coefficients are modulated but untested for artifacts.** Vibrato and legato change the loss filter (a Butterworth biquad) and the dispersion coefficient at the performer's 3 kHz control rate. Neither has been checked for zipper noise or transients.
 24. **Construction cost:** about 7 ms per cello string (filter fits per semitone, for the transverse and torsional loss), so about 28 ms per cello. That is fine for a solo instrument, but a 12-player section needs about 0.35 s. Precomputed tables per preset would remove it.
 25. **CPU cost is measured only roughly:** the whole cello (4 strings, body, performer) renders at about 6.4% of real time on one core at 48 kHz with the strings at 2× (renderer timing), and the plugin's engine at 4.8% (`cpu_cost` test in `strings-plugin`); at 1× 2.7% and 2.5%. There are no `criterion` benchmarks yet (PLAN.md 6). The standalone's load meter showed about 4% while playing, probably CPU frequency scaling under light real-time load; unconfirmed.
-26. **The force band is calibrated on open strings only.** Stopped notes rely on the band scaling with Z·v·β; the performer tests cover C2–E5 at three dynamics.
+26. **The force band is calibrated on open strings only.** Stopped notes rely on the band scaling with Z·v·β; the performer tests cover C2–E5 at three dynamics, plus six notes 18–24 semitones up the C, G and D strings. High on the A string (above E5) isn't tested.
 27. **The classifiers are approximate.** The bridge-force classifier agrees with the contact-state one on 77–93% of simulated violin points, and it counts the paper's multiple-flyback and S-motion regimes as multi-slip or raucous.
 
 ## Plugin
@@ -95,13 +106,16 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 
 ## Against recorded notes
 
-From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: comparison with recorded notes"). The listening files (`out/compare/`) haven't been listened to yet.
+From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: comparison with recorded notes"). First listening to the pairs in `out/compare/` (September 2026):
+- pp on the C string: the recordings are very floaty and soft; the model is harder (item 40).
+- mf on the G string: the recording sounds brighter overall, with more characteristic bow noise. Its harmonics are actually darker than the model's (partials 4–7: −13 against −6 dB), so the brightness heard is probably the noise (item 42). Its attacks are slightly longer, brighter and more obvious.
+- The sharp, noisy high positions are audible (fixed since; see item 45), and so is the weak low end: the low strings lack the deep cello presence (item 43).
 
 40. **The spectrum doesn't follow the dynamics.** Recorded notes brighten from pp to ff by 7–11 dB in partials 4–7 and 9–14 dB in partials 8–15; the model's spectrum stays the same or darkens. At pp the low strings are far too bright (partials 4–7 about 15 dB too strong on the C and G strings); at mf–ff the A string is 10–15 dB too dark above partial 8.
-41. **High positions on a lower string play sharp and noisy.** Notes 7–18 semitones up a string (sul C F#3–B3, sul G D4–G4, sul D B4–C#5, mostly at mf–ff) are 17–57 cents sharp with an HNR of 9–16 dB. The bridge fingering mode plays up to 12.5 semitones up a string; the range tests only use the nut fingering.
 42. **No bow noise:** the model's harmonic-to-noise ratio is about 10 dB higher than the recording's at every dynamic (37–45 dB against 26–34 dB).
 43. **The low strings' fundamental is weak:** 9–16 dB below the harmonic power on the C string, 1–8 dB recorded. The microphone distance may add to the gap; the body's low end is estimated (item 16).
 44. **One recorded player and one microphone.** The Iowa notes have no vibrato and one way of starting (a slow swell at pp–mf), and the player plays a median 15 cents sharp. Attack times and rings compare how the notes were played as much as the instrument; the Guettler attack data (mdw) is still the measured target for attacks.
+45. **Two high positions are still a little off:** ff sul D B4 plays 17 cents sharp and sul D C#5 5 cents flat, with clean Helmholtz motion, in `compare`. In the seed sweep sul G D4 at mf settles slowly (0.4–1 s) on 2 of 24 seeds. The bow's minimum distance (0.024 m per kg/s of impedance) is fitted to where the model fails, not to players; it works from 3.5 to 4.5 cm on the C string. The A/B renders (`out/ab-bow-distance/`: `play sul` and `play phrase --fingering bridge`, before and after) were listened to (September 2026): the change sounds better.
 
 ## Open decisions
 

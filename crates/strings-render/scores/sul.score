@@ -1,0 +1,25 @@
+# High on the lower strings: a phrase up the G string, then the C string
+# ("sul G", "sul C"), 12 to 24 semitones above the open string.
+tempo 66
+0 vib 0.6
+0 string G
+0 dyn 0.5
+0 note G3 1.05 70
+1 note B3 1.05 70
+2 note D4 1.55 80
+2 dyn 0.75
+3.5 note F#4 0.55 80
+4 note G4 2 85
+4 dyn 0.9
+6 dyn 0.5
+6 note E4 0.9 70
+7 note D4 1.9 70
+9 string C
+9 dyn 0.6
+9 note C3 1.05 70
+10 note G3 1.05 75
+11 note Bb3 1.55 80
+11 dyn 0.85
+12.5 note A3 0.55 80
+13 note C4 2.5 90
+13 dyn 0.9

@@ -77,6 +77,14 @@ pub struct PerformerSettings {
     /// Bow position (fraction of the vibrating length from the bridge) at
     /// dynamics 0 and 1: players move toward the bridge as they play louder.
     pub beta: (f32, f32),
+    /// Closest the bow comes to the bridge, per unit of string impedance
+    /// (m per kg/s): heavier strings are bowed farther out. High on a string
+    /// the vibrating length is short, and β of it would put the bow closer
+    /// than players do, so the bow keeps this distance and β rises there.
+    /// Closer, the model's strings (with the bow hair) leave Helmholtz motion
+    /// high up the C and G strings, playing sharp and noisy (PLAN.md "High
+    /// positions: the bow's distance from the bridge").
+    pub bow_distance: f32,
     /// Position in the Helmholtz band at the middle of the pressure control
     /// (normal playing): 0 is the band's lower edge, 1 its upper edge.
     pub pressure: f32,
@@ -106,6 +114,8 @@ impl Default for PerformerSettings {
             // Above β ≈ 0.12 the model's cello strings play up to 45 cents flat
             // (STATUS.md), so the mapping stays below.
             beta: (0.115, 0.07),
+            // 3.5 cm on the C string, 1.4 cm on the A.
+            bow_distance: 0.024,
             pressure: 0.65,
             pressure_range: (PRESSURE_FLAUTANDO, PRESSURE_SCRATCH),
             vibrato_rate: 5.5,
@@ -1332,6 +1342,11 @@ impl Performer {
                 0.0
             };
 
+            // The bow keeps its distance from the bridge on a short string.
+            let length = spec.strings[i].length * 2f32.powf(-finger.max(0.0) / 12.0);
+            let z = spec.strings[i].impedance();
+            let beta = beta.max(s.bow_distance * z / length).min(0.5);
+
             let string = self.instrument.string_mut(i);
             if frequency != string.frequency() {
                 string.set_frequency(frequency);
@@ -1343,7 +1358,6 @@ impl Performer {
                 self.termination_loss[i] = loss;
                 string.set_termination_loss(loss);
             }
-            let z = spec.strings[i].impedance();
             self.unit_force[i] = spec.force_limits[i].force(z, 1.0, beta, pressure);
         }
     }
