@@ -16,7 +16,7 @@ cargo run --release -p strings-render -- measured              # vs measured cel
 cargo run --release -p strings-render -- compare --dynamics mf --string G   # vs recorded cello notes (fetch-reference-data.sh iowa-cello; all: ~4 min)
 cargo xtask bundle strings-plugin --release                     # CLAP bundle -> target/bundled/LibreStrings.clap
 cargo xtask install                                             # the same, then copied to ~/.clap for the DAW
-cargo run --release -p strings-plugin --features standalone -- --backend alsa   # play without a DAW (or jack; dummy is silent)
+cargo run --release -p strings-plugin --features standalone -- --backend alsa --period-size 1024   # play without a DAW (or jack; dummy is silent); smaller periods drop out
 cargo test --release -p strings-plugin cpu_cost -- --ignored --nocapture    # plugin engine CPU cost
 ```
 
