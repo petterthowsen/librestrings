@@ -31,8 +31,8 @@ At 4.8% of real time per cello, 12 players would cost about 58% of a core, and P
   | 12 | 34.6% | 19.3% |
 
   Nearly all of it is the bowed string: one string costs 1.65% at 2× (0.82% at 1×), while the whole body with its 67 modes costs 0.4%. Cutting body modes would save little.
-- [ ] Decide on oversampling for sections. 12 players at 2× are over the 25% budget and at 1× within it. At 1×, high notes lock onto whole-sample periods, but the players' detune may hide that in a section. Decide by ear with an A/B render once A2 exists (and consider 2× for player 0 only, the one the telemetry shows).
-- [ ] If 2× is needed: SIMD across players (PLAN.md §5). The string loop (bow solve, three fractional delay reads, the 16-stage dispersion cascade, torsion) is where the time goes.
+- [x] Decide on oversampling for sections: player 0 plays at the settings' 2×, so a section of one is still the solo cello, and players 1–11 at 1× (`section::PLAYER_OVERSAMPLING`). In the 8-player renders (`out/ab-section/phrase-8-1x.wav` against `-2x`, and `scale`) 1× and 2× couldn't be told apart (September 2026). 12 players cost about 2.8 + 11 × 1.6 ≈ 20%.
+- [ ] Only if needed later: SIMD across players (PLAN.md §5). The string loop (bow solve, three fractional delay reads, the 16-stage dispersion cascade, torsion) is where the time goes.
 
 ### A2. The section engine (`strings-dsp/src/section.rs`)
 
@@ -54,19 +54,22 @@ Renders (`strings-render play <score> --players N`, mono, no placement yet): `ph
 
 ### A3. Placement (`strings-dsp/src/stage.rs`)
 
-- [ ] Stage model: the stage has a size and a room around it. The listener is a stereo mic pair at a fixed point in front of the stage (spaced omnis, about 60 cm apart, to begin with).
-- [ ] Section layout: a centre (x, y), a width and a depth. The players sit in rows inside that area (desks of two), jittered a little by the seed.
-- [ ] Per player and mic: a fractional delay (distance ÷ c, minus the stage constant), 1/r gain (clamped near the mics), and an air-absorption lowpass that deepens with distance. The ITD and ILD come from the two mic paths, so there is no separate panner.
-- [ ] Fractional delay lines sized in `initialize` for the room's largest distance at the highest sample rate.
-- [ ] Output is now true stereo; the mono layout sums the two mics.
+- [x] Stage model: metres, `x` to the audience's right, `y` upstage from the front of the stage, `z` up. The mics are a near-coincident pair on the centre line, `mic_distance` in front of the stage at 2.5 m high: two cardioids 17 cm apart, angled ±55° (as ORTF). A spaced omni pair images poorly from far away; this one places a player by time and level at any distance. The instruments are at 1 m.
+- [x] Section layout (`Placement`): a centre (x, y), a width and a depth. The players fill rows across that area, front to back (player 0 at the front), each up to 15 cm off its seat by the seed. One player sits at the centre. Default: the cellos' place, 3.5 m to the right and 3 m upstage, 4 × 3 m.
+- [x] Per player and mic: a fractional delay (distance ÷ c, minus the distance from the mic to the front of the stage), 1/r gain relative to a player 3 m upstage on the centre line (so moving the mics changes the balance, not the level), the cardioid's gain, and air absorption (0.15 dB/m at 10 kHz) as a one-pole lowpass. Delays and gains glide over 50 ms when anything moves.
+- [x] Delay lines sized in `Stage::new` for the largest room at the sample rate. A player whose line holds only silence is skipped.
+- [x] Output is stereo in the renderer (`play --players N`, or `--stage` for a solo). The plugin's output is A5.
 
 ### A4. Early reflections
 
-- [ ] Shoebox room, first-order image sources: 4 walls, the floor and the ceiling (6 images) per mic. Second order later if it sounds too sparse.
-- [ ] The direct sound is per player; the reflections come from the section as a whole (the sum of its players, at the section's centre), so 12 players cost 6 × 2 taps, not 144. Revisit if the reflections sound too clean.
-- [ ] Each reflection has a wall gain and a one-pole lowpass set by the absorption.
-- [ ] Room presets (dimensions): Studio, Chamber hall, Concert hall, Scoring stage. Absorption: Low, Medium, High.
-- [ ] Early-reflection level control, down to off for users who want their own reverb to do everything.
+- [x] Shoebox room, first-order image sources: 4 walls, the floor and the ceiling (6 images) per mic. Second order later if it sounds too sparse.
+- [x] The direct sound is per player; the reflections come from the section's centre, from the sum of its players: 12 taps whatever the size. Revisit if they sound too clean.
+- [x] Each reflection has the wall's reflection gain and a lowpass (absorption Low: 0.95 and 10 kHz; Medium: 0.84 and 6 kHz; High: 0.63 and 3 kHz), plus the air's.
+- [x] Room presets (width × length × height, and how far the back wall is behind the front of the stage): Studio 12 × 16 × 6 (7), Chamber hall 16 × 26 × 11 (8), Concert hall 24 × 42 × 17 (11), Scoring stage 22 × 30 × 12 (12).
+- [x] Early-reflection level, 0 (off) to 1.
+- [ ] Listen to the renders below and tune the rooms, the absorption and the mic pair.
+
+Renders (`out/ab-stage/`, stereo): `phrase-solo-front` (a solo at the centre front), `phrase-8-chamber` (the default), `-dry` (no reflections), `-concert-far` (mics at 12 m), `-studio-close` (1.5 m), `-chamber-low` / `-high` (absorption), `legato-8-chamber`, and `legato-12-left` (the section moved to the left). The cellos on the right come out 2–4 dB louder on the right channel; levels stay within 2 dB across rooms and mic distances. Rendering cost with the stage: solo 3.9%, 8 players 16% on `phrase`, 12 players 29% on `legato`, where more strings ring on.
 
 ### A5. Plugin parameters and editor
 
@@ -80,10 +83,10 @@ Renders (`strings-render play <score> --players N`, mono, no placement yet): `ph
 ### A6. Renderer and checks
 
 - [x] `strings-render play --players N`, so section renders can be A/B'd.
-- [ ] The stage parameters in the renderer, and stereo output.
+- [x] The stage parameters in the renderer (`--x --y --width --depth --room --absorption --mic-distance --reflections`), and stereo output.
 - [ ] A/B renders: solo against 4, 8 and 12 players on `phrase` and `legato`; early reflections on and off; two rooms.
-- [ ] Test: with humanization off and one player at the stage centre, the section's left and right outputs equal the solo cello's (up to the delay and gain).
-- [ ] Test: moving a section left makes the left channel louder and earlier.
+- [x] Test: a player on the centre line reaches both mics alike, reflections included; a section of one is the solo cello (`one_player_is_the_solo_performer`).
+- [x] Test: moving a section left makes the left channel louder and earlier (`tests/stage.rs`, with the centre, distance, reflections and gliding).
 - [ ] Listening in Bitwig: two or three instances (say celli with a solo cello in front) sound like one room, not a chorus effect. This is the phase's acceptance test.
 - [ ] Update PLAN.md (Phase 6 row and a "Sections notes" section) and STATUS.md.
 

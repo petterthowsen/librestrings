@@ -96,7 +96,8 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 
 ## Sections
 
-46. **Sections are built but not heard** (docs/SECTIONS.md A2): up to 12 players, each with its own seeded detune, lateness, vibrato, dynamics, bow position, pressure, timing and body. Every spread in `Humanization` is a first guess. There is no stage placement yet (mono sum), and the plugin still plays one player. The A/B renders are in `out/ab-section/`.
+46. **Sections and the stage are only heard in renders** (docs/SECTIONS.md A2–A4): up to 12 players, each with its own seeded detune, lateness, vibrato, dynamics, bow position, pressure, timing and body; players 1–11 at 1× oversampling. They are placed on a stage (a near-coincident mic pair, 1/r, air absorption) in a shoebox room with first-order reflections. Every spread in `Humanization`, the rooms, the absorption and the mic pair are first guesses. The first mono renders sounded good; the stereo ones (`out/ab-stage/`) are not yet heard. The plugin still plays one player, in mono.
+47. **12 players on a legato line cost 29% of real time** with the stage (renderer), over PLAN.md's 25%: more strings ring on in legato. 8 players on `phrase` cost 16%.
 
 ## Playing controls
 

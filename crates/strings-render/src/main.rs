@@ -14,9 +14,10 @@ mod score;
 use strings_dsp::analysis::{Regime, bow_steady, classify, classify_bridge_force};
 use strings_dsp::presets::{cello, reference, violin};
 use strings_dsp::{
-    BowHair, BowInput, BowedString, DampingCurve, Fingering, FrictionParams, Humanization, Loss,
-    MAX_PLAYERS, Performer, PerformerSettings, Polyphony, Section, StringFrame, StringSpec,
-    TorsionSpec, schelleng_limits,
+    Absorption, BowHair, BowInput, BowedString, DampingCurve, Fingering, FrictionParams,
+    Humanization, Loss, MAX_PLAYERS, Performer, PerformerSettings, Placement, Polyphony,
+    RoomPreset, Section, Stage, StageSettings, StringFrame, StringSpec, TorsionSpec,
+    schelleng_limits,
 };
 
 #[derive(Parser)]
@@ -109,9 +110,36 @@ enum Command {
         #[arg(long, value_parser = clap::value_parser!(u8).range(1..=2))]
         oversampling: Option<u8>,
         /// Players in the section (1 is the solo cello), each with its own
-        /// humanization. Mixed to mono for now, with no placement.
+        /// humanization. With more than one, or --stage, the output is stereo
+        /// through the stage.
         #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=12))]
         players: u8,
+        /// Play a solo cello on the stage too (stereo), not dry.
+        #[arg(long)]
+        stage: bool,
+        /// The section's centre (m): x to the audience's right, y upstage from
+        /// the front of the stage.
+        #[arg(long, default_value_t = Placement::CELLOS.x, allow_negative_numbers = true)]
+        x: f32,
+        #[arg(long, default_value_t = Placement::CELLOS.y)]
+        y: f32,
+        /// The area the section fills (m).
+        #[arg(long, default_value_t = Placement::CELLOS.width)]
+        width: f32,
+        #[arg(long, default_value_t = Placement::CELLOS.depth)]
+        depth: f32,
+        /// studio, chamber, concert or scoring.
+        #[arg(long, default_value = "chamber", value_parser = room_preset)]
+        room: RoomPreset,
+        /// low, medium or high.
+        #[arg(long, default_value = "medium", value_parser = absorption)]
+        absorption: Absorption,
+        /// Distance of the mics in front of the stage (m).
+        #[arg(long, default_value_t = StageSettings::default().mic_distance)]
+        mic_distance: f32,
+        /// Early reflections, 0 (off) to 1.
+        #[arg(long, default_value_t = 1.0)]
+        reflections: f32,
         #[arg(long, short)]
         out: PathBuf,
         /// Also write the summed bridge force (before the body) to this WAV
@@ -324,6 +352,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             double_stops,
             oversampling,
             players,
+            stage,
+            x,
+            y,
+            width,
+            depth,
+            room,
+            absorption,
+            mic_distance,
+            reflections,
             out,
             bridge_out,
         } => {
@@ -356,8 +393,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 (0.0, score::Event::Polyphony(polyphony)),
             ];
             events.splice(0..0, modes);
-            if players > 1 {
-                play_section(&events, settings, players as usize, sample_rate, tail, &out)?;
+            if players > 1 || stage {
+                let placement = Placement { x, y, width, depth };
+                let stage = StageSettings {
+                    room,
+                    absorption,
+                    mic_distance,
+                    reflections,
+                };
+                play_section(
+                    &events,
+                    settings,
+                    players as usize,
+                    (stage, placement),
+                    sample_rate,
+                    tail,
+                    &out,
+                )?;
             } else {
                 play(
                     &events,
@@ -508,11 +560,13 @@ fn play(
     Ok(())
 }
 
-/// `play` for a section of `players`, with the default humanization.
+/// `play` for a section of `players`, with the default humanization, on the
+/// stage: stereo.
 fn play_section(
     events: &[(f32, score::Event)],
     settings: PerformerSettings,
     players: usize,
+    (stage_settings, placement): (StageSettings, Placement),
     fs: f32,
     tail: f32,
     out: &Path,
@@ -520,6 +574,8 @@ fn play_section(
     use score::Event;
     let mut section = Section::new(&cello::INSTRUMENT, settings, Humanization::default(), fs);
     section.set_players(players);
+    let mut stage = Stage::new(stage_settings, placement, settings.seed, fs);
+    stage.set_players(players);
     let end = events.last().map_or(0.0, |e| e.0) + tail;
     let total = (end * fs) as usize;
     let mut output = Vec::with_capacity(total);
@@ -541,7 +597,8 @@ fn play_section(
             }
             next += 1;
         }
-        output.push(section.process(&mut each));
+        section.process(&mut each);
+        output.extend(stage.process(&each));
     }
     let elapsed = started.elapsed().as_secs_f32();
     println!(
@@ -550,7 +607,53 @@ fn play_section(
     );
     let peak = output.iter().fold(0.0f32, |m, v| m.max(v.abs()));
     println!("output peak {peak:.3} (not normalized)");
-    write_samples(out, &output, fs, 1.0)
+    write_interleaved(out, &output, 2, fs)
+}
+
+/// Writes 32-bit float samples, `channels` interleaved.
+fn write_interleaved(
+    path: &Path,
+    samples: &[f32],
+    channels: u16,
+    fs: f32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let spec = hound::WavSpec {
+        channels,
+        sample_rate: fs as u32,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut w = hound::WavWriter::create(path, spec)?;
+    for &s in samples {
+        w.write_sample(s)?;
+    }
+    w.finalize()?;
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn room_preset(name: &str) -> Result<RoomPreset, String> {
+    match name {
+        "studio" => Ok(RoomPreset::Studio),
+        "chamber" => Ok(RoomPreset::ChamberHall),
+        "concert" => Ok(RoomPreset::ConcertHall),
+        "scoring" => Ok(RoomPreset::ScoringStage),
+        _ => Err(format!(
+            "unknown room {name:?}: studio, chamber, concert or scoring"
+        )),
+    }
+}
+
+fn absorption(name: &str) -> Result<Absorption, String> {
+    match name {
+        "low" => Ok(Absorption::Low),
+        "medium" => Ok(Absorption::Medium),
+        "high" => Ok(Absorption::High),
+        _ => Err(format!("unknown absorption {name:?}: low, medium or high")),
+    }
 }
 
 /// Writes 32-bit float mono samples times `gain`.

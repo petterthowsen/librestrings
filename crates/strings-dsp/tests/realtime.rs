@@ -9,8 +9,9 @@ use std::cell::Cell;
 
 use strings_dsp::presets::cello;
 use strings_dsp::{
-    BodyTuning, BowHair, BowLift, DampingCurve, Fingering, FrictionParams, Humanization,
-    Instrument, Loss, MAX_PLAYERS, Performer, PerformerSettings, Polyphony, Section,
+    Absorption, BodyTuning, BowHair, BowLift, DampingCurve, Fingering, FrictionParams,
+    Humanization, Instrument, Loss, MAX_PLAYERS, Performer, PerformerSettings, Placement,
+    Polyphony, RoomPreset, Section, Stage, StageSettings,
 };
 
 struct Counting;
@@ -146,7 +147,7 @@ fn retuning_never_allocates() {
     assert_eq!(count, 0, "allocations while retuning");
 }
 
-/// A section plays, changes size, retunes its humanization and bodies, and
+/// A section plays through the stage, changes size and place, retunes its humanization and bodies, and
 /// releases notes still waiting for late players, all without allocating.
 #[test]
 fn a_section_never_allocates() {
@@ -157,37 +158,52 @@ fn a_section_never_allocates() {
         Humanization::default(),
         fs,
     );
+    let mut stage = Stage::new(StageSettings::default(), Placement::CELLOS, 7, fs);
     let body = BodyTuning::from(&cello::BODY);
     let mut out = [0.0; MAX_PLAYERS];
-    let mut block = |s: &mut Section, seconds: f32| {
+    let mut block = |s: &mut Section, stage: &mut Stage, seconds: f32| {
         for _ in 0..(seconds * fs) as usize {
-            std::hint::black_box(s.process(&mut out));
+            s.process(&mut out);
+            std::hint::black_box(stage.process(&out));
         }
     };
     let count = allocations_during(|| {
         s.set_players(MAX_PLAYERS);
+        stage.set_players(MAX_PLAYERS);
         s.set_dynamics(0.7);
         s.set_vibrato(0.8);
         for note in 45..70 {
             s.note_on(note, 0.6);
-            block(&mut s, 0.01);
+            block(&mut s, &mut stage, 0.01);
         }
         for note in 45..70 {
             s.note_off(note);
         }
-        block(&mut s, 0.1);
+        block(&mut s, &mut stage, 0.1);
         s.set_players(3);
+        stage.set_players(3);
+        stage.set_placement(Placement {
+            x: -4.0,
+            ..Placement::CELLOS
+        });
+        stage.set_settings(StageSettings {
+            room: RoomPreset::ConcertHall,
+            absorption: Absorption::High,
+            mic_distance: 12.0,
+            reflections: 0.5,
+        });
+        stage.reset();
         s.set_humanization(Humanization::NONE);
         s.set_body(&body);
         s.set_settings(PerformerSettings::default());
         s.note_on(50, 0.7);
-        block(&mut s, 0.1);
+        block(&mut s, &mut stage, 0.1);
         s.set_players(8);
         s.note_on(57, 0.7);
         s.release_all();
-        block(&mut s, 0.1);
+        block(&mut s, &mut stage, 0.1);
         s.reset();
-        block(&mut s, 0.02);
+        block(&mut s, &mut stage, 0.02);
     });
     assert_eq!(count, 0, "allocations on the audio path");
 }

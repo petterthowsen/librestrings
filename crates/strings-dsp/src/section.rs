@@ -22,6 +22,13 @@ use crate::performer::{
 /// Most players in a section.
 pub const MAX_PLAYERS: usize = 12;
 
+/// String oversampling of every player but the first, which plays at the
+/// settings' own (2× by default, so a section of one is the solo cello). At
+/// 1× high notes step by 5–20 cents alone (PLAN.md), but in a section of 8
+/// the difference wasn't audible (docs/SECTIONS.md A1), and it halves the
+/// cost.
+pub const PLAYER_OVERSAMPLING: usize = 1;
+
 /// Players switched on or off fade in or out over this long (s).
 pub const FADE: f32 = 0.05;
 
@@ -204,8 +211,8 @@ pub struct Section {
 }
 
 impl Section {
-    /// Slow (builds one instrument, about 30 ms); don't call it on the audio
-    /// thread. Starts with one player.
+    /// Slow (builds one or two instruments, about 30 ms each); don't call it
+    /// on the audio thread. Starts with one player.
     pub fn new(
         spec: &InstrumentSpec,
         settings: PerformerSettings,
@@ -213,6 +220,15 @@ impl Section {
         sample_rate: f32,
     ) -> Self {
         let first = Performer::new(spec, settings, sample_rate);
+        let others = if settings.oversampling == PLAYER_OVERSAMPLING {
+            first.clone()
+        } else {
+            let settings = PerformerSettings {
+                oversampling: PLAYER_OVERSAMPLING,
+                ..settings
+            };
+            Performer::new(spec, settings, sample_rate)
+        };
         let players = (0..MAX_PLAYERS)
             .map(|i| {
                 let seed = player_seed(settings.seed, i);
@@ -231,10 +247,13 @@ impl Section {
                         timing: signed(&mut rng),
                     }
                 };
-                let mut performer = first.clone();
-                if i > 0 {
-                    performer.reseed(rng ^ 0x9e37_79b9);
-                }
+                let performer = if i == 0 {
+                    first.clone()
+                } else {
+                    let mut p = others.clone();
+                    p.reseed(rng ^ 0x9e37_79b9);
+                    p
+                };
                 Player {
                     performer,
                     draws,

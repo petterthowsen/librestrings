@@ -8,7 +8,7 @@ LibreStrings: a free, physically modeled bowed-string synthesizer in Rust: a DSP
 cargo test                                   # unit + physics tests (test profile is optimized)
 cargo clippy --all-targets                   # must be clean
 cargo fmt
-cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | ostinato | sul | file.score (--players N: a section)
+cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | ostinato | sul | file.score (--players N: a section on the stage, stereo; --stage for a solo)
 cargo run --release -p strings-render -- bow --string A -o out/a.wav
 cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument cello for cello strings)
 cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate
@@ -27,7 +27,7 @@ Renders go in `out/` (gitignored).
 
 ## Layout
 
-- `crates/strings-dsp`: the model. `string.rs` holds the waveguide (with stiffness, torsion and bow hair), `bow.rs` the friction junction and Schelleng limits, `loss.rs` the loop-loss models, `delay.rs` and `filters.rs` the building blocks, `body.rs` the body resonators, `instrument.rs` four strings and a body with the calibrated force band, `performer.rs` the gesture layer (notes and controllers to bow and finger), `section.rs` up to 12 humanized players (docs/SECTIONS.md), `presets.rs` the instrument data, and `analysis.rs` the offline measurements.
+- `crates/strings-dsp`: the model. `string.rs` holds the waveguide (with stiffness, torsion and bow hair), `bow.rs` the friction junction and Schelleng limits, `loss.rs` the loop-loss models, `delay.rs` and `filters.rs` the building blocks, `body.rs` the body resonators, `instrument.rs` four strings and a body with the calibrated force band, `performer.rs` the gesture layer (notes and controllers to bow and finger), `section.rs` up to 12 humanized players and `stage.rs` their placement, mics and early reflections (docs/SECTIONS.md), `presets.rs` the instrument data, and `analysis.rs` the offline measurements.
 - `crates/strings-render`: the CLI (clap, hound). `score.rs` is the text score format for `play`; `scores/` has examples. `compare.rs` measures the solo cello against recorded notes (Iowa).
 - `crates/strings-plugin`: the CLAP plugin. `lib.rs` holds the engine (performer, MIDI/CC/keyswitch handling: CC11 dynamics, CC1 vibrato, as in SWAM; telemetry), `params.rs` the parameters, `shared.rs` the audio↔editor state (atomics and lock-free queues), `tuning.rs` the numbers the tuning window edits, `editor/` the egui GUI (`tuning_window.rs`: the model's numbers, editable while playing, with "Copy changes" for pasting back into the presets). `xtask/` bundles it.
 - `docs/`: research notes, plus `Literature.md` (papers the model takes numbers from, with links). The research notes are **not fully reliable**; PLAN.md's "Research notes / corrections" lists known errors, such as swapped Schelleng formulas and commuted synthesis misapplied to bowing.
@@ -56,5 +56,5 @@ Renders go in `out/` (gitignored).
 - The measured loss (`Loss::Measured`) fits one filter per semitone in the constructor (about 7 ms per cello string). Don't construct strings on the audio thread; to change a playing string, fit a `StringDesign` elsewhere and swap it in with `apply_design`.
 - Bowed open strings play 6–14 cents flat, so measure a bowed note's partials at its measured pitch, not at n × the nominal f0 (which misses the upper partials and looks like a spectral cliff).
 - High on a string β rises above the dynamics mapping (up to about 0.15), because the bow keeps its distance from the bridge (`PerformerSettings::bow_distance`, scaled by string impedance). Closer, the bow hair makes high positions on the C and G strings sharp and raucous (PLAN.md "High positions: the bow's distance from the bridge"); retuning the hair instead breaks attacks and stops.
-- `Instrument` skips a string once the bow is off it and it has been silent (bridge force below 1e-5 N) for a whole period; its frames are then zero. A section's players are clones of one `Performer`, not built one by one (docs/SECTIONS.md A1).
+- `Instrument` skips a string once the bow is off it and it has been silent (bridge force below 1e-5 N) for a whole period; its frames are then zero. A section's players are clones of one `Performer`, not built one by one; player 0 plays at 2× and is the solo cello exactly, the others at 1× (docs/SECTIONS.md A1–A2).
 - The finger's damping and the bow's wander move the bowed pitch of high stopped notes by a few cents; the intonation test runs with the wander off.
