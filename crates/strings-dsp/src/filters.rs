@@ -34,6 +34,7 @@ impl OnePoleLowpass {
 /// With `a < 0` its delay falls with frequency, so high partials come round the
 /// loop sooner and end up sharp, as on a stiff string. `a = 0` is a pure delay
 /// of `M` samples.
+#[derive(Clone)]
 pub struct DispersionAllpass {
     pub a: f32,
     state: [f32; Self::SECTIONS],
@@ -147,6 +148,7 @@ impl Default for DispersionAllpass {
 /// The passband is flat to 0.21 of the input rate (20 kHz at 96 kHz) and the
 /// stopband starts at 0.29 (28 kHz), about 70 dB down; what folds back below
 /// 20 kHz is at least that far down. Latency: `(TAPS − 1) / 2` input samples.
+#[derive(Clone)]
 pub struct HalfbandDecimator {
     /// Coefficients of the odd offsets from the centre, nearest first.
     odd: [f32; Self::PAIRS],

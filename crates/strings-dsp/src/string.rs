@@ -121,6 +121,7 @@ pub struct StringFrame {
     pub state: ContactState,
 }
 
+#[derive(Clone)]
 pub struct BowedString {
     sample_rate: f32,
     impedance: f32,
@@ -166,6 +167,7 @@ struct NoteDesign {
 /// A string's loss, dispersion and torsional loss, fitted per semitone (see
 /// [`BowedString::design`]). Empty for a flexible string with one-pole loss and
 /// no torsion, which needs no fitting.
+#[derive(Clone)]
 pub struct StringDesign {
     notes: Vec<NoteDesign>,
     lowest_frequency: f32,
@@ -181,6 +183,7 @@ const NO_LOSS: LossDesign = LossDesign {
 
 /// Torsional waveguide: one round-trip line on each side of the bow, with the
 /// loss filter at the nut-side reflection.
+#[derive(Clone)]
 struct Torsion {
     spec: TorsionSpec,
     impedance: f32,

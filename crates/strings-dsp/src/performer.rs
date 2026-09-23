@@ -444,6 +444,7 @@ pub struct PerformerFrame {
     pub bow_force: f32,
 }
 
+#[derive(Clone)]
 pub struct Performer {
     instrument: Instrument,
     settings: PerformerSettings,

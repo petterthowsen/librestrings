@@ -157,6 +157,7 @@ impl LossDesign {
 
 /// The frequency-dependent part of the loop loss: a one-pole lowpass, followed
 /// by a Butterworth lowpass when the loss is [`Loss::Measured`]. Unity gain at DC.
+#[derive(Clone)]
 pub struct LossFilter {
     one_pole: OnePoleLowpass,
     butterworth: Option<Butterworth>,
@@ -222,6 +223,7 @@ impl LossFilter {
 
 /// Second-order Butterworth lowpass (bilinear transform, RBJ cookbook form),
 /// transposed direct form II. Its magnitude never exceeds 1.
+#[derive(Clone)]
 struct Butterworth {
     b0: f64,
     b1: f64,

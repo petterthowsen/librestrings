@@ -661,3 +661,41 @@ fn pressure_runs_from_flautando_to_scratch() {
     assert_eq!(scratch, Regime::Raucous);
     assert!(soft < mid && mid < loud, "{soft} {mid} {loud}");
 }
+
+/// A section clones one performer per player instead of fitting every
+/// string again; the clone plays exactly as the original.
+#[test]
+fn a_clone_plays_the_same() {
+    let mut p = performer();
+    p.note_on(50, 0.7);
+    run(&mut p, 0.3);
+    let mut q = p.clone();
+    for p in [&mut p, &mut q] {
+        p.note_on(55, 0.7);
+    }
+    let a = run(&mut p, 0.5);
+    let b = run(&mut q, 0.5);
+    assert!(a.iter().zip(&b).all(|(a, b)| a.output == b.output));
+}
+
+/// Strings that are silent with the bow off them are skipped, and bowing one
+/// again brings it back.
+#[test]
+fn rung_out_strings_are_skipped_until_bowed() {
+    let mut p = performer();
+    run(&mut p, 0.1);
+    assert!((0..4).all(|i| p.instrument().is_idle(i)));
+
+    p.note_on(50, 0.7);
+    let frames = run(&mut p, 0.5);
+    let string = frames.last().unwrap().string;
+    assert!(!p.instrument().is_idle(string));
+    p.note_off(50);
+    run(&mut p, 20.0);
+    assert!((0..4).all(|i| p.instrument().is_idle(i)));
+
+    p.note_on(50, 0.7);
+    let frames = run(&mut p, 0.5);
+    assert!(!p.instrument().is_idle(string));
+    assert!(rms(&frames[(0.3 * FS) as usize..]) > 1e-3);
+}

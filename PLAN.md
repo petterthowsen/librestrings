@@ -245,7 +245,7 @@ Tremolo, trills, chords of three or four strings, pizzicato (pluck exciter on th
 
 ## 5. Sections (later phase)
 
-A section is **N independent players**. Each player is a full `Instrument` plus `Performer`, with its own humanization, placed on a stage.
+A section is **N independent players**. Each player is a full `Instrument` plus `Performer`, with its own humanization, placed on a stage. The working checklist is [docs/SECTIONS.md](docs/SECTIONS.md).
 
 **Humanization (per player, seeded so results are reproducible):**
 - Detune (a few cents, drifting slowly)

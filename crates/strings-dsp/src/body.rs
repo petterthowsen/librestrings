@@ -206,6 +206,7 @@ impl Resonator {
     }
 }
 
+#[derive(Clone)]
 pub struct Body {
     resonators: Vec<Resonator>,
     sample_rate: f32,

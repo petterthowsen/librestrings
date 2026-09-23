@@ -1,5 +1,6 @@
 //! Circular delay line with 3rd-order Lagrange fractional reads.
 
+#[derive(Clone)]
 pub struct DelayLine {
     buf: Vec<f32>,
     mask: usize,

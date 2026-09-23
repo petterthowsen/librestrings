@@ -18,7 +18,7 @@ cargo run --release -p strings-render -- compare --string C --bridge    # the sa
 cargo xtask bundle strings-plugin --release                     # CLAP bundle -> target/bundled/LibreStrings.clap
 cargo xtask install                                             # the same, then copied to ~/.clap for the DAW
 cargo run --release -p strings-plugin --features standalone -- --backend alsa --period-size 1024   # play without a DAW (or jack; dummy is silent); smaller periods drop out
-cargo test --release -p strings-plugin cpu_cost -- --ignored --nocapture    # plugin engine CPU cost
+cargo test --release -p strings-plugin cpu_cost -- --ignored --nocapture    # plugin engine CPU cost (and cpu_cost_players: 1–12 players)
 ```
 
 The plugin needs X11/XCB and JACK headers on Linux (Debian/Ubuntu): `libx11-xcb-dev libxcb-dri2-0-dev libxcb-icccm4-dev libxcursor-dev libxkbcommon-dev libxcb-shape0-dev libxcb-xfixes0-dev libjack-jackd2-dev` (plus `libasound2-dev libgl-dev`).
@@ -56,4 +56,5 @@ Renders go in `out/` (gitignored).
 - The measured loss (`Loss::Measured`) fits one filter per semitone in the constructor (about 7 ms per cello string). Don't construct strings on the audio thread; to change a playing string, fit a `StringDesign` elsewhere and swap it in with `apply_design`.
 - Bowed open strings play 6–14 cents flat, so measure a bowed note's partials at its measured pitch, not at n × the nominal f0 (which misses the upper partials and looks like a spectral cliff).
 - High on a string β rises above the dynamics mapping (up to about 0.15), because the bow keeps its distance from the bridge (`PerformerSettings::bow_distance`, scaled by string impedance). Closer, the bow hair makes high positions on the C and G strings sharp and raucous (PLAN.md "High positions: the bow's distance from the bridge"); retuning the hair instead breaks attacks and stops.
+- `Instrument` skips a string once the bow is off it and it has been silent (bridge force below 1e-5 N) for a whole period; its frames are then zero. A section's players are clones of one `Performer`, not built one by one (docs/SECTIONS.md A1).
 - The finger's damping and the bow's wander move the bowed pitch of high stopped notes by a few cents; the intonation test runs with the wander off.

@@ -749,4 +749,53 @@ mod cpu {
         let load = start.elapsed().as_secs_f32() / seconds;
         println!("engine: {:.2}% of real time at 48 kHz", 100.0 * load);
     }
+
+    /// Sections (docs/SECTIONS.md A1): building one player against cloning
+    /// it, and the cost of 1–12 players playing the same notes, with the
+    /// strings at 2× and 1×.
+    #[test]
+    #[ignore]
+    fn cpu_cost_players() {
+        let fs = 48_000.0;
+        for oversampling in [2, 1] {
+            let settings = PerformerSettings {
+                oversampling,
+                ..PerformerSettings::default()
+            };
+            let start = Instant::now();
+            let first = Performer::new(INSTRUMENT, settings, fs);
+            let built = start.elapsed();
+            let start = Instant::now();
+            let mut players: Vec<_> = (0..12).map(|_| first.clone()).collect();
+            let cloned = start.elapsed() / 12;
+            println!("{oversampling}×: build {built:.1?}, clone {cloned:.1?} per player");
+
+            for n in [1, 4, 8, 12] {
+                let players = &mut players[..n];
+                for p in players.iter_mut() {
+                    p.reset();
+                    p.set_dynamics(0.6);
+                }
+                let seconds = 10.0;
+                let blocks = (seconds * fs / 256.0) as usize;
+                let start = Instant::now();
+                for b in 0..blocks {
+                    // As in `cpu_cost`: a new note every half second, on two strings.
+                    if b % 94 == 0 {
+                        let note = if b % 188 == 0 { 50 } else { 57 };
+                        for p in players.iter_mut() {
+                            p.note_on(note, 0.8);
+                        }
+                    }
+                    for _ in 0..256 {
+                        for p in players.iter_mut() {
+                            std::hint::black_box(p.process_frame());
+                        }
+                    }
+                }
+                let load = start.elapsed().as_secs_f32() / seconds;
+                println!("  {n:2} players: {:.1}% of real time", 100.0 * load);
+            }
+        }
+    }
 }

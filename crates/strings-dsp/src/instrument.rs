@@ -1,8 +1,11 @@
-//! An instrument: four strings, all running every sample, into one body.
+//! An instrument: four strings into one body.
 //!
 //! The strings share nothing but the body, which sums their bridge forces. The
 //! bow is applied per string, so a string crossing can bow two strings at
-//! once, and a string the bow has left rings on.
+//! once, and a string the bow has left rings on. A string that has rung out
+//! with the bow off it is skipped until the bow comes back: a melody sounds
+//! one or two strings at a time, and a decaying string would otherwise run
+//! into denormals.
 
 use crate::body::{Body, BodySpec, BodyTuning};
 use crate::bow::FrictionParams;
@@ -62,6 +65,7 @@ pub struct InstrumentFrame {
     pub bridge_force: f32,
 }
 
+#[derive(Clone)]
 pub struct Instrument {
     spec: InstrumentSpec,
     strings: [BowedString; 4],
@@ -70,7 +74,13 @@ pub struct Instrument {
     /// How many string samples per output sample (1 or 2).
     oversampling: usize,
     decimator: HalfbandDecimator,
+    /// String samples each string has been silent with the bow off it.
+    quiet: [u32; 4],
 }
+
+/// Below this bridge force (N) a string counts as silent: 100 dB under the
+/// peak of a pp note, about −127 dBFS at the output.
+const SILENT_FORCE: f32 = 1e-5;
 
 impl Instrument {
     /// Slow: fits each string's loss and dispersion per semitone (about 7 ms
@@ -96,6 +106,7 @@ impl Instrument {
             sample_rate,
             oversampling,
             decimator: HalfbandDecimator::new(),
+            quiet: [0; 4],
         }
     }
 
@@ -179,6 +190,7 @@ impl Instrument {
         }
         self.decimator.reset();
         self.body.reset();
+        self.quiet = [0; 4];
     }
 
     /// Advances one sample with one bow input per string, held over the
@@ -189,24 +201,44 @@ impl Instrument {
         bows: &[BowInput; 4],
         frames: &mut [StringFrame; 4],
     ) -> InstrumentFrame {
-        let step = |strings: &mut [BowedString; 4], frames: &mut [StringFrame; 4]| {
-            let mut bridge_force = 0.0;
-            for ((s, bow), frame) in strings.iter_mut().zip(bows).zip(frames.iter_mut()) {
-                *frame = s.process(*bow, 0.0);
-                bridge_force += frame.bridge_force;
-            }
-            bridge_force
-        };
         let bridge_force = if self.oversampling == 2 {
-            let first = step(&mut self.strings, frames);
-            let second = step(&mut self.strings, frames);
+            let first = self.step(bows, frames);
+            let second = self.step(bows, frames);
             self.decimator.process([first, second])
         } else {
-            step(&mut self.strings, frames)
+            self.step(bows, frames)
         };
         InstrumentFrame {
             output: self.body.process(bridge_force),
             bridge_force,
         }
+    }
+
+    /// Whether string `i` is skipped: the bow is off it and it has been silent
+    /// for a whole period, so no wave is left anywhere in its loop.
+    pub fn is_idle(&self, i: usize) -> bool {
+        self.quiet[i] as f32 > self.string_sample_rate() / self.strings[i].frequency()
+    }
+
+    /// One string sample of every string that isn't idle; returns the sum of
+    /// their bridge forces.
+    fn step(&mut self, bows: &[BowInput; 4], frames: &mut [StringFrame; 4]) -> f32 {
+        let mut bridge_force = 0.0;
+        for i in 0..4 {
+            let bow = bows[i];
+            if bow.force <= 0.0 && self.is_idle(i) {
+                frames[i] = StringFrame::default();
+                continue;
+            }
+            let frame = self.strings[i].process(bow, 0.0);
+            self.quiet[i] = if bow.force <= 0.0 && frame.bridge_force.abs() < SILENT_FORCE {
+                self.quiet[i].saturating_add(1)
+            } else {
+                0
+            };
+            frames[i] = frame;
+            bridge_force += frame.bridge_force;
+        }
+        bridge_force
     }
 }

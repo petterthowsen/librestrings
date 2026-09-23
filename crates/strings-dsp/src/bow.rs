@@ -70,6 +70,7 @@ pub struct JunctionResult {
     pub state: ContactState,
 }
 
+#[derive(Clone)]
 pub struct BowJunction {
     pub friction: FrictionParams,
     state: ContactState,
