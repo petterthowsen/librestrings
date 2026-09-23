@@ -128,6 +128,13 @@ pub struct PerformerTuning {
     pub crossing: f32,
     /// Bow acceleration at the start of a stroke off the string.
     pub attack: (f32, f32),
+    /// A stroke off the string that starts while the bow still moves (fast
+    /// détaché, where it never gets off the string) first changes bow: the
+    /// bow slows to zero over this long, then accelerates as `attack` says.
+    /// Reversing over the whole attack put the bow change 20–40 ms into the
+    /// note, with the full force on a nearly still bow, which can choke the
+    /// string (PLAN.md "Bow changes in fast détaché").
+    pub bow_change: f32,
     /// At low dynamics attacks are slower, by up to this factor minus one at
     /// dynamics 0. At low force the bow must accelerate gently or the string
     /// starts in multiple slips (Guettler's attack diagram): below 1.6 quiet
@@ -223,6 +230,7 @@ impl Default for PerformerTuning {
             land: 0.012,
             crossing: 0.03,
             attack: (0.12, 0.035),
+            bow_change: 0.012,
             pp_attack: 1.6,
             pressure_tilt: 0.15,
             attack_bite: 0.2,
@@ -465,6 +473,9 @@ pub struct Performer {
     /// fades once the bow moves.
     stroke_bite: f32,
     stroke_bite_time: f32,
+    /// A stroke waiting for its bow change: the attack (s) to start once the
+    /// bow has stopped.
+    pending_attack: Option<f32>,
     direction: f32,
     /// Bow velocity as a multiple of the dynamics' bow speed, signed.
     velocity: Ramp,
@@ -528,6 +539,7 @@ impl Performer {
             stroke_velocity: 0.0,
             stroke_bite: 0.0,
             stroke_bite_time: 0.0,
+            pending_attack: None,
             direction: -1.0,
             velocity: Ramp::at(0.0),
             contact: [Ramp::at(0.0); 4],
@@ -672,6 +684,7 @@ impl Performer {
         self.phase = Phase::Idle;
         self.ending = false;
         self.letting_go = None;
+        self.pending_attack = None;
         self.velocity.set(0.0);
         self.contact = [Ramp::at(0.0); 4];
         self.intonation = [0.0; 4];
@@ -727,8 +740,14 @@ impl Performer {
                 self.phase = Phase::Sustain;
                 let quiet = 1.0 - self.dynamics.target;
                 let attack = lerp(t.attack.0, t.attack.1, velocity) * (1.0 + t.pp_attack * quiet);
-                // From a bow still moving, this is a bow change through zero speed.
-                self.velocity.attack(self.direction, attack, fs);
+                if self.velocity.value().abs() > 0.05 {
+                    // The bow still moves: a bow change first.
+                    self.velocity.go(0.0, t.bow_change, fs);
+                    self.pending_attack = Some(attack);
+                } else {
+                    self.pending_attack = None;
+                    self.velocity.attack(self.direction, attack, fs);
+                }
                 self.contact[string].go(1.0, t.land, fs);
                 self.stroke_bite = t.attack_bite * velocity;
                 self.stroke_bite_time = t.attack_bite_time;
@@ -736,6 +755,7 @@ impl Performer {
             BowLift::OnString => {
                 // The force is on before the bow moves.
                 self.phase = Phase::Grip;
+                self.pending_attack = None;
                 self.velocity.go(0.0, t.place, fs);
                 self.contact[string].go(1.0, t.grip, fs);
                 self.stroke_bite = t.bite * velocity;
@@ -863,6 +883,10 @@ impl Performer {
                     lerp(t.grip_attack.0, t.grip_attack.1, v) * (1.0 + t.pp_attack * quiet);
                 self.velocity.attack(self.direction, attack, fs);
             }
+            Phase::Sustain if self.pending_attack.is_some() && self.phase_time >= t.bow_change => {
+                let attack = self.pending_attack.take().unwrap_or(0.0);
+                self.velocity.attack(self.direction, attack, fs);
+            }
             Phase::Sustain if self.ending && self.phase_time >= t.min_stroke => self.end_stroke(),
             Phase::Release if self.phase_time >= self.phase_length => {
                 self.phase = Phase::Idle;
@@ -911,6 +935,7 @@ impl Performer {
         let fs = self.fs;
         let stroke = self.phase_time;
         self.ending = false;
+        self.pending_attack = None;
         self.phase_time = 0.0;
         match self.bow_lift {
             BowLift::OnString => {

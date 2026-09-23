@@ -83,15 +83,15 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 32. **Keyswitches and CC numbers are fixed** (PLAN.md 4.1); user mapping is still to come.
 33. **The tuning window's changes aren't saved** with the plugin; they are for finding values to put into the code ("Copy changes"). Its clipboard buttons and the strings' refit have only been tested in code, not clicked in a host.
 
+34. **High-pitched noise heard in the plugin, not in the renders.** Playing it, the user noticed high-pitched random noise on top of the sound; the offline render of held notes (E3, C2, C4, with and without vibrato) sounds clean. In the render the partials stay tonal up to 8 kHz (spectral flatness ≤ 0.011, at 44.1, 48 and 96 kHz), and updating the controls every sample instead of at 3 kHz changes nothing, so it isn't zipper noise. Not yet traced in the plugin (host rate, buffer size, parameter smoothing, the editor).
+
 ## Playing controls
 
-34. **The SWAM-style controls are built but not heard** (PLAN.md "Phase 3 notes: playing like SWAM"): CC11 dynamics and CC1 vibrato, the pressure range from flautando to scratch, one way of playing with a bow lift (off or on the string) in place of the articulations, legato transitions set by velocity, fingering modes and double stops. Only tests and renders of the example scores so far. The numbers (portamento 250 ms below velocity 0.6, grip attack 8–100 ms, minimum stroke 40 ms) are guesses.
-35. **Flautando is only a lighter bow.** Real flautando also moves toward the fingerboard, but the model's cello strings play flat above β ≈ 0.115 (item 8), so the pressure control can't move the bow there.
-36. **MIDI pitch bend is ignored.** It could move the finger on the bowed string(s); open strings can't bend.
-37. **Double stops are limited:** two notes, a fixed hand span (4 semitones at every position, where high positions allow more), and intonation by ear only on the older note. Chords of three or four strings (broken or with high force) aren't played.
-38. **The fingering modes are one number each** (how far above a lower string's open pitch a note stays on it). In a double stop they only rank the pairs of strings, so mid position can still take an open string when the other note would be past its bias.
-
-39. **Fast détaché chokes the open C string, and its bow changes land late.** In `strings-render play ostinato` (sixteenths at 150 bpm in the lowest octave), off the string: a note 20 ms after an 80 ms stroke comes before the bow has lifted (the contact only falls to 0.85), so the new stroke starts from a bow still moving the other way. `Performer::note_on` reverses it over the whole attack (35–120 ms), so the bow passes through zero 20–40 ms into the note, and all that time the force stays at the stroke's level (the speed floor is the target speed). On an accented open C2 after a stopped D2 on the same string, the string sticks to the bow and is dragged: the bridge force is almost all slow (the audio band 15–20 dB down) and the output falls to −38 and −50 dB for two notes, and again on the last C2. Crossings are unaffected: the new string's force fades in over 30 ms. On the string, every note speaks (within 7 dB).
+35. **The SWAM-style controls are built but not heard** (PLAN.md "Phase 3 notes: playing like SWAM"): CC11 dynamics and CC1 vibrato, the pressure range from flautando to scratch, one way of playing with a bow lift (off or on the string) in place of the articulations, legato transitions set by velocity, fingering modes and double stops. Only tests and renders of the example scores so far. The numbers (portamento 250 ms below velocity 0.6, grip attack 8–100 ms, minimum stroke 40 ms) are guesses.
+36. **Flautando is only a lighter bow.** Real flautando also moves toward the fingerboard, but the model's cello strings play flat above β ≈ 0.115 (item 8), so the pressure control can't move the bow there.
+37. **MIDI pitch bend is ignored.** It could move the finger on the bowed string(s); open strings can't bend.
+38. **Double stops are limited:** two notes, a fixed hand span (4 semitones at every position, where high positions allow more), and intonation by ear only on the older note. Chords of three or four strings (broken or with high force) aren't played.
+39. **The fingering modes are one number each** (how far above a lower string's open pitch a note stays on it). In a double stop they only rank the pairs of strings, so mid position can still take an open string when the other note would be past its bias.
 
 ## Open decisions
 

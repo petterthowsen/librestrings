@@ -182,6 +182,18 @@ fn knobs(defaults: &Tuning) -> Vec<Knob> {
         )
         .log(0.01, 0.3)
         .unit(" s"),
+        Knob::new(
+            Attack,
+            "Bow change",
+            field!(live.performer.tuning.bow_change),
+        )
+        .log(0.002, 0.1)
+        .unit(" s")
+        .help(
+            "A new stroke while the bow still moves (fast détaché): the bow slows to \
+                 zero over this long before it accelerates. Longer puts the bow change \
+                 later in the note.",
+        ),
         Knob::new(Attack, "Bow landing", field!(live.performer.tuning.land))
             .log(0.002, 0.1)
             .unit(" s")

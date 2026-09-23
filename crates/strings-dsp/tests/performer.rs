@@ -346,6 +346,49 @@ fn a_tap_plays_a_short_stroke() {
     }
 }
 
+/// Fast détaché off the string in the lowest octave (sixteenths at 150 bpm, as
+/// in the `ostinato` score): the bow never gets off the string, so every stroke
+/// starts from a bow moving the other way. The bow change comes at the start of
+/// the note, and every note speaks. Reversing over the whole attack used to put
+/// it 20–40 ms in, and an accented open C2 after a D2 choked (PLAN.md "Bow changes in fast détaché").
+#[test]
+fn fast_detache_changes_bow_at_the_note() {
+    let mut p = performer();
+    p.set_dynamics(0.7);
+    p.set_bow_lift(BowLift::OffString);
+    let bar = [
+        36u8, 36, 43, 36, 39, 36, 43, 36, 38, 38, 45, 38, 43, 38, 47, 38,
+    ];
+    let (on, off) = ((0.08 * FS) as usize, (0.02 * FS) as usize);
+    let mut levels = Vec::new();
+    for (k, &note) in bar.iter().chain(&bar).chain(&[36]).enumerate() {
+        let before = p.process_frame().bow_velocity;
+        p.note_on(note, if k % 4 == 0 { 0.87 } else { 0.63 });
+        let mut frames = run(&mut p, on as f32 / FS);
+        p.note_off(note);
+        frames.extend(run(&mut p, off as f32 / FS));
+        if k > 0 {
+            let change = frames
+                .iter()
+                .position(|f| f.bow_velocity * before <= 0.0)
+                .unwrap_or(frames.len()) as f32
+                / FS;
+            assert!(
+                change < 0.015,
+                "note {k}: bow change {:.0} ms in",
+                change * 1e3
+            );
+        }
+        let out =
+            (frames.iter().map(|f| f.output.powi(2)).sum::<f32>() / frames.len() as f32).sqrt();
+        levels.push(20.0 * out.log10());
+    }
+    let (lo, hi) = levels
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(lo, hi), &l| (lo.min(l), hi.max(l)));
+    assert!(hi - lo < 12.0, "note levels {lo:.1} to {hi:.1} dB");
+}
+
 /// Once the key is up, the finger eases off: a stopped note dies away while an
 /// open string rings on.
 #[test]
