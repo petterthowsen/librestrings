@@ -11,7 +11,7 @@ cargo fmt
 cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | file.score
 cargo run --release -p strings-render -- bow --string A -o out/a.wav
 cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument cello for cello strings)
-cargo run --release -p strings-render -- calibrate             # cello force band (ForceLimits) from simulated maps
+cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate
 cargo run --release -p strings-render -- measured              # vs measured cello string (needs scripts/fetch-reference-data.sh)
 cargo xtask bundle strings-plugin --release                     # CLAP bundle -> target/bundled/LibreStrings.clap
 cargo run --release -p strings-plugin --features standalone -- --backend alsa   # play without a DAW (or jack; dummy is silent)
@@ -47,7 +47,8 @@ Renders go in `out/` (gitignored).
 - A rigid bow stopped on the string damps it slowly, and bow hair doesn't change that much. Notes stop cleanly because the performer eases the force with the bow speed (PLAN.md "Phase 2 notes"). Keep that coupling when changing strokes.
 - Bow hair (`BowHair`) is off by default, so violin and reference results stay unchanged; the cello preset turns it on. Its parameters are fitted to the measured map.
 - The cello strings play flat at β ≈ 0.124–0.156 (a torsion effect), so the performer's β range stays below 0.115. Bowed pitch also drifts with force; the performer intonates stopped notes by ear (slip-period feedback), which is deliberate, not a tuning bug.
-- After changing the strings, bow or friction of the cello, re-run `calibrate` and paste its limits into `presets::cello::FORCE_LIMITS`.
+- After changing the strings, bow or friction of the cello, re-run `calibrate --sample-rate 96000` and paste its limits into `presets::cello::FORCE_LIMITS`. Then run the seed sweep (`cargo test --release -p strings-dsp --test performer across_wander_seeds -- --ignored --nocapture`): one seed passing says little about attacks.
+- The strings run at 2× the sample rate by default (`PerformerSettings::oversampling`, `Instrument::new`); the body stays at the sample rate. At 1× high notes lock onto whole-sample periods (C5 steps by 5–20 cents). Fit string designs at `Instrument::string_sample_rate`, not the host rate.
 - On the measured cello string, bending stiffness and torsion (Phase 1b) *shrink* the Helmholtz region a little, through real extra slips, even with the measured damping and the constant-Q torsional loss. This is not a bug (PLAN.md "Phase 1b results" and "Constant-Q torsional loss"). Violin presets have neither and use the one-pole loss.
 - The measured loss (`Loss::Measured`) fits one filter per semitone in the constructor (about 7 ms per cello string). Don't construct strings on the audio thread; to change a playing string, fit a `StringDesign` elsewhere and swap it in with `apply_design`.
 - Bowed open strings play 6–14 cents flat, so measure a bowed note's partials at its measured pitch, not at n × the nominal f0 (which misses the upper partials and looks like a spectral cliff).

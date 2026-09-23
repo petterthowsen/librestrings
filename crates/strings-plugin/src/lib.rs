@@ -304,6 +304,8 @@ impl Engine {
         t.engine.store(self.id, Relaxed);
         t.strings_generation.store(self.strings_generation, Relaxed);
         t.sample_rate.store(self.sample_rate, Relaxed);
+        let string_rate = self.performer.instrument().string_sample_rate();
+        t.string_rate.store(string_rate, Relaxed);
         t.block_size.store(samples as u32, Relaxed);
         t.load.store(self.load, Relaxed);
         t.load_peak.store(self.load_peak, Relaxed);
@@ -642,7 +644,10 @@ mod tests {
         let update = tuning::StringsUpdate {
             generation: 7,
             specs,
-            designs: strings_dsp::Instrument::design_strings(&specs, FS),
+            designs: strings_dsp::Instrument::design_strings(
+                &specs,
+                engine.performer.instrument().string_sample_rate(),
+            ),
         };
         assert!(shared.string_updates.push(Box::new(update)).is_ok());
 

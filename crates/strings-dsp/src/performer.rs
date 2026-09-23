@@ -92,6 +92,9 @@ pub struct PerformerSettings {
     pub output_gain: f32,
     /// Seed for the humanizing drift.
     pub seed: u32,
+    /// String samples per output sample, 1 or 2 (see [`Instrument::new`]).
+    /// Fixed when the performer is built; [`Performer::set_settings`] keeps it.
+    pub oversampling: usize,
     /// Timings and gestures.
     pub tuning: PerformerTuning,
 }
@@ -109,6 +112,7 @@ impl Default for PerformerSettings {
             vibrato_depth: 0.35,
             output_gain: 0.065,
             seed: 0x0b0e_5eed,
+            oversampling: 2,
             tuning: PerformerTuning::default(),
         }
     }
@@ -125,7 +129,9 @@ pub struct PerformerTuning {
     /// Bow acceleration at the start of a stroke off the string.
     pub attack: (f32, f32),
     /// At low dynamics attacks are slower, by up to this factor minus one at
-    /// dynamics 0.
+    /// dynamics 0. At low force the bow must accelerate gently or the string
+    /// starts in multiple slips (Guettler's attack diagram): below 1.6 quiet
+    /// attacks on C2 and G2 can hold a double slip for up to a second.
     pub pp_attack: f32,
     /// The pressure (band position) tilts with dynamics: this much above the
     /// setting at dynamics 0 and as much below it at 1. The model's quiet
@@ -217,7 +223,7 @@ impl Default for PerformerTuning {
             land: 0.012,
             crossing: 0.03,
             attack: (0.12, 0.035),
-            pp_attack: 0.8,
+            pp_attack: 1.6,
             pressure_tilt: 0.15,
             attack_bite: 0.2,
             attack_bite_time: 0.08,
@@ -499,7 +505,7 @@ impl Performer {
         let fs = sample_rate;
         let control_interval = ((fs / CONTROL_RATE).round() as usize).max(1);
         let mut p = Self {
-            instrument: Instrument::new(spec, fs),
+            instrument: Instrument::new(spec, fs, settings.oversampling),
             settings,
             fs,
             dynamics: Smooth::new(0.5, CONTROL_SMOOTHING, fs),
@@ -568,9 +574,13 @@ impl Performer {
         &self.settings
     }
 
-    /// Changes the settings while playing. The seed only applies at construction.
+    /// Changes the settings while playing. The seed and the oversampling only
+    /// apply at construction.
     pub fn set_settings(&mut self, settings: PerformerSettings) {
-        self.settings = settings;
+        self.settings = PerformerSettings {
+            oversampling: self.settings.oversampling,
+            ..settings
+        };
     }
 
     /// The note being played, until the bow has left the string or stopped

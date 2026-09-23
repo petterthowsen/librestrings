@@ -102,6 +102,10 @@ enum Command {
         /// score's `poly` changes it).
         #[arg(long)]
         double_stops: bool,
+        /// String samples per output sample: 1, or 2 to run the strings at
+        /// twice the sample rate (default: the performer's).
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=2))]
+        oversampling: Option<u8>,
         #[arg(long, short)]
         out: PathBuf,
         /// Also write the summed bridge force (before the body) to this WAV file.
@@ -276,6 +280,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pressure,
             fingering,
             double_stops,
+            oversampling,
             out,
             bridge_out,
         } => {
@@ -291,6 +296,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut settings = PerformerSettings::default();
             if let Some(p) = pressure {
                 settings.pressure = p;
+            }
+            if let Some(o) = oversampling {
+                settings.oversampling = o as usize;
             }
             let polyphony = if double_stops {
                 Polyphony::DoubleStops

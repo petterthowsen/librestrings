@@ -6,6 +6,7 @@
 
 use crate::body::{Body, BodySpec, BodyTuning};
 use crate::bow::FrictionParams;
+use crate::filters::HalfbandDecimator;
 use crate::string::{BowHair, BowInput, BowedString, StringDesign, StringFrame, StringSpec};
 
 /// The Helmholtz band of bow force, calibrated per instrument (PLAN.md 4.2).
@@ -65,15 +66,26 @@ pub struct Instrument {
     spec: InstrumentSpec,
     strings: [BowedString; 4],
     body: Body,
+    sample_rate: f32,
+    /// How many string samples per output sample (1 or 2).
+    oversampling: usize,
+    decimator: HalfbandDecimator,
 }
 
 impl Instrument {
     /// Slow: fits each string's loss and dispersion per semitone (about 7 ms
     /// per cello string). Don't call it on the audio thread.
-    pub fn new(spec: &InstrumentSpec, sample_rate: f32) -> Self {
+    ///
+    /// With `oversampling` 2 the strings run at twice `sample_rate` and their
+    /// bridge force is decimated before the body, which stays at
+    /// `sample_rate`. At 48 kHz a high note's slip otherwise snaps to whole
+    /// samples, and its period with it (C5 is 91.7 samples long).
+    pub fn new(spec: &InstrumentSpec, sample_rate: f32, oversampling: usize) -> Self {
+        assert!(matches!(oversampling, 1 | 2), "oversampling must be 1 or 2");
+        let string_rate = sample_rate * oversampling as f32;
         let strings = std::array::from_fn(|i| {
             let s = &spec.strings[i];
-            let mut string = BowedString::new(s, spec.friction, sample_rate, s.frequency);
+            let mut string = BowedString::new(s, spec.friction, string_rate, s.frequency);
             string.set_bow_hair(spec.hair);
             string
         });
@@ -81,7 +93,16 @@ impl Instrument {
             spec: *spec,
             strings,
             body: Body::new(&spec.body, sample_rate),
+            sample_rate,
+            oversampling,
+            decimator: HalfbandDecimator::new(),
         }
+    }
+
+    /// The rate the strings run at (Hz): the sample rate times the
+    /// oversampling. String designs must be fitted at this rate.
+    pub fn string_sample_rate(&self) -> f32 {
+        self.sample_rate * self.oversampling as f32
     }
 
     pub fn spec(&self) -> &InstrumentSpec {
@@ -97,12 +118,14 @@ impl Instrument {
     }
 
     /// Fits new loss and stiffness designs for `strings` (the instrument's
-    /// strings with other parameters). Slow (about 30 ms for a cello) and
-    /// allocating: call it off the audio thread, then [`Self::apply_strings`].
-    pub fn design_strings(strings: &[StringSpec; 4], sample_rate: f32) -> [StringDesign; 4] {
+    /// strings with other parameters) at `string_rate`, the instrument's
+    /// [`Self::string_sample_rate`]. Slow (about 30 ms for a cello at 48 kHz)
+    /// and allocating: call it off the audio thread, then
+    /// [`Self::apply_strings`].
+    pub fn design_strings(strings: &[StringSpec; 4], string_rate: f32) -> [StringDesign; 4] {
         std::array::from_fn(|i| {
             let s = &strings[i];
-            BowedString::design(s, sample_rate, s.frequency)
+            BowedString::design(s, string_rate, s.frequency)
         })
     }
 
@@ -154,21 +177,33 @@ impl Instrument {
         for s in &mut self.strings {
             s.reset();
         }
+        self.decimator.reset();
         self.body.reset();
     }
 
-    /// Advances one sample with one bow input per string. Also returns each
-    /// string's frame through `frames`.
+    /// Advances one sample with one bow input per string, held over the
+    /// oversampled steps. Also returns each string's frame through `frames`
+    /// (from the last step when oversampling).
     pub fn process(
         &mut self,
         bows: &[BowInput; 4],
         frames: &mut [StringFrame; 4],
     ) -> InstrumentFrame {
-        let mut bridge_force = 0.0;
-        for ((s, bow), frame) in self.strings.iter_mut().zip(bows).zip(frames.iter_mut()) {
-            *frame = s.process(*bow, 0.0);
-            bridge_force += frame.bridge_force;
-        }
+        let step = |strings: &mut [BowedString; 4], frames: &mut [StringFrame; 4]| {
+            let mut bridge_force = 0.0;
+            for ((s, bow), frame) in strings.iter_mut().zip(bows).zip(frames.iter_mut()) {
+                *frame = s.process(*bow, 0.0);
+                bridge_force += frame.bridge_force;
+            }
+            bridge_force
+        };
+        let bridge_force = if self.oversampling == 2 {
+            let first = step(&mut self.strings, frames);
+            let second = step(&mut self.strings, frames);
+            self.decimator.process([first, second])
+        } else {
+            step(&mut self.strings, frames)
+        };
         InstrumentFrame {
             output: self.body.process(bridge_force),
             bridge_force,

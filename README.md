@@ -99,7 +99,7 @@ strings-render play phrase -o out/phrase.wav     # also: scale, legato, staccato
 strings-render play my.score -o out/my.wav       # a score file
 ```
 
-The score format is described in `crates/strings-render/src/score.rs`; `crates/strings-render/scores/` has examples. `--bridge-out <file>` also writes the bridge force before the body; `--pressure`, `--fingering` and `--double-stops` change how it is played.
+The score format is described in `crates/strings-render/src/score.rs`; `crates/strings-render/scores/` has examples. `--bridge-out <file>` also writes the bridge force before the body; `--pressure`, `--fingering` and `--double-stops` change how it is played. The strings run at twice the sample rate, which keeps high notes in tune; `--oversampling 1` runs them at the sample rate, for comparison.
 
 ### `bow`: bow a single note
 

@@ -265,37 +265,38 @@ pub mod cello {
         },
     };
 
-    /// Fitted by `strings-render calibrate` to simulated Schelleng maps of each
-    /// string (bow speeds 0.05–0.4 m/s, β 0.04–0.25), counting only cells that
-    /// are Helmholtz within 0.15 s of the bow starting. Band positions 0.5–0.8
-    /// give such prompt Helmholtz motion in 90–98% of checked cases. The
-    /// model's band sits above the measured string's (at β = 0.1, v_b = 0.1 m/s
-    /// the G string's is 1.3–3.0 N, 0.9–3.0 N counting slow settling; measured
-    /// 0.31–1.89 N): the lower-limit gap of PLAN.md 4.2.
+    /// Fitted by `strings-render calibrate --sample-rate 96000` (the strings'
+    /// rate with the default 2× oversampling) to simulated Schelleng maps of
+    /// each string (bow speeds 0.05–0.4 m/s, β 0.04–0.25), counting only cells
+    /// that are Helmholtz within 0.15 s of the bow starting. Band positions
+    /// 0.5–0.8 give such prompt Helmholtz motion in 91–99% of checked cases.
+    /// The model's band sits above the measured string's (at β = 0.1,
+    /// v_b = 0.1 m/s the G string's is 1.2–2.9 N; measured 0.31–1.89 N): the
+    /// lower-limit gap of PLAN.md 4.2.
     const FORCE_LIMITS: [ForceLimits; 4] = [
         ForceLimits {
-            lower: 1.491,
-            lower_exponent: -0.933,
-            upper: 5.767,
-            upper_exponent: -0.653,
+            lower: 1.465,
+            lower_exponent: -0.943,
+            upper: 6.211,
+            upper_exponent: -0.622,
         },
         ForceLimits {
-            lower: 1.059,
-            lower_exponent: -1.050,
-            upper: 7.643,
-            upper_exponent: -0.565,
+            lower: 1.028,
+            lower_exponent: -1.053,
+            upper: 6.785,
+            upper_exponent: -0.606,
         },
         ForceLimits {
-            lower: 0.647,
-            lower_exponent: -1.166,
-            upper: 9.265,
-            upper_exponent: -0.545,
+            lower: 0.682,
+            lower_exponent: -1.138,
+            upper: 8.914,
+            upper_exponent: -0.562,
         },
         ForceLimits {
-            lower: 0.325,
-            lower_exponent: -1.306,
-            upper: 11.861,
-            upper_exponent: -0.440,
+            lower: 0.231,
+            lower_exponent: -1.435,
+            upper: 9.915,
+            upper_exponent: -0.504,
         },
     ];
 

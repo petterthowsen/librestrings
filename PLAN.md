@@ -110,7 +110,7 @@ F     = F_b · μ(Δv)
 - **`v_b`** (bow speed) sets loudness.
 - **`β`** (bow position, `0.04–0.2` of string length from the bridge) sets spectral tilt: sul ponticello at small β, sul tasto at large β. These come for free.
 
-**Aliasing.** The stick/slip transitions are corners, which alias at high `F_b`. Because a DWG is cheap, the option is to run the **whole string at 2× oversampling** rather than only the junction. Measure before deciding.
+**Aliasing.** The stick/slip transitions are corners, which alias at high `F_b`. Because a DWG is cheap, the option is to run the **whole string at 2× oversampling** rather than only the junction. **Decided (September 2026):** the strings run at 2× by default, the body at the sample rate; see "2× oversampling".
 
 ### 3.3 Body
 
@@ -307,9 +307,9 @@ Each phase ends with something audible.
 | **6. Sections** | N-player engine, humanization, stage placement, SIMD across players | 12-player section within the CPU budget; sounds like a section, not a chorus effect |
 | **7. Extended techniques** | Tremolo, trills, pizzicato, double stops, harmonics, mutes, MPE | — |
 
-**CPU budgets to confirm in Phase 3** (per instance, one core at 48 kHz):
-- Solo: < 3%
-- 12-player section: < 25%
+**CPU budgets** (per instance, one core at 48 kHz):
+- Solo: < 5% (raised from 3% for 2× oversampling; the engine measures 4.8%)
+- 12-player section: < 25% (players may run at 1×)
 
 ---
 
@@ -410,6 +410,16 @@ The steady-state refit after the constant-Q torsional loss put quiet open-G atta
 - **Change:** `calibrate` counts a cell as Helmholtz only if it is already Helmholtz from 0.15 s (the bow's speed ramps up over 0.05 s) as well as from 0.4 s on. The band-position check uses the same rule.
 - **Result:** 977 Helmholtz cells of 5376 (1340 counting slow settling). Against the old band, at the performer's β (0.07–0.115) the lower edge rises 14–49% and the upper falls 3–10%. The force at normal pressure (p = 0.65) moves only −6% to +2%, so normal playing is where it was tuned by ear. For the G at β = 0.1, v_b = 0.1 m/s the band is 1.3–3.0 N. Band positions 0.5–0.8 give prompt Helmholtz motion in 90–98% of checked cells.
 - **Robustness across seeds** (`notes_stay_helmholtz_across_wander_seeds`: the range check with the bow's wander, 30 notes × 24 seeds, counting failed checks): the steady-state refit 35, the old band 14 (the default seed happened to pass), the prompt-settling band 4. The weakest note is still the open G at pp (3 failures, one never settling), plus one C5 at ff 21 cents off: one whole-sample period (STATUS.md).
+
+### 2× oversampling (September 2026)
+
+At 48 kHz a high note's slip snaps to whole samples: C5 (91.7 samples) held 92-sample periods (−5 cents) for 0.1–0.25 s, and with the bow's wander a C5 at ff could end 13–21 cents off. At 96 kHz it stays within ±0.3 cents.
+
+- **Implementation:** `Instrument::new(spec, sample_rate, oversampling)` runs the four strings at `oversampling` × the sample rate (1 or 2), holding the performer's bow inputs over both steps, and decimates the summed bridge force with a 63-tap halfband FIR (Kaiser β = 7: flat to 20 kHz, at least 65 dB down from 28 kHz; `filters::HalfbandDecimator`). The body stays at the sample rate. `PerformerSettings::oversampling` sets it (default 2), fixed once the performer is built. String designs must be fitted at `Instrument::string_sample_rate`; the plugin publishes it for the tuning window. `strings-render play --oversampling 1|2` compares them.
+- **Force band:** refitted at 96 kHz (`calibrate --sample-rate 96000`): within a few percent of the 48 kHz fit on C, G and D, the A string's upper edge 2–8% lower. Band positions 0.5–0.8 give prompt Helmholtz motion in 91–99% of checked cells.
+- **Quiet attacks:** at 2× the open G's pp attack got worse (7 of 24 wander seeds slow or stuck in double slip, against 2 at 1×). Swept over 48 seeds, the lever was the attack's acceleration, as Guettler's attack diagram predicts: at low force the bow must accelerate gently. `pp_attack` 0.8 → 1.6 (a pp attack takes 2.4× the time of an ff one, against 1.7×) gives no slow attack for any of ten notes C2–E5 at pp, mf or ff on 48 seeds, at the cost of 5–20 ms later Helmholtz at pp. Raising the pressure tilt to 0.25 nearly did the same (3 of 48); the bite made it worse (0.4: 24 of 48).
+- **Robustness** (`notes_stay_helmholtz_across_wander_seeds`, 720 notes): 0 failed checks at 2×; at 1× 3, all pitch (C5 at ff 13–21 cents, E4 at pp 10 cents).
+- **Cost:** the plugin engine 2.5% → 4.8% of real time, the renderer 2.7% → 6.4%. Building a cello still takes about 27 ms. The solo budget is now 5%.
 
 ### Phase 2 notes: solo cello (September 2026)
 
@@ -537,7 +547,7 @@ Changes to the controls after looking at how Audio Modeling's SWAM strings are p
 - **Delay modulation artifacts.** Changing the nut-side delay quickly (legato, portamento) can click or zip. It may need a finger modeled as a lossy scattering junction with its impedance ramped in, instead of a plain change of delay length.
 - **Tuning drift.** The phase delay of the loop filters changes with their parameters. Tuning compensation must be recomputed whenever the filters change.
 - **Stick/slip hysteresis bugs** are easy to write and hard to hear in isolation. Test them explicitly (section 6).
-- **Aliasing** from stick/slip corners at high bow force. Decide on oversampling by measurement.
+- **Aliasing** from stick/slip corners at high bow force. The strings run at 2× (see "2× oversampling"); aliasing itself hasn't been measured.
 - **High-frequency loss shapes playability.** With too little loss in the bridge filter, the sharp Helmholtz corner fragments the slip phase into extra slips, even well inside the Schelleng range. Loss pole 0.5 (at 48 kHz) gives a clean Helmholtz band without oversampling; brightness must come back through the body, not by thinning the loss.
 - **A rigidly sticking bow traps energy.** With the bow stopped on the string, the nut-side segment only decays at the string's own rate (about −19 dB after 200 ms on the A string). Bow-hair compliance doesn't change that much (Phase 2 notes); a stop is clean when the force eases with the bow speed, so the Helmholtz motion follows the bow down.
 - **Body data.** Sourcing measured body IRs (cello first) under a usable license is unsolved. The biquad bank tuned from published mode frequencies is the fallback.
@@ -561,5 +571,4 @@ Errors and gaps in `docs/Real-Time Physical Modeling Techniques for Audio Synthe
 ## Open questions
 
 - Whether CC64 or CC68 toggles legato.
-- Whether to use the whole-string 2× oversampling mode by default.
 - Whether to rename the `strings-*` crates to match the product name, LibreStrings (decided September 2026; CLAP ID `io.github.petterthowsen.librestrings`).

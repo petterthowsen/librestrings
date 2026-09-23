@@ -140,9 +140,127 @@ impl Default for DispersionAllpass {
     }
 }
 
+/// Halves the sample rate: a linear-phase halfband FIR lowpass (Kaiser-windowed
+/// sinc) followed by keeping every other sample. Every other tap is zero, so
+/// each output costs [`Self::PAIRS`] multiply-adds plus the centre tap.
+///
+/// The passband is flat to 0.21 of the input rate (20 kHz at 96 kHz) and the
+/// stopband starts at 0.29 (28 kHz), about 70 dB down; what folds back below
+/// 20 kHz is at least that far down. Latency: `(TAPS − 1) / 2` input samples.
+pub struct HalfbandDecimator {
+    /// Coefficients of the odd offsets from the centre, nearest first.
+    odd: [f32; Self::PAIRS],
+    history: [f32; Self::TAPS],
+    /// Index of the newest sample in `history`.
+    head: usize,
+}
+
+impl HalfbandDecimator {
+    /// Nonzero coefficient pairs either side of the centre.
+    pub const PAIRS: usize = 16;
+    pub const TAPS: usize = 4 * Self::PAIRS - 1;
+    /// Kaiser window shape; 7 gives about 70 dB of stopband.
+    const KAISER_BETA: f64 = 7.0;
+
+    pub fn new() -> Self {
+        let half = (Self::TAPS / 2) as f64;
+        let i0 = |x: f64| {
+            // Series for the modified Bessel function of the first kind, order 0.
+            let (mut sum, mut term) = (1.0, 1.0);
+            for k in 1..32 {
+                term *= (x / (2.0 * k as f64)).powi(2);
+                sum += term;
+            }
+            sum
+        };
+        let odd = std::array::from_fn(|k| {
+            let n = (2 * k + 1) as f64;
+            let sinc = (std::f64::consts::FRAC_PI_2 * n).sin() / (std::f64::consts::PI * n);
+            let window = i0(Self::KAISER_BETA * (1.0 - (n / half).powi(2)).max(0.0).sqrt())
+                / i0(Self::KAISER_BETA);
+            (sinc * window) as f32
+        });
+        Self {
+            odd,
+            history: [0.0; Self::TAPS],
+            head: 0,
+        }
+    }
+
+    /// Takes two input samples, oldest first, and returns one output sample.
+    pub fn process(&mut self, x: [f32; 2]) -> f32 {
+        for v in x {
+            self.head = (self.head + 1) % Self::TAPS;
+            self.history[self.head] = v;
+        }
+        let at = |back: usize| self.history[(self.head + Self::TAPS - back) % Self::TAPS];
+        let centre = Self::TAPS / 2;
+        let mut y = 0.5 * at(centre);
+        for (k, c) in self.odd.iter().enumerate() {
+            let d = 2 * k + 1;
+            y += c * (at(centre - d) + at(centre + d));
+        }
+        y
+    }
+
+    pub fn reset(&mut self) {
+        self.history = [0.0; Self::TAPS];
+    }
+}
+
+impl Default for HalfbandDecimator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Gain of the decimator for a tone at `omega` (radians per input sample),
+    /// from the output's projection onto the tone at half the rate.
+    fn decimated_gain(omega: f64) -> f64 {
+        let mut d = HalfbandDecimator::new();
+        let n = 40_000;
+        let (mut re, mut im) = (0.0, 0.0);
+        let mut count = 0;
+        for i in 0..n {
+            let x = |j: usize| (omega * j as f64).sin() as f32;
+            let y = d.process([x(2 * i), x(2 * i + 1)]) as f64;
+            if i >= n / 2 {
+                // The output at step i is aligned with input 2i + 1, delayed.
+                let ph = omega * (2 * i + 1) as f64;
+                re += y * ph.sin();
+                im += y * ph.cos();
+                count += 1;
+            }
+        }
+        2.0 * (re * re + im * im).sqrt() / count as f64
+    }
+
+    #[test]
+    fn halfband_passes_the_audio_band_and_stops_the_aliases() {
+        let fs = 96_000.0;
+        let omega = |f: f64| std::f64::consts::TAU * f / fs;
+        for f in [100.0, 1000.0, 10_000.0, 20_000.0] {
+            let g = decimated_gain(omega(f));
+            assert!((g - 1.0).abs() < 0.01, "{f} Hz: gain {g}");
+        }
+        // Above 28 kHz a tone would fold below 20 kHz.
+        for f in [28_000.0, 35_000.0, 47_000.0] {
+            // Measure the aliased tone where it lands.
+            let mut d = HalfbandDecimator::new();
+            let out: Vec<f32> = (0..20_000)
+                .map(|i| {
+                    let x = |j: usize| (omega(f) * j as f64).sin() as f32;
+                    d.process([x(2 * i), x(2 * i + 1)])
+                })
+                .collect();
+            let peak = out[1000..].iter().fold(0f32, |m, v| m.max(v.abs()));
+            assert!(peak < 10f32.powf(-65.0 / 20.0), "{f} Hz: {peak}");
+        }
+    }
 
     /// Phase lag of `process` at `omega`, by quadrature projection over a steady tone.
     fn measured_lag(mut process: impl FnMut(f32) -> f32, omega: f32) -> f32 {

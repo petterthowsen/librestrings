@@ -51,6 +51,9 @@ pub struct Telemetry {
     /// The last string update the audio thread applied (`StringsUpdate::generation`).
     pub strings_generation: AtomicU32,
     pub sample_rate: AtomicF32,
+    /// The rate the strings run at (the sample rate times the oversampling):
+    /// string designs are fitted at it.
+    pub string_rate: AtomicF32,
     pub block_size: AtomicU32,
     /// Time spent in `process` as a fraction of the block's duration:
     /// smoothed, and a peak that decays.

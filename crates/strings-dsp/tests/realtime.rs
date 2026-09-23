@@ -117,7 +117,7 @@ fn retuning_never_allocates() {
         bending_stiffness: 1e-4,
         ..s
     });
-    let mut designs = Instrument::design_strings(&strings, fs);
+    let mut designs = Instrument::design_strings(&strings, p.instrument().string_sample_rate());
     let mut settings = PerformerSettings::default();
     settings.tuning.attack_bite = 0.4;
     settings.tuning.finger_loss = 0.05;

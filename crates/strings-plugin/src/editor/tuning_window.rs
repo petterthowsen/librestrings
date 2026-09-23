@@ -777,15 +777,21 @@ impl TuningState {
         }
         // Fit once the slider is let go, not on every step of a drag.
         let dragging = ctx.input(|i| i.pointer.any_down());
-        if self.tuning.strings != self.sent_strings && !dragging && self.pending.is_none() {
-            self.fit_strings(shared, t.sample_rate.load(Relaxed));
+        // The string rate is known once the engine has run.
+        let string_rate = t.string_rate.load(Relaxed);
+        if self.tuning.strings != self.sent_strings
+            && !dragging
+            && self.pending.is_none()
+            && string_rate > 0.0
+        {
+            self.fit_strings(shared, string_rate);
         }
         if self.pending.is_some() {
             ctx.request_repaint();
         }
     }
 
-    fn fit_strings(&mut self, shared: &Arc<Shared>, sample_rate: f32) {
+    fn fit_strings(&mut self, shared: &Arc<Shared>, string_rate: f32) {
         self.generation += 1;
         let generation = self.generation;
         self.pending = Some(generation);
@@ -793,7 +799,7 @@ impl TuningState {
         let specs = self.tuning.strings.apply_to(&INSTRUMENT.strings);
         let shared = shared.clone();
         std::thread::spawn(move || {
-            let designs = Instrument::design_strings(&specs, sample_rate);
+            let designs = Instrument::design_strings(&specs, string_rate);
             let update = StringsUpdate {
                 generation,
                 specs,
