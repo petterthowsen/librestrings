@@ -23,7 +23,10 @@
 //! Torsional waves, when enabled, travel in two more round-trip lines on either
 //! side of the bow. They couple to the transverse waves only at the bow: the
 //! friction force drives both, and the bow sees the sum of their velocities at
-//! the string's surface. The bridge force (the output) is transverse only.
+//! the string's surface. The bridge force (the output) is transverse only. Their
+//! damping has constant Q (Woodhouse & Loach 1999), so a torsional mode loses
+//! in proportion to its frequency per period: a loss filter at the nut-side
+//! reflection, fitted like the measured transverse loss.
 //!
 //! Bow hair, when enabled, is a spring and dashpot (Kelvin–Voigt) between the
 //! bow stick and the contact point. The hairs at the contact move with the
@@ -33,7 +36,7 @@
 use crate::bow::{BowJunction, ContactState, FrictionParams, JunctionResult};
 use crate::delay::DelayLine;
 use crate::filters::DispersionAllpass;
-use crate::loss::{Loss, LossDesign, LossFilter};
+use crate::loss::{DampingCurve, Loss, LossDesign, LossFilter};
 
 #[derive(Clone, Copy, Debug)]
 pub struct StringSpec {
@@ -62,8 +65,8 @@ pub struct TorsionSpec {
     /// Torsional fundamental of the open string (Hz). Stopping the string scales
     /// it with the transverse pitch.
     pub frequency: f32,
-    /// Quality factor of the torsional fundamental; the loss per period is the
-    /// same for every torsional mode.
+    /// Quality factor of every torsional mode (constant Q, as Woodhouse and
+    /// Loach measured): mode k loses `π·k/Q` nepers per torsional period.
     pub q: f32,
 }
 
@@ -156,23 +159,34 @@ struct NoteDesign {
     loss: LossDesign,
     /// Dispersion allpass coefficient.
     dispersion: f32,
+    /// Loss of the torsional loop (none without torsion).
+    torsion: LossDesign,
 }
 
-/// A string's loss and dispersion, fitted per semitone (see
-/// [`BowedString::design`]). Empty for a flexible string with one-pole loss,
-/// which needs no fitting.
+/// A string's loss, dispersion and torsional loss, fitted per semitone (see
+/// [`BowedString::design`]). Empty for a flexible string with one-pole loss and
+/// no torsion, which needs no fitting.
 pub struct StringDesign {
     notes: Vec<NoteDesign>,
     lowest_frequency: f32,
     sample_rate: f32,
 }
 
-/// Torsional waveguide: one round-trip line on each side of the bow.
+/// A loss design that loses nothing.
+const NO_LOSS: LossDesign = LossDesign {
+    dc_loss: 0.0,
+    pole: 0.0,
+    cutoff: 20_000.0,
+};
+
+/// Torsional waveguide: one round-trip line on each side of the bow, with the
+/// loss filter at the nut-side reflection.
 struct Torsion {
     spec: TorsionSpec,
     impedance: f32,
     nut: DelayLine,
     bridge: DelayLine,
+    filter: LossFilter,
     nut_delay: f32,
     bridge_delay: f32,
     nut_gain: f32,
@@ -180,22 +194,37 @@ struct Torsion {
 }
 
 impl Torsion {
-    fn update(&mut self, frequency_ratio: f32, beta: f32, sample_rate: f32) {
+    fn update(&mut self, frequency_ratio: f32, beta: f32, sample_rate: f32, loss: &LossDesign) {
         let frequency = self.spec.frequency * frequency_ratio;
-        let period = sample_rate / frequency;
+        self.filter.set(loss);
+        // The filter's phase delay at the fundamental comes off the nut side,
+        // so the torsional loop stays in tune.
+        let omega = std::f32::consts::TAU * frequency / sample_rate;
+        let period = sample_rate / frequency - self.filter.phase_delay(omega);
         let max = self.nut.max_delay();
         self.bridge_delay = (beta * period).clamp(DelayLine::MIN_DELAY, max);
         self.nut_delay = (period - self.bridge_delay).clamp(DelayLine::MIN_DELAY, max);
-        // Amplitude falls by e^(−π/Q) per period at the torsional fundamental.
-        let loop_gain = (-std::f32::consts::PI / self.spec.q).exp();
+        let loop_gain = (-loss.dc_loss).exp();
         let bridge_share = self.bridge_delay / period;
         self.bridge_gain = loop_gain.powf(bridge_share);
         self.nut_gain = loop_gain.powf(1.0 - bridge_share);
     }
 
+    /// Constant-Q loss of a torsional loop tuned to `frequency`. Slow: fitted
+    /// like the measured transverse loss.
+    fn loss_design(q: f32, frequency: f32, sample_rate: f32) -> LossDesign {
+        DampingCurve {
+            floor: 0.5 / q,
+            at_1khz: 0.0,
+            exponent: 1.0,
+        }
+        .design(frequency, sample_rate)
+    }
+
     fn reset(&mut self) {
         self.nut.clear();
         self.bridge.clear();
+        self.filter.reset();
     }
 }
 
@@ -223,6 +252,7 @@ impl BowedString {
                 impedance: t.impedance,
                 nut: DelayLine::new(max_torsion),
                 bridge: DelayLine::new(max_torsion),
+                filter: LossFilter::new(sample_rate, true),
                 nut_delay: 0.0,
                 bridge_delay: 0.0,
                 nut_gain: 1.0,
@@ -267,14 +297,14 @@ impl BowedString {
     /// that [`Self::apply_design`] can tune to without more memory.
     pub const LOWEST_TORSION_RATIO: f32 = 2.0;
 
-    /// Fits the loss and stiffness of `spec` per semitone from
+    /// Fits the loss, stiffness and torsional loss of `spec` per semitone from
     /// `lowest_frequency` up. Slow (about 7 ms for a cello string) and
     /// allocating: build it off the audio thread.
     pub fn design(spec: &StringSpec, sample_rate: f32, lowest_frequency: f32) -> StringDesign {
         let measured_loss = matches!(spec.loss, Loss::Measured(_));
         // B grows with the square of the sounding pitch (it scales as 1/L²).
         let b_open = spec.inharmonicity();
-        let notes = if b_open > 0.0 || measured_loss {
+        let notes = if b_open > 0.0 || measured_loss || spec.torsion.is_some() {
             let semitones = (12.0
                 * (Self::HIGHEST_ABOVE_OPEN * spec.frequency / lowest_frequency).log2())
             .ceil()
@@ -288,7 +318,15 @@ impl BowedString {
                     let b = b_open * (f / spec.frequency).powi(2);
                     let dispersion =
                         DispersionAllpass::design(f, sample_rate, b, |w| filter.phase_lag(w));
-                    NoteDesign { loss, dispersion }
+                    let torsion = spec.torsion.map_or(NO_LOSS, |t| {
+                        let f_t = t.frequency * f / spec.frequency;
+                        Torsion::loss_design(t.q, f_t, sample_rate)
+                    });
+                    NoteDesign {
+                        loss,
+                        dispersion,
+                        torsion,
+                    }
                 })
                 .collect()
         } else {
@@ -431,7 +469,7 @@ impl BowedString {
                 z,
             ),
             Some(t) => {
-                let from_t_nut = -t.nut_gain * t.nut.read(t.nut_delay);
+                let from_t_nut = -t.nut_gain * t.filter.process(t.nut.read(t.nut_delay));
                 let from_t_bridge = -t.bridge_gain * t.bridge.read(t.bridge_delay);
                 // The bow sees the transverse and torsional impedances in parallel.
                 let z_t = t.impedance;
@@ -527,6 +565,7 @@ impl BowedString {
                 self.frequency / self.open_frequency,
                 self.beta,
                 self.sample_rate,
+                &note.torsion,
             );
         }
         self.loop_gain = match self.loss {
@@ -565,6 +604,7 @@ impl BowedString {
             return NoteDesign {
                 loss: Self::loss_design(&self.loss, self.frequency, self.sample_rate),
                 dispersion: 0.0,
+                torsion: NO_LOSS,
             };
         }
         let pos = (12.0 * (self.frequency / self.design.lowest_frequency).log2())
@@ -575,6 +615,7 @@ impl BowedString {
             Some(next) => NoteDesign {
                 loss: table[i].loss.lerp(&next.loss, t),
                 dispersion: table[i].dispersion + t * (next.dispersion - table[i].dispersion),
+                torsion: table[i].torsion.lerp(&next.torsion, t),
             },
             None => table[i],
         }

@@ -18,6 +18,16 @@ Papers the model takes numbers or methods from, and what was used from each. Dat
   - **The authors' simulation model** includes frequency-dependent damping, bending stiffness and torsion together, as this model now does (PLAN.md "Phase 1b results").
   - They describe a "torsional spike" in the friction force: a torsional pulse launched when sticking ends.
 
+- **J. Woodhouse, A. R. Loach, "Torsional behaviour of cello strings", Acta Acustica united with Acustica 85(5), 734–740 (1999).** [ResearchGate](https://www.researchgate.net/publication/233674858_Torsional_Behaviour_Of_Cello_Strings). Read through the review below, not in the original.
+  - From the torsional impulse responses of several cello strings: the torsional modes are close to harmonic, and **constant Q** (the same Q for every mode) is an adequate model of their damping.
+  - Used for: the constant-Q torsional loss in `string.rs` (PLAN.md "Constant-Q torsional loss").
+
+- **J. Woodhouse, P. M. Galluzzo, "The bowed string as we know it today", Acta Acustica united with Acustica 90, 579–589 (2004).** [PDF (euphonics.org)](https://euphonics.org/wp-content/uploads/2022/03/BowedStringReview.pdf).
+  - Summarizes Woodhouse & Loach: constant Q for torsional damping. Waveguide models put frequency-dependent loss in the reflection functions as recursive IIR filters, as `string.rs` does.
+
+- **É. Bavu, C. Besnainou, V. Gibiat, J. Frelat, M. François, "Torsional waves in a bowed string", Acta Acustica united with Acustica 91, 241–246 (2005).** [PDF (UNSW)](https://www.phys.unsw.edu.au/jw/reprints/Bavuetal.pdf).
+  - Measured the torsional and transverse fundamentals' Q on a bowed string: the torsional Q is "more than fifty times lower", lower than Mores' order of magnitude. The preset's Q = 50 is between the two readings.
+
 ## Stiffness (dispersion filters)
 
 - S. A. Van Duyne, J. O. Smith, "A simplified approach to modeling dispersion caused by stiffness in strings and plates", Proc. ICMC (1994). Cascade of identical first-order allpasses; used in `filters::DispersionAllpass`.

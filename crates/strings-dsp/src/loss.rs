@@ -382,4 +382,33 @@ mod tests {
             );
         }
     }
+    /// A flat curve (constant Q) is what the torsional loop uses: the fit
+    /// follows it over the modes that matter, where the loss per period rises
+    /// in proportion to the mode number.
+    #[test]
+    fn constant_q_design_follows_the_modes() {
+        let curve = DampingCurve {
+            floor: 0.5 / 50.0,
+            at_1khz: 0.0,
+            exponent: 1.0,
+        };
+        let fs = 48_000.0;
+        for f0 in [540.0, 1500.0] {
+            let d = curve.design(f0, fs);
+            let mut filter = LossFilter::new(fs, true);
+            filter.set(&d);
+            let butterworth = filter.butterworth.as_ref().unwrap();
+            for n in 1..=(8000.0 / f0) as usize {
+                let w = std::f64::consts::TAU * n as f64 * f0 as f64 / fs as f64;
+                let loss = d.dc_loss as f64
+                    + LossFilter::one_pole_loss(d.pole as f64, w)
+                    + butterworth.loss(w);
+                let q = std::f64::consts::PI * n as f64 / loss;
+                assert!(
+                    (q / 50.0).ln().abs() < 1.25f64.ln(),
+                    "f0 {f0} mode {n}: Q {q:.1} ({d:?})"
+                );
+            }
+        }
+    }
 }

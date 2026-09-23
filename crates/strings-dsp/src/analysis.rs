@@ -43,15 +43,25 @@ pub fn measure_frequency(x: &[f32], sample_rate: f32, estimate: f32) -> f32 {
 /// within about `spacing / 16` of `estimate`.
 pub fn measure_partial(x: &[f32], sample_rate: f32, estimate: f32, spacing: f32) -> f32 {
     let window = ((8.0 * sample_rate / spacing).round() as usize).min(x.len() / 2);
+    let longest = x.len() - window;
     let mut f = estimate as f64;
-    // Coarse pass with a short hop (wide unwrap range), then a fine pass with the longest hop.
-    for hop in [window, x.len() - window] {
+    // Passes from a short hop (wide unwrap range) to the longest (fine). Each
+    // hop is at most 4× the last, so the last estimate is close enough to
+    // unwrap the next phase: a single jump from the shortest to the longest
+    // hop lands a whole cycle off when the period jitters (a high bowed note
+    // alternating between whole-sample periods).
+    let mut hop = window;
+    loop {
         let omega = std::f64::consts::TAU * f / sample_rate as f64;
         let p1 = bin_phase(&x[..window], omega);
         let p2 = bin_phase(&x[hop..hop + window], omega);
         let expected = omega * hop as f64;
         let deviation = wrap_phase(p2 - p1 - expected);
         f += deviation * sample_rate as f64 / (std::f64::consts::TAU * hop as f64);
+        if hop == longest {
+            break;
+        }
+        hop = (4 * hop).min(longest);
     }
     f as f32
 }

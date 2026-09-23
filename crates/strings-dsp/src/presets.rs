@@ -89,8 +89,10 @@ pub mod reference {
     /// - impedance: `κ·μ·c_t` with c_t = 2·L·f_t = 755 m/s and κ = 0.6 (most of
     ///   a wound string's mass sits in the winding, between κ = 0.5 for a solid
     ///   rod and 1 for a thin tube): 3.5 kg/s, about 3.3 × Z;
-    /// - Q = 50: Mores finds torsional Q about an order of magnitude below the
-    ///   transverse Q (about 1400 for mode 1 here, 360 for mode 10).
+    /// - Q = 50 for every torsional mode: Mores finds torsional Q about an order
+    ///   of magnitude below the transverse Q (about 1400 for mode 1 here, 360
+    ///   for mode 10); Bavu et al. (2005) more than fifty times lower. Constant
+    ///   Q across modes follows Woodhouse & Loach (1999).
     pub const MONOCHORD_CELLO_G_A_T1: StringSpec = StringSpec {
         name: "cello G (A T1, monochord)",
         frequency: 98.0,
@@ -268,6 +270,7 @@ pub mod cello {
     /// give Helmholtz motion in 92–97% of checked cases. The model's band sits
     /// above the measured string's (at β = 0.1, v_b = 0.1 m/s the G string's is
     /// 1.0–3.1 N; measured 0.31–1.89 N): the lower-limit gap of PLAN.md 4.2.
+    /// Not yet refitted for the constant-Q torsional loss (STATUS.md).
     const FORCE_LIMITS: [ForceLimits; 4] = [
         ForceLimits {
             lower: 1.406,

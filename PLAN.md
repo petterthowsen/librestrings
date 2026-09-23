@@ -173,7 +173,7 @@ The measured comparison (see "Measured comparison" under Phase 0–1 notes) show
   - f_t = 5.5·f0, as measured on a steel cello G string by Mores (PLOS One 2019: 543 Hz vs 98 Hz);
   - Z_t = κ·μ·c_t with κ = 0.6, giving 3.5 kg/s (3.3·Z);
   - Q = 50, since Mores finds torsional Q about 10× below the transverse Q.
-- **Implementation (done):** `TorsionSpec` on `StringSpec`, with two round-trip delay lines, one on each side of the bow, both reflecting with −1. The loss per period is the same for every mode (no lowpass). The torsional lines scale with the stopped pitch. The bridge-side line is clamped to 2 samples, which matters only below β ≈ 0.02.
+- **Implementation (done):** `TorsionSpec` on `StringSpec`, with two round-trip delay lines, one on each side of the bow, both reflecting with −1. The damping has constant Q (Woodhouse & Loach 1999): a loss filter at the nut-side reflection, fitted per semitone like the measured transverse loss (see "Constant-Q torsional loss"). Until then the loss per period was the same for every mode, so mode k had k times the fundamental's Q. The torsional lines scale with the stopped pitch. The bridge-side line is clamped to 2 samples, which matters only below β ≈ 0.02.
 - **Cost:** roughly one extra short delay line and a filter per string. That is cheap next to the transverse loop, but it matters for 12-player sections.
 - **Checks:** Helmholtz motion still passes the physics tests, and the measured comparison shows the effect, especially the lower force limit and small β.
 
@@ -373,13 +373,34 @@ Helmholtz points per bow speed (0.05 / 0.1 / 0.2 m/s; measured 701 / 700 / 392).
 - **Stiffness and torsion still subtract overall, even with realistic transverse damping.** Torsion helps at small β (187 against 156) and costs at larger β. More torsional damping (Q 15) recovers most of the loss. Mansour, Woodhouse & Scavone (2017) found torsion changes the minimum bow force less than Schelleng's correction predicts (docs/Literature.md). The torsional Q and a frequency-dependent torsional loss are the least-grounded parameters here; the torsional frequency rests on one measurement of a different steel cello G string (Mores 2019).
 - **Model defaults:** the reference string keeps all three (measured EI and damping, estimated torsion), since it describes the physics rather than the best score. The ablations above show each one's effect.
 - **Next candidates:**
-  - frequency-dependent torsional loss (a lowpass in the torsional loop), with the torsional Q from the literature rather than fitted;
+  - frequency-dependent torsional loss (a lowpass in the torsional loop), with the torsional Q from the literature rather than fitted (done: "Constant-Q torsional loss");
   - finite bow width and bow-hair compliance (§8);
   - the friction model (thermal friction, Phase 4), which Woodhouse links to the minimum bow force.
 - `strings-render measured` takes these overrides:
   - `--t60` / `--loss-lowpass`: switch to the one-pole loss;
   - `--damping-exponent`;
   - `--bending-stiffness`, `--no-torsion`, `--torsion-impedance`, `--torsion-ratio` and `--torsion-q`.
+
+### Constant-Q torsional loss (September 2026)
+
+The torsional loop used to lose the same per period at every frequency, so torsional mode k had k times the Q of the first: at Q = 50, mode 10 rang with Q 500. Measured torsional Q is about the same for every mode (Woodhouse & Loach 1999, via Woodhouse & Galluzzo 2004), so mode k should lose `π·k/Q` nepers per period. The "sharp torsional reflections" that set off extra slips (Phase 1b results) were those under-damped high modes.
+
+- **Implementation:** the torsional loop gets the same filter as the measured transverse loss (a one-pole times a Butterworth lowpass), fitted by `DampingCurve::design` to a flat ζ = 1/(2Q). It sits at the nut-side reflection, and its phase delay at the torsional fundamental comes off the nut-side line. It is fitted per semitone with the other designs, so stopped notes and `apply_design` retune it. The fit holds Q within 43–59 over the torsional modes up to 8 kHz at Q = 50 (`constant_q_design_follows_the_modes`).
+- **Measured string** (`strings-render measured`; Helmholtz points at 0.05 / 0.1 / 0.2 m/s, then at β < 0.05, agreeing cells in brackets; measured 701 / 700 / 392 and 529):
+
+| Model | Before | Constant Q |
+|---|---|---|
+| Measured damping + stiffness + torsion (preset) | 119 / 154 / 107, 127 (108) | 211 / 194 / 104, 174 (155) |
+| Measured damping + torsion (flexible) | 170 / 187 / 135, 187 (171) | 263 / 276 / 159, 188 (173) |
+| Preset + cello bow hair | 304 / 317 / 181, 274 (261) | 335 / 325 / 186, 287 (274) |
+
+  H/not-H agreement: 70 / 71 / 84% → 75 / 72 / 84% (preset), 79 / 76 / 85% → 81 / 76 / 85% (with hair). For comparison, flexible without torsion has 337 / 277 / 165 and stiffness without torsion 249 / 211 / 90.
+- **What changed:** torsion alone now costs about 10% of the flexible string's Helmholtz points, where it cost 37%, and it still adds some at small β. The default string gains a third, most of it at the slow bow speeds. With the bow hair the gain is small (+5%), and the area is 47% of the measured one: the hair already absorbed much of what the torsional reflections set off. The lower force limit moves down only a little, and the gap to the measured one stays (STATUS.md).
+- **Cello:** `calibrate` finds 1340 Helmholtz cells of 5376 (1267 before). Refitted, the edges are c = 7.4–12.1 (upper, β^−0.44 to β^−0.57) and β^−1.0 (C) to β^−1.5 (A) (lower); the G's band at β = 0.1, v_b = 0.1 m/s becomes 0.9–3.0 N (was 1.0–3.1), and band positions 0.5–0.8 give Helmholtz motion in 94–98% of cells (was 92–97%). The `schelleng --instrument cello` maps at 0.1 m/s gain Helmholtz cells on every string (C 19 → 22, G 21 → 27, D 36 → 43, A 40 → 47), all from multi-slip; the raucous region is unchanged.
+- **Cost:** one more one-pole and biquad per string. The plugin engine goes from 2.2% to 2.6% of real time, the renderer from 2.4% to 2.8%, and building a cello from 25 to 28 ms.
+- **The refitted band is not in use yet.** It reaches lower (at the performer's β, 0.07–0.115, the lower edge moves 0–20% down and the upper 2–7%), so the same band position means 3–8% less force on every string. Steady notes stay Helmholtz, but quiet attacks on the open G lose their margin: with the bow's wander, one pp attack took 0.31 s instead of 0.08 s (`notes_stay_helmholtz_while_the_bow_wanders`). Moving the normal pressure (0.65 → 0.7, which gives the old force back) or the dynamics tilt (0.15 → 0.18–0.2) only moved the failure to other notes (C2 and E2 attacks at ff, E5 and C5 pitch). The attacks need more margin than the steady band shows; `presets::cello` keeps the old limits until they are robust (STATUS.md).
+- **C5 locks to whole-sample periods at 48 kHz.** Its period is 91.7 samples; at mf the bowed string holds 92 samples (−5.0 cents) for 0.1–0.25 s at a time, and the ear pulls it back in steps, so 50 ms windows read −5 to +8 cents while the mean slip period is on target. The old code did the same, less often: the undamped torsional ringing seems to have dithered the slip onset. At 96 kHz both versions stay within ±0.3 cents. See the open question on oversampling.
+- **Pitch measurement fix:** `analysis::measure_partial` jumped from a phase hop of 8 periods straight to the whole signal. At C5 the bowed period alternates between 91 and 92 samples (19 cents apart), so the short hop could be more than 2 cents off and the long one then unwrapped a whole cycle wrong (4.2 cents over 0.8 s). The torsion change moved C5 onto that edge in the performer test. The hop now grows at most 4× per pass.
 
 ### Phase 2 notes: solo cello (September 2026)
 
@@ -398,6 +419,7 @@ Run `cargo run --release -p strings-render -- play <scale|legato|staccato|phrase
 **Force calibration** (`strings-render calibrate`, about 6 s)
 - Upper edges follow β^−0.5 (c = 8.0–11.4), not Schelleng's β^−1; lower edges β^−0.9 (C) to β^−1.6 (A). For the G at β = 0.1, v_b = 0.1 m/s the band is 1.0–3.1 N, the measured one 0.31–1.89 N.
 - Band positions 0.5–0.8 give Helmholtz motion in 92–97% of checked open-string cells.
+- These limits are still in use. Refitted after the constant-Q torsional loss they reach lower (see "Constant-Q torsional loss"); that fit isn't in `presets::cello` yet.
 
 **Pitch of the bowed string**
 - The model's bowed pitch drifts from the string's tuning: it flattens with force (−5 to −15 cents at p 0.65 for β < 0.12) and high stopped notes sharpen at low force (stiffness: the Helmholtz pitch locks above f0).
