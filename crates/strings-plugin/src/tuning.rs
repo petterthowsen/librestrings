@@ -104,5 +104,8 @@ pub struct StringsUpdate {
     /// Counts the editor's requests; the audio thread reports the last one it applied.
     pub generation: u32,
     pub specs: [StringSpec; 4],
+    /// For player 0, fitted at its string rate.
     pub designs: [StringDesign; 4],
+    /// For each of the other players, at theirs.
+    pub player_designs: Vec<[StringDesign; 4]>,
 }

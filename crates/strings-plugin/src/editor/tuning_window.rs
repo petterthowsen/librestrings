@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 
 use nih_plug_egui::egui::{self, Color32, RichText, Stroke, pos2, vec2};
-use strings_dsp::{Body, BodyTuning, BowedString, Instrument};
+use strings_dsp::{Body, BodyTuning, BowedString, Instrument, MAX_PLAYERS};
 
 use crate::INSTRUMENT;
 use crate::shared::{Shared, Telemetry};
@@ -803,19 +803,23 @@ impl TuningState {
         let dragging = ctx.input(|i| i.pointer.any_down());
         // The string rate is known once the engine has run.
         let string_rate = t.string_rate.load(Relaxed);
+        let player_rate = t.player_string_rate.load(Relaxed);
         if self.tuning.strings != self.sent_strings
             && !dragging
             && self.pending.is_none()
             && string_rate > 0.0
+            && player_rate > 0.0
         {
-            self.fit_strings(shared, string_rate);
+            self.fit_strings(shared, string_rate, player_rate);
         }
         if self.pending.is_some() {
             ctx.request_repaint();
         }
     }
 
-    fn fit_strings(&mut self, shared: &Arc<Shared>, string_rate: f32) {
+    /// Fits the strings for player 0 at `string_rate` and for the other
+    /// players at `player_rate`, and copies the latter for each of them.
+    fn fit_strings(&mut self, shared: &Arc<Shared>, string_rate: f32, player_rate: f32) {
         self.generation += 1;
         let generation = self.generation;
         self.pending = Some(generation);
@@ -824,10 +828,17 @@ impl TuningState {
         let shared = shared.clone();
         std::thread::spawn(move || {
             let designs = Instrument::design_strings(&specs, string_rate);
+            let player = if player_rate == string_rate {
+                designs.clone()
+            } else {
+                Instrument::design_strings(&specs, player_rate)
+            };
+            let player_designs = vec![player; MAX_PLAYERS - 1];
             let update = StringsUpdate {
                 generation,
                 specs,
                 designs,
+                player_designs,
             };
             // A full queue means the audio thread has stopped; drop it.
             let _ = shared.string_updates.push(Box::new(update));

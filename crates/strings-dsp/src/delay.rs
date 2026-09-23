@@ -49,6 +49,17 @@ impl DelayLine {
         h0 * x0 + h1 * x1 + h2 * x2 + h3 * x3
     }
 
+    /// Like [`Self::read`], interpolating linearly: cheaper, and duller
+    /// between samples. For paths where that doesn't matter, such as
+    /// reflections.
+    pub fn read_linear(&self, delay: f32) -> f32 {
+        let d = delay.clamp(Self::MIN_DELAY, self.max_delay());
+        let i = d as usize;
+        let t = d - i as f32;
+        let (a, b) = (self.tap(i), self.tap(i + 1));
+        a + t * (b - a)
+    }
+
     pub fn clear(&mut self) {
         self.buf.fill(0.0);
     }
@@ -82,6 +93,21 @@ mod tests {
         for delay in [2.0, 2.25, 7.5, 31.9] {
             let expected = f(100.0 - delay);
             assert!((d.read(delay) - expected).abs() < 1e-2, "delay {delay}");
+        }
+    }
+
+    #[test]
+    fn linear_read_is_exact_for_lines() {
+        let mut d = DelayLine::new(64);
+        for n in 0..100 {
+            d.push(n as f32);
+        }
+        for delay in [2.0, 2.25, 7.5, 31.9] {
+            assert!(
+                (d.read_linear(delay) - (100.0 - delay)).abs() < 1e-4,
+                "delay {delay}"
+            );
+            assert!((d.read_linear(delay) - d.read(delay)).abs() < 1e-3);
         }
     }
 }

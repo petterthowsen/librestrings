@@ -10,7 +10,9 @@ use nih_plug::prelude::*;
 use nih_plug_egui::egui::{self, Color32, RichText};
 use nih_plug_egui::{EguiState, create_egui_editor};
 
-use crate::params::{BowLiftParam, FingeringParam, PolyphonyParam, StringsParams};
+use crate::params::{
+    AbsorptionParam, BowLiftParam, FingeringParam, PolyphonyParam, RoomParam, StringsParams,
+};
 use crate::shared::{GuiEvent, Shared, Telemetry};
 use crate::{INSTRUMENT, keyswitch_base};
 
@@ -42,6 +44,7 @@ pub fn create(params: Arc<StringsParams>, shared: Arc<Shared>) -> Option<Box<dyn
                 .show(ctx, |ui| status_row(ui, &params, t, &mut state.tuning.open));
             egui::TopBottomPanel::top("selection").show(ctx, |ui| {
                 selection_row(ui, &params, setter, &shared);
+                stage_row(ui, &params, setter);
             });
             egui::TopBottomPanel::bottom("controls")
                 .exact_height(190.0)
@@ -85,8 +88,14 @@ fn status_row(ui: &mut egui::Ui, params: &StringsParams, t: &Telemetry, tuning: 
             ui.separator();
             let load = t.load.load(Relaxed) * 100.0;
             let peak = t.load_peak.load(Relaxed) * 100.0;
-            // The PLAN.md budget for a solo instrument is 3% of one core.
-            let color = if load > 3.0 {
+            // The PLAN.md budget: 3% of one core for a solo instrument, 25%
+            // for a 12-player section.
+            let budget = if t.players.load(Relaxed) > 1 {
+                25.0
+            } else {
+                3.0
+            };
+            let color = if load > budget {
                 Color32::YELLOW
             } else {
                 ui.visuals().weak_text_color()
@@ -144,15 +153,8 @@ fn selection_row(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter
                 }
             });
         ui.add_space(12.0);
-        ui.label("Ensemble");
-        egui::ComboBox::from_id_salt("ensemble")
-            .selected_text("Solo")
-            .width(110.0)
-            .show_ui(ui, |ui| {
-                let _ = ui.selectable_label(true, "Solo");
-                ui.add_enabled(false, egui::SelectableLabel::new(false, "Section"))
-                    .on_disabled_hover_text("Phase 6");
-            });
+        ui.label("Players");
+        players(ui, params, setter);
         ui.add_space(24.0);
 
         ui.label("Bow lift");
@@ -211,6 +213,147 @@ fn selection_row(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter
              positions on lower strings, a darker sound.",
         );
     });
+}
+
+/// The section's size: `‹ Solo ›`, `‹ 8 players ›`.
+fn players(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter) {
+    let param = &params.players;
+    let n = param.value();
+    let (min, max) = (1, strings_dsp::MAX_PLAYERS as i32);
+    let set = |value: i32| {
+        setter.begin_set_parameter(param);
+        setter.set_parameter(param, value);
+        setter.end_set_parameter(param);
+    };
+    if ui.add_enabled(n > min, egui::Button::new("‹")).clicked() {
+        set(n - 1);
+    }
+    let text = if n == 1 {
+        "Solo".to_string()
+    } else {
+        format!("{n} players")
+    };
+    ui.add_sized(
+        [72.0, 18.0],
+        egui::Label::new(RichText::new(text).monospace()),
+    )
+    .on_hover_text(
+        "Players in the section, each a little different in tuning, timing, \
+             vibrato, bowing and instrument.",
+    );
+    if ui.add_enabled(n < max, egui::Button::new("›")).clicked() {
+        set(n + 1);
+    }
+}
+
+/// Where the section sits and the room it plays in, until the stage view
+/// (docs/SECTIONS.md Phase B). Every instance should have the same room and
+/// mics.
+fn stage_row(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter) {
+    ui.horizontal(|ui| {
+        let mut on = params.stage.value();
+        if ui
+            .checkbox(&mut on, "Stage")
+            .on_hover_text(
+                "On: the players sit on a stage in a room, picked up by a stereo mic \
+                 pair, with early reflections (the late reverb is left to your reverb). \
+                 Off: dry and mono.",
+            )
+            .changed()
+        {
+            setter.begin_set_parameter(&params.stage);
+            setter.set_parameter(&params.stage, on);
+            setter.end_set_parameter(&params.stage);
+        }
+        ui.add_enabled_ui(on, |ui| {
+            ui.add_space(8.0);
+            ui.label("x");
+            param_drag(ui, setter, &params.stage_x, -12.0..=12.0, " m")
+                .on_hover_text("To the audience's right (m); 0 is the middle");
+            ui.label("y");
+            param_drag(ui, setter, &params.stage_y, 0.0..=12.0, " m")
+                .on_hover_text("Upstage from the front of the stage (m)");
+            ui.label("Size");
+            param_drag(ui, setter, &params.stage_width, 0.0..=12.0, " m")
+                .on_hover_text("Width of the area the section fills (m)");
+            ui.label("×");
+            param_drag(ui, setter, &params.stage_depth, 0.0..=8.0, " m")
+                .on_hover_text("Depth of the area the section fills (m)");
+            ui.add_space(12.0);
+            ui.label("Room");
+            enum_combo(
+                ui,
+                setter,
+                &params.room,
+                &RoomParam::ALL,
+                RoomParam::name,
+                110.0,
+            )
+            .on_hover_text("Set the same room in every instance");
+            enum_combo(
+                ui,
+                setter,
+                &params.absorption,
+                &AbsorptionParam::ALL,
+                AbsorptionParam::name,
+                70.0,
+            )
+            .on_hover_text("How much the walls absorb");
+            ui.label("Mics");
+            param_drag(ui, setter, &params.mic_distance, 0.5..=20.0, " m")
+                .on_hover_text("Distance of the mics in front of the stage: close to far");
+            ui.label("Reflections");
+            let r = &params.reflections;
+            let mut percent = 100.0 * r.value();
+            let response = ui.add(
+                egui::DragValue::new(&mut percent)
+                    .speed(1.0)
+                    .range(0.0..=100.0)
+                    .suffix(" %"),
+            );
+            edit_param(setter, r, &response, percent / 100.0);
+        });
+    });
+}
+
+/// A number field for a parameter, dragged or typed.
+fn param_drag(
+    ui: &mut egui::Ui,
+    setter: &ParamSetter,
+    param: &FloatParam,
+    range: std::ops::RangeInclusive<f32>,
+    suffix: &str,
+) -> egui::Response {
+    let mut value = param.value();
+    let response = ui.add(
+        egui::DragValue::new(&mut value)
+            .speed(0.05)
+            .range(range)
+            .fixed_decimals(1)
+            .suffix(suffix),
+    );
+    edit_param(setter, param, &response, value);
+    response
+}
+
+/// Sets `param` from a drag value's `response`: one gesture per drag, or
+/// one for a typed value.
+fn edit_param(setter: &ParamSetter, param: &FloatParam, response: &egui::Response, value: f32) {
+    if response.drag_started() {
+        setter.begin_set_parameter(param);
+    }
+    if response.changed() {
+        if response.dragged() {
+            setter.set_parameter(param, value);
+        } else {
+            setter.begin_set_parameter(param);
+            setter.set_parameter(param, value);
+            setter.end_set_parameter(param);
+        }
+    }
+    if response.drag_stopped() {
+        setter.end_set_parameter(param);
+    }
 }
 
 /// A drop-down for an enum parameter.

@@ -1,6 +1,6 @@
 //! State shared between the audio thread and the editor.
 //!
-//! The audio thread publishes a snapshot of the performer (telemetry) through
+//! The audio thread publishes a snapshot of player 0 (telemetry) through
 //! atomics once per block; the editor sends notes back through a lock-free
 //! queue that the audio thread drains at the start of each block, and so do
 //! the tuning window's changes (see `tuning`). Neither side ever waits for
@@ -51,9 +51,13 @@ pub struct Telemetry {
     /// The last string update the audio thread applied (`StringsUpdate::generation`).
     pub strings_generation: AtomicU32,
     pub sample_rate: AtomicF32,
-    /// The rate the strings run at (the sample rate times the oversampling):
-    /// string designs are fitted at it.
+    /// The rate player 0's strings run at (the sample rate times the
+    /// oversampling): string designs are fitted at it. The other players'
+    /// strings run at `player_string_rate`.
     pub string_rate: AtomicF32,
+    pub player_string_rate: AtomicF32,
+    /// Players in the section.
+    pub players: AtomicU32,
     pub block_size: AtomicU32,
     /// Time spent in `process` as a fraction of the block's duration:
     /// smoothed, and a peak that decays.

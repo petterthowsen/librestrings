@@ -16,7 +16,8 @@
 use crate::body::BodyTuning;
 use crate::instrument::InstrumentSpec;
 use crate::performer::{
-    BowLift, Fingering, MAX_DETUNE, Performer, PerformerSettings, PerformerTuning, Polyphony,
+    BowLift, Fingering, MAX_DETUNE, Performer, PerformerFrame, PerformerSettings, PerformerTuning,
+    Polyphony,
 };
 
 /// Most players in a section.
@@ -208,6 +209,8 @@ pub struct Section {
     drift_countdown: usize,
     /// The section's controls, before each player's offset.
     dynamics: f32,
+    /// Player 0's last frame, for telemetry.
+    frame: PerformerFrame,
 }
 
 impl Section {
@@ -282,6 +285,7 @@ impl Section {
             fade_step: 1.0 / (FADE * sample_rate),
             drift_countdown: 0,
             dynamics: 0.5,
+            frame: PerformerFrame::default(),
         };
         section.set_humanization(humanization);
         section
@@ -319,6 +323,11 @@ impl Section {
 
     pub fn player_mut(&mut self, i: usize) -> &mut Performer {
         &mut self.players[i].performer
+    }
+
+    /// Player 0's frame from the last sample (unscaled by the section's gain).
+    pub fn frame(&self) -> &PerformerFrame {
+        &self.frame
     }
 
     pub fn humanization(&self) -> &Humanization {
@@ -484,7 +493,13 @@ impl Section {
             } else {
                 (p.gain - self.fade_step).max(target)
             };
-            *y = p.gain * p.performer.process();
+            let output = if i == 0 {
+                self.frame = p.performer.process_frame();
+                self.frame.output
+            } else {
+                p.performer.process()
+            };
+            *y = p.gain * output;
             sum += *y;
             if !p.active && p.gain == 0.0 {
                 p.performer.reset();

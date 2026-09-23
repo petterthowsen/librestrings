@@ -213,11 +213,31 @@ impl Tap {
         self.gain = self.target_gain;
     }
 
-    fn read(&mut self, line: &DelayLine, glide: f32) -> f32 {
-        self.delay = self.target_delay + glide * (self.delay - self.target_delay);
-        self.gain = self.target_gain + glide * (self.gain - self.target_gain);
-        let x = line.read(self.delay);
+    /// Reads `line` with third-order interpolation (`exact`) or linear.
+    fn read(&mut self, line: &DelayLine, glide: f32, exact: bool) -> f32 {
+        // Arrived: snap, or the gap would glide on into denormals.
+        let gap = self.delay - self.target_delay;
+        self.delay = if gap.abs() < 1e-3 {
+            self.target_delay
+        } else {
+            self.target_delay + glide * gap
+        };
+        let gap = self.gain - self.target_gain;
+        self.gain = if gap.abs() < 1e-7 {
+            self.target_gain
+        } else {
+            self.target_gain + glide * gap
+        };
+        let x = if exact {
+            line.read(self.delay)
+        } else {
+            line.read_linear(self.delay)
+        };
         self.state = (1.0 - self.pole) * x + self.pole * self.state;
+        if self.state.abs() < 1e-20 {
+            // Silence decaying: flush it before it turns denormal.
+            self.state = 0.0;
+        }
         self.gain * self.state
     }
 }
@@ -363,13 +383,14 @@ impl Stage {
             line.push(x);
             sum += x;
             for (y, tap) in out.iter_mut().zip(taps.iter_mut()) {
-                *y += tap.read(line, glide);
+                *y += tap.read(line, glide, true);
             }
         }
         self.sum.push(sum);
         for taps in &mut self.reflections {
             for (y, tap) in out.iter_mut().zip(taps.iter_mut()) {
-                *y += tap.read(&self.sum, glide);
+                // Reflections need no more than linear interpolation.
+                *y += tap.read(&self.sum, glide, false);
             }
         }
         out

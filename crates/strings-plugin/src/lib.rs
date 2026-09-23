@@ -1,8 +1,10 @@
-//! The solo cello as a CLAP plugin (PLAN.md Phase 3).
+//! The cello, solo or as a section, as a CLAP plugin (PLAN.md Phase 3,
+//! docs/SECTIONS.md A5).
 //!
-//! The plugin is a thin layer over [`Performer`]: MIDI notes, CC11 (dynamics),
-//! CC1 (vibrato) and keyswitches in; the performer's mono output on every
-//! output channel.
+//! The plugin is a thin layer over a [`Section`] of players on a [`Stage`]:
+//! MIDI notes, CC11 (dynamics), CC1 (vibrato) and keyswitches in; the stage's
+//! stereo mics out (or, with the stage off, the players' dry mono sum on
+//! every channel).
 //! The editor shows the performer's state and has an on-screen keyboard and
 //! faders, so it can be played without a MIDI controller.
 //!
@@ -21,7 +23,10 @@ use nih_plug::prelude::*;
 #[cfg(test)]
 use strings_dsp::BowLift;
 use strings_dsp::presets::cello;
-use strings_dsp::{InstrumentSpec, Performer, PerformerSettings};
+use strings_dsp::{
+    Humanization, InstrumentSpec, MAX_PLAYERS, PerformerSettings, Placement, Section, Stage,
+    StageSettings,
+};
 
 mod editor;
 pub mod params;
@@ -30,7 +35,7 @@ pub mod tuning;
 
 use params::{BowLiftParam, FingeringParam, PolyphonyParam, StringsParams};
 use shared::{GuiEvent, Shared, Telemetry};
-use tuning::LiveTuning;
+use tuning::{LiveTuning, StringsUpdate};
 
 /// Numbers each engine, so the editor notices a new one.
 static ENGINES: AtomicU32 = AtomicU32::new(0);
@@ -93,6 +98,8 @@ struct Applied {
     bow_lift: Option<BowLiftParam>,
     polyphony: Option<PolyphonyParam>,
     fingering: Option<FingeringParam>,
+    players: Option<i32>,
+    stage: Option<(bool, StageSettings, Placement)>,
 }
 
 impl Applied {
@@ -101,12 +108,20 @@ impl Applied {
         bow_lift: None,
         polyphony: None,
         fingering: None,
+        players: None,
+        stage: None,
     };
 }
 
-/// The performer and what the plugin measures around it.
+/// The section and its stage, and what the plugin measures around them.
+/// Telemetry follows player 0, the one without humanization.
 struct Engine {
-    performer: Performer,
+    section: Section,
+    stage: Stage,
+    /// Whether the stage is on (otherwise dry mono).
+    staged: bool,
+    /// Each player's output at the last sample.
+    outputs: [f32; MAX_PLAYERS],
     sample_rate: f32,
     id: u32,
     strings_generation: u32,
@@ -132,8 +147,18 @@ struct Engine {
 impl Engine {
     fn new(sample_rate: f32) -> Self {
         let settings = PerformerSettings::default();
+        let section = Section::new(INSTRUMENT, settings, Humanization::default(), sample_rate);
+        let stage = Stage::new(
+            StageSettings::default(),
+            Placement::default(),
+            settings.seed,
+            sample_rate,
+        );
         Self {
-            performer: Performer::new(INSTRUMENT, settings, sample_rate),
+            section,
+            stage,
+            staged: true,
+            outputs: [0.0; MAX_PLAYERS],
             sample_rate,
             id: ENGINES.fetch_add(1, Relaxed) + 1,
             strings_generation: 0,
@@ -168,18 +193,53 @@ impl Engine {
         let bow_lift = params.bow_lift.value();
         if self.applied.bow_lift != Some(bow_lift) {
             self.applied.bow_lift = Some(bow_lift);
-            self.performer.set_bow_lift(bow_lift.into());
+            self.section.set_bow_lift(bow_lift.into());
         }
         // Only the parameters set these.
         let polyphony = params.polyphony.value();
         if self.applied.polyphony != Some(polyphony) {
             self.applied.polyphony = Some(polyphony);
-            self.performer.set_polyphony(polyphony.into());
+            self.section.set_polyphony(polyphony.into());
         }
         let fingering = params.fingering.value();
         if self.applied.fingering != Some(fingering) {
             self.applied.fingering = Some(fingering);
-            self.performer.set_fingering(fingering.into());
+            self.section.set_fingering(fingering.into());
+        }
+        let players = params.players.value();
+        if self.applied.players != Some(players) {
+            self.applied.players = Some(players);
+            self.section.set_players(players as usize);
+            self.stage.set_players(players as usize);
+        }
+        let stage = (
+            params.stage.value(),
+            StageSettings {
+                room: params.room.value().into(),
+                absorption: params.absorption.value().into(),
+                mic_distance: params.mic_distance.value(),
+                reflections: params.reflections.value(),
+            },
+            Placement {
+                x: params.stage_x.value(),
+                y: params.stage_y.value(),
+                width: params.stage_width.value(),
+                depth: params.stage_depth.value(),
+            },
+        );
+        if self.applied.stage != Some(stage) {
+            let (staged, settings, placement) = stage;
+            let first = self.applied.stage.is_none();
+            let switched_on = staged && !self.staged;
+            self.staged = staged;
+            self.stage.set_settings(settings);
+            self.stage.set_placement(placement);
+            if first || switched_on {
+                // Placed at once, not gliding from the defaults; and nothing
+                // went in while it was off.
+                self.stage.reset();
+            }
+            self.applied.stage = Some(stage);
         }
     }
 
@@ -193,9 +253,19 @@ impl Engine {
             self.set_live_tuning(&live);
         }
         while let Some(mut update) = shared.string_updates.pop() {
-            self.performer
-                .instrument_mut()
-                .apply_strings(&update.specs, &mut update.designs);
+            let StringsUpdate {
+                specs,
+                designs,
+                player_designs,
+                ..
+            } = &mut *update;
+            let others = player_designs.iter_mut();
+            for (i, designs) in std::iter::once(designs).chain(others).enumerate() {
+                self.section
+                    .player_mut(i)
+                    .instrument_mut()
+                    .apply_strings(specs, designs);
+            }
             self.strings_generation = update.generation;
             // The old filters are freed by the editor. If it isn't draining the
             // queue, leak them rather than free them here.
@@ -206,32 +276,34 @@ impl Engine {
     }
 
     fn set_live_tuning(&mut self, live: &LiveTuning) {
-        self.performer.set_settings(live.performer);
-        let instrument = self.performer.instrument_mut();
-        instrument.set_friction(live.friction);
-        instrument.set_hair(live.hair);
-        instrument.set_body(&live.body);
+        self.section.set_settings(live.performer);
+        for i in 0..MAX_PLAYERS {
+            let instrument = self.section.player_mut(i).instrument_mut();
+            instrument.set_friction(live.friction);
+            instrument.set_hair(live.hair);
+        }
+        self.section.set_body(&live.body);
     }
 
     fn set_control(&mut self, i: usize, value: f32) {
         self.controls[i] = value;
         match i {
-            0 => self.performer.set_dynamics(value),
-            1 => self.performer.set_vibrato(value),
-            _ => self.performer.set_pressure(value),
+            0 => self.section.set_dynamics(value),
+            1 => self.section.set_vibrato(value),
+            _ => self.section.set_pressure(value),
         }
     }
 
     fn note_on(&mut self, note: u8, velocity: f32) {
         match keyswitch(INSTRUMENT, note) {
-            Some(bow_lift) => self.performer.set_bow_lift(bow_lift.into()),
-            None => self.performer.note_on(note, velocity),
+            Some(bow_lift) => self.section.set_bow_lift(bow_lift.into()),
+            None => self.section.note_on(note, velocity),
         }
     }
 
     fn note_off(&mut self, note: u8) {
         if keyswitch(INSTRUMENT, note).is_none() {
-            self.performer.note_off(note);
+            self.section.note_off(note);
         }
     }
 
@@ -239,7 +311,7 @@ impl Engine {
         match event {
             GuiEvent::NoteOn { note, velocity } => self.note_on(note, velocity),
             GuiEvent::NoteOff { note } => self.note_off(note),
-            GuiEvent::BowLift(b) => self.performer.set_bow_lift(b.into()),
+            GuiEvent::BowLift(b) => self.section.set_bow_lift(b.into()),
         }
     }
 
@@ -250,37 +322,49 @@ impl Engine {
             NoteEvent::MidiCC { cc, value, .. } => match cc {
                 CC_DYNAMICS => self.set_control(0, value),
                 CC_VIBRATO => self.set_control(1, value),
-                CC_ALL_NOTES_OFF => self.performer.release_all(),
-                CC_ALL_SOUND_OFF => self.performer.reset(),
+                CC_ALL_NOTES_OFF => self.section.release_all(),
+                CC_ALL_SOUND_OFF => self.reset(),
                 _ => {}
             },
             _ => {}
         }
     }
 
-    /// One sample, before the output gain.
-    fn tick(&mut self) -> f32 {
-        let frame = self.performer.process_frame();
-        if !frame.output.is_finite() {
+    fn reset(&mut self) {
+        self.section.reset();
+        self.stage.reset();
+    }
+
+    /// One sample, left and right, before the output gain.
+    fn tick(&mut self) -> [f32; 2] {
+        let sum = self.section.process(&mut self.outputs);
+        let out = if self.staged {
+            self.stage.process(&self.outputs)
+        } else {
+            [sum; 2]
+        };
+        if !out.iter().all(|x| x.is_finite()) {
             // PLAN.md 6: a silent recovery in release builds.
             debug_assert!(false, "non-finite output");
-            self.performer.reset();
+            self.reset();
             self.resets += 1;
             self.slips.restart();
-            return 0.0;
+            return [0.0; 2];
         }
-        for (level, f) in self.level.iter_mut().zip(self.performer.string_frames()) {
+        let strings = self.section.player(0).string_frames();
+        for (level, f) in self.level.iter_mut().zip(strings) {
             *level += f.bridge_force * f.bridge_force;
         }
+        let frame = self.section.frame();
         self.slips.tick(frame.frame.state.is_slipping());
         self.bow = (frame.bow_velocity, frame.bow_force);
-        frame.output
+        out
     }
 
     /// Publishes the block's measurements and resets the accumulators.
     fn publish(&mut self, t: &Telemetry, samples: usize, elapsed: Duration) {
         let block = samples as f32 / self.sample_rate;
-        let p = &self.performer;
+        let p = self.section.player(0);
         let bowed = p.bowed_string();
         let instrument = p.instrument();
 
@@ -304,8 +388,12 @@ impl Engine {
         t.engine.store(self.id, Relaxed);
         t.strings_generation.store(self.strings_generation, Relaxed);
         t.sample_rate.store(self.sample_rate, Relaxed);
-        let string_rate = self.performer.instrument().string_sample_rate();
-        t.string_rate.store(string_rate, Relaxed);
+        t.string_rate
+            .store(instrument.string_sample_rate(), Relaxed);
+        let players = self.section.player(1).instrument();
+        t.player_string_rate
+            .store(players.string_sample_rate(), Relaxed);
+        t.players.store(self.section.players() as u32, Relaxed);
         t.block_size.store(samples as u32, Relaxed);
         t.load.store(self.load, Relaxed);
         t.load_peak.store(self.load_peak, Relaxed);
@@ -447,7 +535,7 @@ impl Plugin for Strings {
 
     fn reset(&mut self) {
         if let Some(engine) = &mut self.engine {
-            engine.performer.reset();
+            engine.reset();
         }
     }
 
@@ -480,10 +568,16 @@ impl Plugin for Strings {
                 engine.midi_event(event);
                 next_event = context.next_event();
             }
-            let out = engine.tick() * self.params.volume.smoothed.next();
-            engine.peak = engine.peak.max(out.abs());
-            for sample in channels {
-                *sample = out;
+            let gain = self.params.volume.smoothed.next();
+            let [left, right] = engine.tick().map(|x| gain * x);
+            engine.peak = engine.peak.max(left.abs()).max(right.abs());
+            let mono = channels.len() == 1;
+            for (c, sample) in channels.into_iter().enumerate() {
+                *sample = match (mono, c) {
+                    (true, _) => 0.5 * (left + right),
+                    (false, 0) => left,
+                    _ => right,
+                };
             }
         }
         // Events timed past the block (shouldn't happen) still count.
@@ -621,7 +715,7 @@ mod tests {
         assert_eq!(t.bow_lift(), BowLiftParam::OnString);
         // The unchanged parameter doesn't take it back.
         engine.apply_params(&params);
-        assert_eq!(engine.performer.bow_lift(), BowLift::OnString);
+        assert_eq!(engine.section.player(0).bow_lift(), BowLift::OnString);
     }
 
     /// The tuning window's changes reach the performer; refitted strings are
@@ -641,27 +735,36 @@ mod tests {
         assert!(shared.live_tuning.push(tuning.live).is_ok());
         tuning.strings.damping.floor = 2e-3;
         let specs = tuning.strings.apply_to(&INSTRUMENT.strings);
+        let design = |player: usize| {
+            let rate = engine
+                .section
+                .player(player)
+                .instrument()
+                .string_sample_rate();
+            strings_dsp::Instrument::design_strings(&specs, rate)
+        };
         let update = tuning::StringsUpdate {
             generation: 7,
             specs,
-            designs: strings_dsp::Instrument::design_strings(
-                &specs,
-                engine.performer.instrument().string_sample_rate(),
-            ),
+            designs: design(0),
+            player_designs: vec![design(1); MAX_PLAYERS - 1],
         };
         assert!(shared.string_updates.push(Box::new(update)).is_ok());
 
         engine.apply_tuning(&shared);
         engine.publish(&shared.telemetry, 256, Duration::ZERO);
-        let settings = engine.performer.settings();
-        assert_eq!(settings.tuning.attack_bite, 0.33);
-        // The band position of normal pressure is the tuning's; the control
-        // stays the parameter's.
-        assert_eq!(settings.pressure, 0.7);
-        assert_eq!(engine.performer.pressure(), 0.4);
-        let instrument = engine.performer.instrument();
-        assert_eq!(instrument.spec().friction.mu_s, 0.9);
-        assert_eq!(instrument.spec().strings[2].loss, specs[2].loss);
+        // Every player takes it, the other players with their own offsets.
+        for i in [0, 5, MAX_PLAYERS - 1] {
+            let player = engine.section.player(i);
+            assert_eq!(player.settings().tuning.attack_bite, 0.33);
+            // The control stays the parameter's.
+            assert_eq!(player.pressure(), 0.4);
+            let instrument = player.instrument();
+            assert_eq!(instrument.spec().friction.mu_s, 0.9);
+            assert_eq!(instrument.spec().strings[2].loss, specs[2].loss);
+        }
+        // The band position of normal pressure is the tuning's.
+        assert_eq!(engine.section.player(0).settings().pressure, 0.7);
         assert_eq!(shared.telemetry.strings_generation.load(Relaxed), 7);
         assert_eq!(shared.string_returns.len(), 1);
     }
@@ -690,7 +793,7 @@ mod tests {
         let mut engine = Engine::new(FS);
         engine.apply_params(&params);
         engine
-            .performer
+            .section
             .set_polyphony(strings_dsp::Polyphony::DoubleStops);
         engine.midi_event(note_on(50));
         engine.midi_event(note_on(57));
@@ -698,6 +801,44 @@ mod tests {
         assert_eq!((t.note(), t.second_note()), (Some(50), Some(57)));
         assert!(t.strings[2].contact.load(Relaxed) > 0.99);
         assert!(t.strings[3].contact.load(Relaxed) > 0.99);
+    }
+
+    /// A section plays in stereo: every player sounds, and a section on the
+    /// left is louder on the left. The default, a soloist in the middle, is
+    /// the same on both sides.
+    #[test]
+    fn a_section_plays_in_stereo() {
+        let params = StringsParams::default();
+        let t = Telemetry::default();
+        let energy = |engine: &mut Engine| {
+            let mut e = [0.0f32; 2];
+            for _ in 0..(0.6 * FS) as usize {
+                let out = engine.tick();
+                e[0] += out[0] * out[0];
+                e[1] += out[1] * out[1];
+            }
+            e
+        };
+        let mut engine = Engine::new(FS);
+        engine.apply_params(&params);
+        engine.midi_event(note_on(50));
+        let [l, r] = energy(&mut engine);
+        assert!((l / r - 1.0).abs() < 0.01, "{l} {r}");
+
+        let mut engine = Engine::new(FS);
+        engine.apply_params(&params);
+        engine.section.set_players(8);
+        engine.stage.set_players(8);
+        engine.stage.set_placement(Placement {
+            x: -4.0,
+            ..Placement::CELLOS
+        });
+        engine.midi_event(note_on(50));
+        let [l, r] = energy(&mut engine);
+        assert!(l > 2.0 * r, "{l} {r}");
+        assert!(engine.outputs[..8].iter().all(|&y| y != 0.0));
+        engine.publish(&t, 256, Duration::ZERO);
+        assert_eq!(t.players.load(Relaxed), 8);
     }
 
     #[test]
@@ -728,74 +869,66 @@ mod cpu {
         let fs = 48_000.0;
         let params = StringsParams::default();
         let t = Telemetry::default();
-        let mut engine = Engine::new(fs);
-        engine.apply_params(&params);
-        engine.set_control(1, 0.6);
-        let seconds = 20.0;
-        let blocks = (seconds * fs / 256.0) as usize;
-        let start = Instant::now();
-        for b in 0..blocks {
-            // A new note every half second, alternating two strings.
-            if b % 94 == 0 {
-                let note = if b % 188 == 0 { 50 } else { 57 };
-                engine.note_on(note, 0.8);
+        for staged in [true, false] {
+            let mut engine = Engine::new(fs);
+            engine.apply_params(&params);
+            engine.staged = staged;
+            engine.set_control(1, 0.6);
+            let seconds = 20.0;
+            let blocks = (seconds * fs / 256.0) as usize;
+            let start = Instant::now();
+            for b in 0..blocks {
+                // A new note every half second, alternating two strings.
+                if b % 94 == 0 {
+                    let note = if b % 188 == 0 { 50 } else { 57 };
+                    engine.note_on(note, 0.8);
+                }
+                let block = Instant::now();
+                for _ in 0..256 {
+                    engine.tick();
+                }
+                engine.publish(&t, 256, block.elapsed());
             }
-            let block = Instant::now();
-            for _ in 0..256 {
-                engine.tick();
-            }
-            engine.publish(&t, 256, block.elapsed());
+            let load = start.elapsed().as_secs_f32() / seconds;
+            let stage = if staged { "on the stage" } else { "dry" };
+            println!(
+                "engine: {:.2}% of real time at 48 kHz, {stage}",
+                100.0 * load
+            );
         }
-        let load = start.elapsed().as_secs_f32() / seconds;
-        println!("engine: {:.2}% of real time at 48 kHz", 100.0 * load);
     }
 
-    /// Sections (docs/SECTIONS.md A1): building one player against cloning
-    /// it, and the cost of 1–12 players playing the same notes, with the
-    /// strings at 2× and 1×.
+    /// Sections (docs/SECTIONS.md A1–A5): the engine with 1–12 players on
+    /// the stage (player 0 at 2×, the others at 1×).
     #[test]
     #[ignore]
     fn cpu_cost_players() {
         let fs = 48_000.0;
-        for oversampling in [2, 1] {
-            let settings = PerformerSettings {
-                oversampling,
-                ..PerformerSettings::default()
-            };
+        let params = StringsParams::default();
+        let start = Instant::now();
+        let mut engine = Engine::new(fs);
+        println!("build: {:.1?}", start.elapsed());
+        engine.apply_params(&params);
+        engine.set_control(1, 0.6);
+        for n in [1, 4, 8, 12] {
+            engine.section.set_players(n);
+            engine.stage.set_players(n);
+            engine.reset();
+            let seconds = 10.0;
+            let blocks = (seconds * fs / 256.0) as usize;
             let start = Instant::now();
-            let first = Performer::new(INSTRUMENT, settings, fs);
-            let built = start.elapsed();
-            let start = Instant::now();
-            let mut players: Vec<_> = (0..12).map(|_| first.clone()).collect();
-            let cloned = start.elapsed() / 12;
-            println!("{oversampling}×: build {built:.1?}, clone {cloned:.1?} per player");
-
-            for n in [1, 4, 8, 12] {
-                let players = &mut players[..n];
-                for p in players.iter_mut() {
-                    p.reset();
-                    p.set_dynamics(0.6);
+            for b in 0..blocks {
+                // As in `cpu_cost`: a new note every half second, on two strings.
+                if b % 94 == 0 {
+                    let note = if b % 188 == 0 { 50 } else { 57 };
+                    engine.note_on(note, 0.8);
                 }
-                let seconds = 10.0;
-                let blocks = (seconds * fs / 256.0) as usize;
-                let start = Instant::now();
-                for b in 0..blocks {
-                    // As in `cpu_cost`: a new note every half second, on two strings.
-                    if b % 94 == 0 {
-                        let note = if b % 188 == 0 { 50 } else { 57 };
-                        for p in players.iter_mut() {
-                            p.note_on(note, 0.8);
-                        }
-                    }
-                    for _ in 0..256 {
-                        for p in players.iter_mut() {
-                            std::hint::black_box(p.process_frame());
-                        }
-                    }
+                for _ in 0..256 {
+                    std::hint::black_box(engine.tick());
                 }
-                let load = start.elapsed().as_secs_f32() / seconds;
-                println!("  {n:2} players: {:.1}% of real time", 100.0 * load);
             }
+            let load = start.elapsed().as_secs_f32() / seconds;
+            println!("{n:2} players: {:.1}% of real time", 100.0 * load);
         }
     }
 }

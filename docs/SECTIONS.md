@@ -73,12 +73,15 @@ Renders (`out/ab-stage/`, stereo): `phrase-solo-front` (a solo at the centre fro
 
 ### A5. Plugin parameters and editor
 
-- [ ] `players`: an int parameter 1–12 (1 is Solo), so it can be automated and is saved with the project. In the editor it replaces the Ensemble combo: `‹ Solo ›`, `‹ 8 players ›`.
-- [ ] Section position: x, y (m), width and depth, with defaults that put the cello section on the right of the stage, where orchestras seat it.
-- [ ] Room preset, absorption and early-reflection level.
-- [ ] Mic distance (close ↔ far): moves the mic pair along the stage axis. Phase B puts it on a fader in the stage view; in Phase A it is a plain parameter.
-- [ ] Telemetry and the instrument view still show one player (player 0).
-- [ ] Engine CPU cost with 12 players in the status line.
+- [x] `players`: an int parameter 1–12 (1 is Solo), automatable and saved with the project. In the editor it replaces the Ensemble combo: `‹ Solo ›`, `‹ 8 players ›`.
+- [x] Section position: x, y, width and depth (m). The defaults put a new instance at the front, in the middle (x 0, y 1.5), as a soloist; move a section to its place (the renderer's `Placement::CELLOS` is 3.5 m right, 3 m up).
+- [x] Room preset, absorption and early-reflection level, and a Stage switch: off is the players' dry mono sum, as before the stage.
+- [x] Mic distance (close ↔ far), a plain parameter until the stage view.
+- [x] Stereo output (the mono layout gets the mean of the two mics).
+- [x] Telemetry and the instrument view show player 0. The tuning window's changes reach every player: its string refits are fitted at both string rates (2× for player 0, 1× for the rest) and copied for each player on the editor's thread.
+- [x] The status line's CPU warning is at 25% for a section (3% solo).
+- [x] Engine cost (`cpu_cost`, `cpu_cost_players`): solo 3.7% on the stage and 3.0% dry; 4 players 9.2%, 8 players 16.3%, 12 players 23.3%. The stage costs about 0.7% (its glides snapped to their targets and silence flushed, or they ran into denormals; the reflections read with linear interpolation).
+- [ ] Try it in Bitwig: two or three instances, set to the same room and mics.
 
 ### A6. Renderer and checks
 

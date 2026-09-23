@@ -79,7 +79,7 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 ## Engineering gaps
 
 23. **Filter coefficients are modulated but untested for artifacts.** Vibrato and legato change the loss filter (a Butterworth biquad) and the dispersion coefficient at the performer's 3 kHz control rate. Neither has been checked for zipper noise or transients.
-25. **CPU cost is measured only roughly:** the whole cello (4 strings, body, performer) renders at about 6.4% of real time on one core at 48 kHz with the strings at 2× (renderer timing, before idle strings were skipped), and the plugin's engine at 2.85% (`cpu_cost` test in `strings-plugin`; 4.8% before strings that have rung out with the bow off were skipped). 12 players cost 34.6% at 2× and 19.3% at 1× (`cpu_cost_players`, docs/SECTIONS.md A1); nearly all of it is the bowed string, not the body. There are no `criterion` benchmarks yet (PLAN.md 6). The standalone's load meter showed about 4% while playing, probably CPU frequency scaling under light real-time load; unconfirmed.
+25. **CPU cost is measured only roughly:** the whole cello (4 strings, body, performer) renders at about 6.4% of real time on one core at 48 kHz with the strings at 2× (renderer timing, before idle strings were skipped), and the plugin's engine at 3.0% dry and 3.7% on the stage (`cpu_cost` test in `strings-plugin`; 4.8% before strings that have rung out with the bow off were skipped). 12 players on the stage cost 23.3% (`cpu_cost_players`, docs/SECTIONS.md A1–A5); nearly all of it is the bowed string, not the body. There are no `criterion` benchmarks yet (PLAN.md 6). The standalone's load meter showed about 4% while playing, probably CPU frequency scaling under light real-time load; unconfirmed.
 26. **The force band is calibrated on open strings only.** Stopped notes rely on the band scaling with Z·v·β; the performer tests cover C2–E5 at three dynamics, plus six notes 18–24 semitones up the C, G and D strings. High on the A string (above E5) isn't tested.
 27. **The classifiers are approximate.** The bridge-force classifier agrees with the contact-state one on 77–93% of simulated violin points, and it counts the paper's multiple-flyback and S-motion regimes as multi-slip or raucous.
 
@@ -96,8 +96,9 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 
 ## Sections
 
-46. **Sections and the stage are only heard in renders** (docs/SECTIONS.md A2–A4): up to 12 players, each with its own seeded detune, lateness, vibrato, dynamics, bow position, pressure, timing and body; players 1–11 at 1× oversampling. They are placed on a stage (a near-coincident mic pair, 1/r, air absorption) in a shoebox room with first-order reflections. Every spread in `Humanization`, the rooms, the absorption and the mic pair are first guesses. The first mono renders sounded good; the stereo ones (`out/ab-stage/`) are not yet heard. The plugin still plays one player, in mono.
-47. **12 players on a legato line cost 29% of real time** with the stage (renderer), over PLAN.md's 25%: more strings ring on in legato. 8 players on `phrase` cost 16%.
+46. **Sections and the stage are not yet heard in a host** (docs/SECTIONS.md A2–A5): up to 12 players, each with its own seeded detune, lateness, vibrato, dynamics, bow position, pressure, timing and body; players 1–11 at 1× oversampling. They are placed on a stage (a near-coincident mic pair, 1/r, air absorption) in a shoebox room with first-order reflections, and the plugin plays them in stereo. Every spread in `Humanization`, the rooms, the absorption and the mic pair are first guesses. The first mono renders sounded good; the stereo ones (`out/ab-stage/`) are not yet heard. Instances don't share their room and mics yet (Phase B): set them alike by hand.
+47. **12 players on a legato line cost 29% of real time** with the stage (renderer), over PLAN.md's 25%: more strings ring on in legato. 8 players on `phrase` cost 16%, and the plugin's engine 23% for 12 players in its test.
+48. **The solo cello costs 3.7% on the stage**, above PLAN.md's 3% for a solo instrument (3.0% dry, with Stage off).
 
 ## Playing controls
 
