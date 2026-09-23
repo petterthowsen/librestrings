@@ -2,6 +2,12 @@
 //! simulation: maps the Helmholtz region of every string over bow speed, β and
 //! force, fits both edges as `F = c·Z·v·β^α`, then checks how often each
 //! position in the fitted band gives Helmholtz motion.
+//!
+//! A cell counts as Helmholtz only if it settles promptly: already Helmholtz
+//! from [`SETTLED`] on, not only in the steady state. Near the lower edge the
+//! string is bistable, and an attack can hold a double slip for hundreds of
+//! milliseconds before Helmholtz motion wins; the performer can't use those
+//! forces for its notes.
 
 use strings_dsp::analysis::{Regime, bow_steady, classify};
 use strings_dsp::{BowedString, ForceLimits, InstrumentSpec};
@@ -14,6 +20,10 @@ const NORMALIZED_FORCE: (f32, f32) = (0.3, 400.0);
 const BETA: (f32, f32) = (0.04, 0.25);
 /// A band edge needs this many consecutive Helmholtz rows.
 const RUN: usize = 3;
+/// Seconds after the bow starts (its speed ramps up over 0.05 s) by which a
+/// cell must be Helmholtz, and from which the steady state is judged.
+const SETTLED: f32 = 0.15;
+const STEADY: f32 = 0.4;
 
 struct Cell {
     string: usize,
@@ -48,7 +58,16 @@ fn regimes(spec: &InstrumentSpec, fs: f32, cells: &[Cell]) -> Vec<Regime> {
                             s.set_bow_position(c.beta);
                             let frames = bow_steady(s, fs, c.speed, c.force, 0.8, 0.05);
                             let period = fs / spec.strings[c.string].frequency;
-                            classify(&frames[(0.4 * fs) as usize..], period)
+                            let (settled, steady) =
+                                ((SETTLED * fs) as usize, (STEADY * fs) as usize);
+                            let early = classify(&frames[settled..steady], period);
+                            let late = classify(&frames[steady..], period);
+                            // Helmholtz only late: it settled too slowly.
+                            if late == Regime::Helmholtz {
+                                early
+                            } else {
+                                late
+                            }
                         })
                         .collect::<Vec<_>>()
                 })

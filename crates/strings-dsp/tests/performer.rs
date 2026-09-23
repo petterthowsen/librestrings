@@ -129,7 +129,44 @@ fn notes_stay_helmholtz_while_the_bow_wanders() {
     check_range(&mut performer(), 10.0);
 }
 
+/// Across the range, the wander's randomness decides a few borderline attacks
+/// (the open G at pp most of all), so one seed says little. Over 24 seeds,
+/// failed checks may number at most 1% of the notes. Slow: run with `--release --ignored`.
+#[test]
+#[ignore]
+fn notes_stay_helmholtz_across_wander_seeds() {
+    let mut failures = Vec::new();
+    for seed in 1..=24 {
+        let settings = PerformerSettings {
+            seed,
+            ..PerformerSettings::default()
+        };
+        let mut p = Performer::new(&cello::INSTRUMENT, settings, FS);
+        failures.extend(
+            range_failures(&mut p, 10.0)
+                .into_iter()
+                .map(|f| format!("seed {seed}, {f}")),
+        );
+    }
+    let notes = 24 * 30;
+    eprintln!(
+        "{} failed checks over {notes} notes:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+    assert!(failures.len() * 100 <= notes, "{} failures", failures.len());
+}
+
 fn check_range(p: &mut Performer, stopped_tolerance: f32) {
+    let failures = range_failures(p, stopped_tolerance);
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Plays notes across the range at three dynamics and lists every one that
+/// isn't Helmholtz, settles later than 150 ms or misses its pitch (open
+/// strings may be 20 cents flat).
+fn range_failures(p: &mut Performer, stopped_tolerance: f32) -> Vec<String> {
+    let mut failures = Vec::new();
     for dynamics in [0.1, 0.5, 0.9] {
         for note in [36u8, 40, 43, 47, 50, 55, 57, 64, 72, 76] {
             p.reset();
@@ -142,25 +179,26 @@ fn check_range(p: &mut Performer, stopped_tolerance: f32) {
             let steady = &frames[(0.7 * FS) as usize..];
             let string_frames: Vec<_> = steady.iter().map(|f| f.frame).collect();
             let what = format!("note {note} at dynamics {dynamics}");
-            assert_eq!(
-                classify(&string_frames, period),
-                Regime::Helmholtz,
-                "{what}"
-            );
+            let regime = classify(&string_frames, period);
+            if regime != Regime::Helmholtz {
+                failures.push(format!("{what}: {regime:?}"));
+            }
             let attack = attack_time(&frames, period);
-            assert!(
-                attack.is_some_and(|t| t < 0.15),
-                "{what}: attack {attack:?}"
-            );
+            if !attack.is_some_and(|t| t < 0.15) {
+                failures.push(format!("{what}: attack {attack:?}"));
+            }
             let bridge: Vec<f32> = steady.iter().map(|f| f.frame.bridge_force).collect();
             let err = cents(measure_frequency(&bridge, FS, target), target);
             let open = cello::STRINGS
                 .iter()
                 .any(|s| cents(s.frequency, target).abs() < 1.0);
             let tolerance = if open { 20.0 } else { stopped_tolerance };
-            assert!(err.abs() < tolerance, "{what}: {err:.1} cents");
+            if err.abs() >= tolerance {
+                failures.push(format!("{what}: {err:.1} cents"));
+            }
         }
     }
+    failures
 }
 
 #[test]

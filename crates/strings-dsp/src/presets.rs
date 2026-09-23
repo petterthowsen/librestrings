@@ -266,35 +266,36 @@ pub mod cello {
     };
 
     /// Fitted by `strings-render calibrate` to simulated Schelleng maps of each
-    /// string (bow speeds 0.05–0.4 m/s, β 0.04–0.25). Band positions 0.5–0.8
-    /// give Helmholtz motion in 92–97% of checked cases. The model's band sits
-    /// above the measured string's (at β = 0.1, v_b = 0.1 m/s the G string's is
-    /// 1.0–3.1 N; measured 0.31–1.89 N): the lower-limit gap of PLAN.md 4.2.
-    /// Not yet refitted for the constant-Q torsional loss (STATUS.md).
+    /// string (bow speeds 0.05–0.4 m/s, β 0.04–0.25), counting only cells that
+    /// are Helmholtz within 0.15 s of the bow starting. Band positions 0.5–0.8
+    /// give such prompt Helmholtz motion in 90–98% of checked cases. The
+    /// model's band sits above the measured string's (at β = 0.1, v_b = 0.1 m/s
+    /// the G string's is 1.3–3.0 N, 0.9–3.0 N counting slow settling; measured
+    /// 0.31–1.89 N): the lower-limit gap of PLAN.md 4.2.
     const FORCE_LIMITS: [ForceLimits; 4] = [
         ForceLimits {
-            lower: 1.406,
-            lower_exponent: -0.898,
-            upper: 8.008,
-            upper_exponent: -0.551,
+            lower: 1.491,
+            lower_exponent: -0.933,
+            upper: 5.767,
+            upper_exponent: -0.653,
         },
         ForceLimits {
-            lower: 1.147,
-            lower_exponent: -0.927,
-            upper: 8.871,
-            upper_exponent: -0.522,
+            lower: 1.059,
+            lower_exponent: -1.050,
+            upper: 7.643,
+            upper_exponent: -0.565,
         },
         ForceLimits {
-            lower: 0.411,
-            lower_exponent: -1.246,
-            upper: 11.067,
-            upper_exponent: -0.503,
+            lower: 0.647,
+            lower_exponent: -1.166,
+            upper: 9.265,
+            upper_exponent: -0.545,
         },
         ForceLimits {
-            lower: 0.120,
-            lower_exponent: -1.583,
-            upper: 11.378,
-            upper_exponent: -0.486,
+            lower: 0.325,
+            lower_exponent: -1.306,
+            upper: 11.861,
+            upper_exponent: -0.440,
         },
     ];
 
