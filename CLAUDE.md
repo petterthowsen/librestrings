@@ -14,6 +14,7 @@ cargo run --release -p strings-render -- schelleng --string A   # playability ma
 cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate
 cargo run --release -p strings-render -- measured              # vs measured cello string (needs scripts/fetch-reference-data.sh)
 cargo run --release -p strings-render -- compare --dynamics mf --string G   # vs recorded cello notes (fetch-reference-data.sh iowa-cello; all: ~4 min)
+cargo run --release -p strings-render -- compare --string C --bridge    # the same on the strings' bridge force (before the body)
 cargo xtask bundle strings-plugin --release                     # CLAP bundle -> target/bundled/LibreStrings.clap
 cargo xtask install                                             # the same, then copied to ~/.clap for the DAW
 cargo run --release -p strings-plugin --features standalone -- --backend alsa --period-size 1024   # play without a DAW (or jack; dummy is silent); smaller periods drop out

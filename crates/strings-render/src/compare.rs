@@ -40,6 +40,9 @@ pub struct Options {
     /// MIDI velocity of the model's strokes, 0–1.
     pub velocity: f32,
     pub csv: Option<PathBuf>,
+    /// Measure the model's bridge force instead of its output: whether a
+    /// difference comes from the strings or the body.
+    pub bridge: bool,
 }
 
 /// What both the recording and the model are measured for.
@@ -170,6 +173,7 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
                 opts.velocity,
                 rec.stroke,
                 rec.ring + 1.0,
+                opts.bridge,
                 fs,
             );
             highpass(&mut y, fs);
@@ -361,6 +365,7 @@ fn find_takes(dir: &Path, opts: &Options) -> Result<Vec<Take>, Box<dyn std::erro
 
 /// One note played like the recording: from rest, on `string`, off the
 /// string at the end (the recorded bow lifts), with `tail` seconds after.
+/// With `bridge`, the strings' bridge force instead of the body's output.
 #[allow(clippy::too_many_arguments)]
 fn render(
     note: u8,
@@ -370,6 +375,7 @@ fn render(
     velocity: f32,
     stroke: f32,
     tail: f32,
+    bridge: bool,
     fs: f32,
 ) -> Vec<f32> {
     let mut p = Performer::new(&cello::INSTRUMENT, PerformerSettings::default(), fs);
@@ -380,15 +386,23 @@ fn render(
     for _ in 0..(0.3 * fs) as usize {
         p.process();
     }
+    let sample = |p: &mut Performer| {
+        let frame = p.process_frame();
+        if bridge {
+            frame.bridge_force
+        } else {
+            frame.output
+        }
+    };
     let mut y = Vec::new();
     y.extend(std::iter::repeat_n(0.0, (0.1 * fs) as usize));
     p.note_on(note, velocity);
     for _ in 0..(stroke * fs) as usize {
-        y.push(p.process());
+        y.push(sample(&mut p));
     }
     p.note_off(note);
     for _ in 0..(tail * fs) as usize {
-        y.push(p.process());
+        y.push(sample(&mut p));
     }
     y
 }

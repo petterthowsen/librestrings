@@ -192,16 +192,35 @@ pub mod cello {
     /// 173 Hz (the main body resonance, where that cello's wolf note sits),
     /// 200, 209 and 281 Hz; T1 at 140 Hz from Bynum & Rossing. Damping (1–2.5%)
     /// and relative levels are estimates, to be refined by ear or measurement.
-    const SIGNATURE_MODES: [BodyMode; 6] = [
+    ///
+    /// The modes at 118 and 144 Hz are not from the literature: they stand for
+    /// modes a real body has between A0 and the dense ones. With the six listed
+    /// modes alone the body passed A#2–C3 25–33 dB below its level at
+    /// 200–400 Hz, and the C and G strings' fundamentals from G2 to D3 came out
+    /// 7–31 dB below the harmonic power, where the recorded notes (Iowa) and
+    /// the model's own bridge force have 1–5 dB. Fitted to the recordings
+    /// (PLAN.md "The body's low end"); below A0 (C2–F2) the recorded
+    /// fundamental is weak too, and stays so.
+    const SIGNATURE_MODES: [BodyMode; 8] = [
         BodyMode {
             frequency: 97.0,
             damping: 0.025,
             gain: 0.7,
         },
         BodyMode {
+            frequency: 118.0,
+            damping: 0.03,
+            gain: -1.3,
+        },
+        BodyMode {
             frequency: 140.0,
             damping: 0.015,
             gain: 0.4,
+        },
+        BodyMode {
+            frequency: 144.0,
+            damping: 0.04,
+            gain: 1.7,
         },
         BodyMode {
             frequency: 173.0,

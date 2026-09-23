@@ -149,6 +149,10 @@ enum Command {
         /// Write every note's measurements to this CSV file.
         #[arg(long)]
         csv: Option<PathBuf>,
+        /// Measure the model's bridge force (the strings, before the body)
+        /// instead of its output.
+        #[arg(long)]
+        bridge: bool,
     },
     /// Compare the model with a measured Schelleng diagram (mdw cello string A T1),
     /// point by point. Fetch the data with scripts/fetch-reference-data.sh.
@@ -362,6 +366,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             velocity,
             out,
             csv,
+            bridge,
         } => compare::run(&compare::Options {
             data,
             out,
@@ -370,6 +375,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             vibrato,
             velocity: velocity / 127.0,
             csv,
+            bridge,
         })?,
         Command::Calibrate {
             sample_rate,

@@ -14,12 +14,11 @@ Open issues as of September 2026, end of Phase 2 (built, not yet judged by ear).
 
 ## Next steps
 
-In this order, from the comparison with recorded notes (items 40–45). The high positions on a lower string (item 41) are fixed: the bow keeps its distance from the bridge (PLAN.md "High positions: the bow's distance from the bridge").
+In this order, from the comparison with recorded notes (items 40–45). The high positions on a lower string (item 41) are fixed: the bow keeps its distance from the bridge (PLAN.md "High positions: the bow's distance from the bridge"). The low strings' weak fundamental (item 43) is fixed from A2 to D3 and sounds better (PLAN.md "The body's low end").
 
-1. **The low strings' presence (item 43).** Check whether the weak fundamental comes from the string (bridge force) or the body (the estimated low end and the 250 Hz rise), then fix it there.
-2. **Soft, dark pp (item 40).** Find what makes the model brightest at pp (the pressure tilt at low dynamics, force, β) and make the spectrum brighten with the dynamics, as the recording does by about 10 dB from pp to ff.
-3. **Bow noise (item 42),** in the sustain and more at the attack: the target is the recording's HNR (26–34 dB) and the brighter, more obvious onset heard at mf.
-4. **Attacks against measured data (item 44):** the Guettler attack waveforms (mdw), then attack length and bite by ear.
+1. **Soft, dark pp (item 40).** Find what makes the model brightest at pp (the pressure tilt at low dynamics, force, β) and make the spectrum brighten with the dynamics, as the recording does by about 10 dB from pp to ff. `compare --bridge` shows the pp brightness is already in the bridge force (partials 4–7 at −5 dB on the C string, recorded −20), so it starts in the string and bow, not the body.
+2. **Bow noise (item 42),** in the sustain and more at the attack: the target is the recording's HNR (26–34 dB) and the brighter, more obvious onset heard at mf.
+3. **Attacks against measured data (item 44):** the Guettler attack waveforms (mdw), then attack length and bite by ear.
 
 Re-run `strings-render compare` after each and A/B the listening files.
 
@@ -66,7 +65,7 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 13. **The damping data is digitized from a small plot** (Fig. 1, A T1 panel). Mode 3 has a wide spread and is left out of the fit.
 14. **Only one measured string.** The cello C, D and A strings take their tension from a published set but borrow the G string's damping, bending stiffness and torsion. The comparison itself rests on one G string on a monochord (rigid terminations, no body).
 15. **The instrument damping is partly estimated.** The cello presets add ζ = 7e-4 to the measured monochord damping for energy lost into the body (open G: about 11 s to −60 dB). The finger's damping (0.015 Np per reflection, 0.095 once the note is over) is a guess, and the same at every frequency; a real fingertip damps the upper partials more.
-16. **The body is only partly sourced.** The six low mode frequencies are from the literature; their damping and levels, the bridge-hill shapes and the dense-mode statistics are estimates, and so is the rise at 250 Hz that gives low notes their weight (PLAN.md "Phase 3 notes: tuning and first listening"). There is no measured cello bridge admittance or radiation data yet.
+16. **The body is only partly sourced.** The six low mode frequencies are from the literature; their damping and levels, the bridge-hill shapes and the dense-mode statistics are estimates, and so are the rise at 250 Hz that gives low notes their weight (PLAN.md "Phase 3 notes: tuning and first listening") and the modes at 118 and 144 Hz, fitted to the recorded notes' fundamentals (PLAN.md "The body's low end"). There is no measured cello bridge admittance or radiation data yet.
 
 ## Model limits
 
@@ -113,7 +112,7 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 
 40. **The spectrum doesn't follow the dynamics.** Recorded notes brighten from pp to ff by 7–11 dB in partials 4–7 and 9–14 dB in partials 8–15; the model's spectrum stays the same or darkens. At pp the low strings are far too bright (partials 4–7 about 15 dB too strong on the C and G strings); at mf–ff the A string is 10–15 dB too dark above partial 8.
 42. **No bow noise:** the model's harmonic-to-noise ratio is about 10 dB higher than the recording's at every dynamic (37–45 dB against 26–34 dB).
-43. **The low strings' fundamental is weak:** 9–16 dB below the harmonic power on the C string, 1–8 dB recorded. The microphone distance may add to the gap; the body's low end is estimated (item 16).
+43. **The low strings' fundamental is mostly fixed.** The body lost it, not the string (`compare --bridge`). Two fitted modes (118 and 144 Hz) fill the gap between A0 and the dense modes. On the C string A2–D3 went from −6 to −31 dB to −1 to −8 at mf–ff (recorded −1 to −5), and to −3 to −15 at pp, and the G string's median from −5 to −2.5 dB (recorded −2.2) at mf (PLAN.md "The body's low end"). Still weak: G2–Ab2 (−7 to −17 against −1 to −2) and, on the C string, Ab3–C4 around 220 Hz (−10 to −13 against 0 to −2). The A/B renders (`out/ab-body-low-end/`) were listened to (September 2026): the change sounds good.
 44. **One recorded player and one microphone.** The Iowa notes have no vibrato and one way of starting (a slow swell at pp–mf), and the player plays a median 15 cents sharp. Attack times and rings compare how the notes were played as much as the instrument; the Guettler attack data (mdw) is still the measured target for attacks.
 45. **Two high positions are still a little off:** ff sul D B4 plays 17 cents sharp and sul D C#5 5 cents flat, with clean Helmholtz motion, in `compare`. In the seed sweep sul G D4 at mf settles slowly (0.4–1 s) on 2 of 24 seeds. The bow's minimum distance (0.024 m per kg/s of impedance) is fitted to where the model fails, not to players; it works from 3.5 to 4.5 cm on the C string. The A/B renders (`out/ab-bow-distance/`: `play sul` and `play phrase --fingering bridge`, before and after) were listened to (September 2026): the change sounds better.
 
