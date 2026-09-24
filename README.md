@@ -50,7 +50,9 @@ cargo xtask install
 
 `cargo xtask bundle strings-plugin --release` only builds it, into `target/bundled/`.
 
-It is a mono instrument (the same signal on both outputs) that takes MIDI:
+The **Instrument** parameter picks the cello or the violin. Changing it builds the new instrument in the background and cuts off what was sounding.
+
+It is a stereo instrument that takes MIDI:
 
 | Input | Controls |
 |---|---|
@@ -63,6 +65,13 @@ It is a mono instrument (the same signal on both outputs) that takes MIDI:
 The bow lift decides how a note ends. Off the string, the bow lifts and the string rings on; short notes are thrown off, spiccato-like. On the string, the bow stops and rests there, so short notes are staccato (martelé when pressed hard).
 
 Dynamics, vibrato, pressure (flautando to scratch), bow lift, polyphony (mono or double stops), fingering (near the nut, mid position, near the bridge) and volume are also plugin parameters that the host can automate. When a CC and a parameter both set a control, the one that changed last wins.
+
+**Sections and the stage:**
+
+- **Players** (1–12) sets the section size; 1 is a soloist. Each player has its own small differences in tuning, timing, vibrato, dynamics and bowing.
+- The section sits on a stage, heard through a pair of mics in front of it. **Stage x** and **Stage y** place its centre (metres: x to the audience's right, y back from the front of the stage), and **Section width** and **Section depth** set the area its players fill.
+- **Room** (studio, chamber hall, concert hall, scoring stage), **Absorption**, **Mic distance** and **Reflections** shape the early reflections. There is no reverb tail; add your own. To place several instances in the same room, give them the same room settings.
+- Turn **Stage** off for the players' dry, mono sum.
 
 The editor shows the instrument, with the bow, finger and vibrating string following what the performer does, plus bow speed, bow force and whether the string is in clean Helmholtz motion. Below it are an on-screen keyboard and faders, so you can play without a MIDI controller:
 
@@ -87,7 +96,7 @@ Run with `--help` for all options.
 
 ## Offline renderer
 
-`strings-render` drives the model offline and writes 32-bit float mono WAV files. `play` renders the whole cello through its body. The single-string commands below (`bow`, `pluck`, `schelleng`) use the violin strings and write the raw force on the bridge, peak-normalized to −1 dBFS; with no body, they sound thinner and buzzier than a real violin.
+`strings-render` drives the model offline and writes 32-bit float WAV files. `play` renders a whole instrument (or a section) through its body. The single-string commands below (`bow`, `pluck`, `schelleng`) write the raw force on the bridge in mono, peak-normalized to −1 dBFS; with no body, they sound thinner and buzzier than the real instrument. They use the violin strings unless you pass `--instrument cello`.
 
 ```sh
 cargo run --release -p strings-render -- <command> [options]
@@ -97,12 +106,16 @@ cargo run --release -p strings-render -- <command> [options]
 
 Add `--help` to any command for all options.
 
-### `play`: the solo cello from a score
+### `play`: an instrument or section from a score
 
 ```sh
-strings-render play phrase -o out/phrase.wav     # also: scale, legato, staccato, doublestops, ostinato
+strings-render play phrase -o out/phrase.wav     # cello; also: scale, legato, staccato, doublestops, ostinato, sul
+strings-render play violin-phrase --instrument violin -o out/violin.wav   # also violin-scale, -legato, -staccato, -doublestops, -ostinato, -sul, -tasto
+strings-render play phrase --players 8 -o out/section.wav                 # a section of 8 on the stage, stereo
 strings-render play my.score -o out/my.wav       # a score file
 ```
+
+A solo instrument renders dry, in mono; `--players N` (up to 12) or `--stage` renders in stereo from the stage. `--x`, `--y`, `--width`, `--depth`, `--room`, `--absorption`, `--mic-distance` and `--reflections` match the plugin's stage parameters.
 
 The score format is described in `crates/strings-render/src/score.rs`; `crates/strings-render/scores/` has examples. `--bridge-out <file>` also writes the bridge force before the body; `--pressure`, `--fingering` and `--double-stops` change how it is played. The strings run at twice the sample rate, which keeps high notes in tune; `--oversampling 1` runs them at the sample rate, for comparison.
 
@@ -126,7 +139,8 @@ strings-render bow --string G --csv out/g.csv -o out/g.wav
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--string` | `A` | Violin string: `G`, `D`, `A` or `E` |
+| `--instrument` | `violin` | `violin` or `cello` |
+| `--string` | `A` | Open string: `G`, `D`, `A` or `E` on the violin, `C`, `G`, `D` or `A` on the cello |
 | `--semitones` | `0` | Stopped note, in semitones above the open string |
 | `--force` | 0.3 × F_max | Bow force in newtons. The default sits inside the playable range |
 | `--speed` | `0.1` | Bow speed in m/s |
