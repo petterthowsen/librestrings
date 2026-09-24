@@ -105,7 +105,7 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 ## Playing controls
 
 35. **The SWAM-style controls are built but not heard** (PLAN.md "Phase 3 notes: playing like SWAM"): CC11 dynamics and CC1 vibrato, the pressure range from flautando to scratch, one way of playing with a bow lift (off or on the string) in place of the articulations, legato transitions set by velocity, fingering modes and double stops. Only tests and renders of the example scores so far. The numbers (portamento 250 ms below velocity 0.6, grip attack 8–100 ms, minimum stroke 40 ms) are guesses.
-36. **Flautando is only a lighter bow.** Real flautando also moves toward the fingerboard, but the model's cello strings play flat above β ≈ 0.115 (item 8), so the pressure control can't move the bow there.
+36. **The cello's flautando is only a lighter bow.** Real flautando also moves toward the fingerboard, but the model's cello strings play flat above β ≈ 0.115 (item 8), so the pressure control can't move the bow there. The violin's does (`PerformerSettings::tasto`, item 52).
 37. **MIDI pitch bend is ignored.** It could move the finger on the bowed string(s); open strings can't bend.
 38. **Double stops are limited:** two notes, a fixed hand span (4 semitones at every position, where high positions allow more), and intonation by ear only on the older note. Chords of three or four strings (broken or with high force) aren't played.
 39. **The fingering modes are one number each** (how far above a lower string's open pitch a note stays on it). In a double stop they only rank the pairs of strings, so mid position can still take an open string when the other note would be past its bias.
@@ -125,10 +125,8 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 
 ## Violin
 
-50. **The violin is not yet heard.** Renders of every `violin-*` score and an 8-player section are in `out/violin/`. Everything that shapes its sound is a first guess: the body's damping, signs and levels (only the four signature-mode frequencies and the bridge hill are from data), the strings' loss, the output gain (matched to the cello's median level, not by ear) and the performer's timings, which are the cello's.
 51. **The violin's bow hair is the cello's,** fitted to a cello string. There is no measured violin string or Schelleng diagram to fit it to.
-52. **The violin performer keeps the cello's β range (0.115–0.07).** Players bow a violin from about 0.04 to 0.2; the violin strings have no flat zone, but the force band isn't tested outside the cello's range. Sul tasto and a wider range of dynamics color are open.
-53. **The open D at pp settles slowly on 3 of 24 wander seeds** (167–273 ms), as the cello's open G at pp does.
+52. **The violin's wider bow positions have limits** (PLAN.md "Phase 5: the violin"): β 0.16–0.065 with the dynamics, and flautando moving to β 0.2 (sul tasto) at band position 0.3. The A/B renders (`out/ab-violin-beta/`) were listened to (September 2026): they sound pretty good. Quiet attacks are no longer slowed (`pp_attack` 0), so pp attacks are faster than the cello's. Above β ≈ 0.16 at pp the performer's attacks hold multiple slips, so real sul tasto at pp (β up to 0.2 with normal pressure) isn't reachable; the seed sweep has 5 failed checks, all quiet attacks. Halfway to flautando (pressure 0.25), the open G at pp holds multiple slips on a few seeds.
 54. **Changing the instrument in the plugin cuts off what is sounding.** The old engine is swapped out at once, with no fade. Not tried in a host yet.
 
 ## Open decisions

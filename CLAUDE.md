@@ -9,7 +9,7 @@ cargo test                                   # unit + physics tests (test profil
 cargo clippy --all-targets                   # must be clean
 cargo fmt
 cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | ostinato | sul | file.score (--players N: a section on the stage, stereo; --stage for a solo)
-cargo run --release -p strings-render -- play violin-scale --instrument violin -o out/violin-scale.wav   # violin: violin-scale | -legato | -staccato | -phrase | -doublestops | -sul
+cargo run --release -p strings-render -- play violin-scale --instrument violin -o out/violin-scale.wav   # violin: violin-scale | -legato | -staccato | -phrase | -doublestops | -ostinato | -sul | -tasto
 cargo run --release -p strings-render -- bow --string A -o out/a.wav
 cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument cello for cello strings)
 cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate (--instrument violin)
@@ -50,7 +50,7 @@ Renders go in `out/` (gitignored).
 - The bridge loss lowpass at 0.5 (at 48 kHz) is needed for a clean Helmholtz band at 48 kHz; brighter settings fragment the slip phase.
 - A rigid bow stopped on the string damps it slowly, and bow hair doesn't change that much. Notes stop cleanly because the performer eases the force with the bow speed (PLAN.md "Phase 2 notes"). Keep that coupling when changing strokes.
 - Bow hair (`BowHair`) is off by default, so the Phase 1 violin strings (physics tests, `schelleng --instrument violin`) and the reference results stay unchanged. The cello and violin instruments turn it on, with the same parameters, fitted to the measured cello map; without it the violin's G string barely plays Helmholtz motion.
-- Per-instrument performer values (`beta`, `output_gain`) and a section's seat live in `InstrumentSpec`; build performers with `PerformerSettings::for_instrument(spec)`. `PerformerSettings::default()` is the cello's.
+- Per-instrument performer values (`beta`, `tasto`, `flautando`, `pp_attack`, `output_gain`) and a section's seat live in `InstrumentSpec`; build performers with `PerformerSettings::for_instrument(spec)`. `PerformerSettings::default()` is the cello's.
 - After changing the violin's strings, bow or friction, re-run `calibrate --instrument violin --sample-rate 96000` into `presets::violin::FORCE_LIMITS` and the violin seed sweep (`violin_notes_stay_helmholtz_across_wander_seeds`).
 - The cello strings play flat at β ≈ 0.124–0.156 (a torsion effect), so the performer's β range stays below 0.115. Bowed pitch also drifts with force; the performer intonates stopped notes by ear (slip-period feedback), which is deliberate, not a tuning bug.
 - After changing the strings, bow or friction of the cello, re-run `calibrate --sample-rate 96000` and paste its limits into `presets::cello::FORCE_LIMITS`. Then run the seed sweep (`cargo test --release -p strings-dsp --test performer across_wander_seeds -- --ignored --nocapture`): one seed passing says little about attacks.

@@ -1,0 +1,74 @@
+# Violin: the cello's ostinato a twelfth up, in the violin's lowest octave:
+# sixteenths at 150 bpm (100 ms a note), accents on the beats. First on the
+# string, then off it.
+tempo 150
+0 dyn 0.7
+0 vib 0
+0 bow on
+0 note G3 0.2 110
+0.25 note G3 0.2 80
+0.5 note D4 0.2 80
+0.75 note G3 0.2 80
+1 note Bb3 0.2 110
+1.25 note G3 0.2 80
+1.5 note D4 0.2 80
+1.75 note G3 0.2 80
+2 note A3 0.2 110
+2.25 note A3 0.2 80
+2.5 note E4 0.2 80
+2.75 note A3 0.2 80
+3 note D4 0.2 110
+3.25 note A3 0.2 80
+3.5 note F#4 0.2 80
+3.75 note A3 0.2 80
+4 note G3 0.2 110
+4.25 note G3 0.2 80
+4.5 note D4 0.2 80
+4.75 note G3 0.2 80
+5 note Bb3 0.2 110
+5.25 note G3 0.2 80
+5.5 note D4 0.2 80
+5.75 note G3 0.2 80
+6 note A3 0.2 110
+6.25 note A3 0.2 80
+6.5 note E4 0.2 80
+6.75 note A3 0.2 80
+7 note D4 0.2 110
+7.25 note A3 0.2 80
+7.5 note F#4 0.2 80
+7.75 note A3 0.2 80
+8 note G3 1 110
+10 bow off
+10 note G3 0.2 110
+10.25 note G3 0.2 80
+10.5 note D4 0.2 80
+10.75 note G3 0.2 80
+11 note Bb3 0.2 110
+11.25 note G3 0.2 80
+11.5 note D4 0.2 80
+11.75 note G3 0.2 80
+12 note A3 0.2 110
+12.25 note A3 0.2 80
+12.5 note E4 0.2 80
+12.75 note A3 0.2 80
+13 note D4 0.2 110
+13.25 note A3 0.2 80
+13.5 note F#4 0.2 80
+13.75 note A3 0.2 80
+14 note G3 0.2 110
+14.25 note G3 0.2 80
+14.5 note D4 0.2 80
+14.75 note G3 0.2 80
+15 note Bb3 0.2 110
+15.25 note G3 0.2 80
+15.5 note D4 0.2 80
+15.75 note G3 0.2 80
+16 note A3 0.2 110
+16.25 note A3 0.2 80
+16.5 note E4 0.2 80
+16.75 note A3 0.2 80
+17 note D4 0.2 110
+17.25 note A3 0.2 80
+17.5 note F#4 0.2 80
+17.75 note A3 0.2 80
+18 note G3 1 110

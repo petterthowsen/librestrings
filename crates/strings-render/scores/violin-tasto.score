@@ -1,0 +1,21 @@
+# Violin: a quiet line played twice, first with normal pressure, then at
+# flautando (pressure 0), where the bow moves toward the fingerboard (sul tasto)
+# and lightens. Legato opening, then détaché.
+tempo 66
+0 dyn 0.3
+0 vib 0.5
+0 note D5 1.05 50
+1 note F#5 1.05 50
+2 note A5 2 55
+4 note G5 0.95 60
+5 note E5 0.95 60
+6 note C#5 0.95 60
+7 note D5 2 50
+10 pressure 0
+10 note D5 1.05 50
+11 note F#5 1.05 50
+12 note A5 2 55
+14 note G5 0.95 60
+15 note E5 0.95 60
+16 note C#5 0.95 60
+17 note D5 2 50

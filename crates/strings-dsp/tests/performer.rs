@@ -120,14 +120,15 @@ fn steady_performer() -> Performer {
 }
 
 fn steady(spec: &InstrumentSpec) -> Performer {
+    let settings = PerformerSettings::for_instrument(spec);
     let settings = PerformerSettings {
         tuning: PerformerTuning {
             wander_pressure: 0.0,
             wander_speed: 0.0,
             wander_beta: 0.0,
-            ..PerformerTuning::default()
+            ..settings.tuning
         },
-        ..PerformerSettings::for_instrument(spec)
+        ..settings
     };
     Performer::new(spec, settings, FS)
 }
@@ -715,6 +716,39 @@ fn pressure_runs_from_flautando_to_scratch() {
     assert_eq!(normal, Regime::Helmholtz);
     assert_eq!(scratch, Regime::Raucous);
     assert!(soft < mid && mid < loud, "{soft} {mid} {loud}");
+}
+
+/// Violin flautando moves the bow toward the fingerboard (sul tasto) and
+/// lightens it; the cello's bow stays where the dynamics put it.
+#[test]
+fn violin_flautando_moves_toward_the_fingerboard() {
+    let beta = |spec: &InstrumentSpec, pressure: f32| {
+        let mut p = steady(spec);
+        p.set_dynamics(0.5);
+        p.set_pressure(pressure);
+        run(&mut p, 0.1);
+        // An open string, so the bow's distance from the bridge doesn't move it.
+        p.note_on(69, 0.6);
+        run(&mut p, 0.5);
+        p.instrument().string(p.bowed_string()).beta()
+    };
+    let (normal, tasto) = (
+        beta(&violin::INSTRUMENT, 0.5),
+        beta(&violin::INSTRUMENT, 0.0),
+    );
+    assert!((tasto - violin::INSTRUMENT.tasto).abs() < 1e-3, "{tasto}");
+    assert!(normal < 0.13, "{normal}");
+    let (normal, flautando) = (beta(&cello::INSTRUMENT, 0.5), beta(&cello::INSTRUMENT, 0.0));
+    assert!((flautando - normal).abs() < 1e-4, "{normal} {flautando}");
+}
+
+/// At flautando the violin's notes still settle promptly into Helmholtz
+/// motion and play in tune, across the range and dynamics.
+#[test]
+fn violin_flautando_notes_are_helmholtz_and_in_tune() {
+    let mut p = steady(&violin::INSTRUMENT);
+    p.set_pressure(0.0);
+    check_range(&mut p, &VIOLIN_NOTES, 5.0);
 }
 
 /// A section clones one performer per player instead of fitting every

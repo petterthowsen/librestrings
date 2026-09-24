@@ -227,6 +227,18 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
         ),
         Knob::new(
             Sustain,
+            "Bow position, flautando",
+            field!(live.performer.tasto),
+        )
+        .range(0.0, 0.3)
+        .unit(" β")
+        .help(
+            "Below the pressure control's middle the bow moves from where the dynamics \
+                 put it toward this position (sul tasto), never toward the bridge. 0 keeps \
+                 it where it is, as for the cello, whose strings play flat above about 0.12.",
+        ),
+        Knob::new(
+            Sustain,
             "Pressure, scratch",
             field!(live.performer.pressure_range.1),
         )
@@ -243,7 +255,8 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
             .unit(" β")
             .help(
                 "Distance from the bridge as a fraction of the vibrating length. Above about \
-                 0.12 the model's cello strings play flat (STATUS.md).",
+                 0.12 the model's cello strings play flat (STATUS.md); the violin's don't, \
+                 but its attacks at pp start slowly above about 0.16.",
             ),
         Knob::new(Sustain, "Bow position at ff", field!(live.performer.beta.1))
             .range(0.03, 0.2)

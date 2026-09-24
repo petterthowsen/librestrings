@@ -542,6 +542,7 @@ fn vary_settings(s: &PerformerSettings, d: &Draws, h: &Humanization) -> Performe
     let beta = 1.0 - h.beta * d.beta;
     PerformerSettings {
         beta: (s.beta.0 * beta, s.beta.1 * beta),
+        tasto: s.tasto * beta,
         pressure: s.pressure + h.pressure * d.pressure,
         vibrato_rate: s.vibrato_rate * (1.0 + h.vibrato_rate * d.vibrato_rate),
         vibrato_depth: s.vibrato_depth * (1.0 + h.vibrato_depth * d.vibrato_depth),

@@ -85,6 +85,11 @@ pub struct PerformerSettings {
     /// high up the C and G strings, playing sharp and noisy (PLAN.md "High
     /// positions: the bow's distance from the bridge").
     pub bow_distance: f32,
+    /// Bow position (β) at the flautando end of the pressure control: below
+    /// its middle the bow moves from the dynamics' position toward this one
+    /// (sul tasto), never toward the bridge. 0 keeps the dynamics' position,
+    /// as for the cello, whose strings play flat above β ≈ 0.115.
+    pub tasto: f32,
     /// Position in the Helmholtz band at the middle of the pressure control
     /// (normal playing): 0 is the band's lower edge, 1 its upper edge.
     pub pressure: f32,
@@ -123,14 +128,18 @@ impl PerformerSettings {
             beta: spec.beta,
             // Cello: 3.5 cm on the C string, 1.4 cm on the A.
             bow_distance: 0.024,
+            tasto: spec.tasto,
             pressure: 0.65,
-            pressure_range: (PRESSURE_FLAUTANDO, PRESSURE_SCRATCH),
+            pressure_range: (spec.flautando, PRESSURE_SCRATCH),
             vibrato_rate: 5.5,
             vibrato_depth: 0.35,
             output_gain: spec.output_gain,
             seed: 0x0b0e_5eed,
             oversampling: 2,
-            tuning: PerformerTuning::default(),
+            tuning: PerformerTuning {
+                pp_attack: spec.pp_attack,
+                ..PerformerTuning::default()
+            },
         }
     }
 }
@@ -155,7 +164,9 @@ pub struct PerformerTuning {
     /// At low dynamics attacks are slower, by up to this factor minus one at
     /// dynamics 0. At low force the bow must accelerate gently or the string
     /// starts in multiple slips (Guettler's attack diagram): below 1.6 quiet
-    /// attacks on C2 and G2 can hold a double slip for up to a second.
+    /// attacks on C2 and G2 can hold a double slip for up to a second. Per
+    /// instrument ([`InstrumentSpec::pp_attack`]); the default is the cello's.
+    /// The violin, bowed farther from the bridge at pp, needs faster attacks.
     pub pp_attack: f32,
     /// The pressure (band position) tilts with dynamics: this much above the
     /// setting at dynamics 0 and as much below it at 1. The model's quiet
@@ -1290,10 +1301,15 @@ impl Performer {
         let [wander_pressure, wander_speed, wander_beta] = self.wander.map(|w| w.value());
         self.speed =
             s.speed.0 * (s.speed.1 / s.speed.0).powf(d) * (1.0 + t.wander_speed * wander_speed);
+        // Below the pressure control's middle the bow moves toward the
+        // fingerboard (sul tasto), if the instrument has a place to go.
+        let played = lerp(s.beta.0, s.beta.1, d);
+        let tasto = (1.0 - 2.0 * self.pressure.value).max(0.0);
+        let played = lerp(played, played.max(s.tasto), tasto);
         // The wander never takes β above the mapping's range (STATUS.md: the
         // flat zone above it).
-        let beta = (lerp(s.beta.0, s.beta.1, d) * (1.0 + t.wander_beta * wander_beta))
-            .min(s.beta.0.max(s.beta.1));
+        let beta =
+            (played * (1.0 + t.wander_beta * wander_beta)).min(s.beta.0.max(s.beta.1).max(s.tasto));
 
         // New drift targets every 0.3 s; the smoothers glide between them.
         self.drift_timer -= dt;

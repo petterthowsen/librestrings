@@ -61,6 +61,17 @@ pub struct InstrumentSpec {
     ///
     /// [`PerformerSettings::beta`]: crate::PerformerSettings::beta
     pub beta: (f32, f32),
+    /// The flautando end of the pressure control: the bow position it moves
+    /// toward (sul tasto; 0 keeps the dynamics' position) and the band
+    /// position ([`PerformerSettings::tasto`] and `pressure_range`).
+    ///
+    /// [`PerformerSettings::tasto`]: crate::PerformerSettings::tasto
+    pub tasto: f32,
+    pub flautando: f32,
+    /// How much slower attacks are at dynamics 0 ([`PerformerTuning::pp_attack`]).
+    ///
+    /// [`PerformerTuning::pp_attack`]: crate::PerformerTuning::pp_attack
+    pub pp_attack: f32,
     /// Gain after the body, so every instrument plays at a similar level.
     pub output_gain: f32,
     /// Where a section of these sits on the stage.

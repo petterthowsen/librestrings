@@ -166,9 +166,17 @@ pub mod violin {
         body: BODY,
         force_limits: FORCE_LIMITS,
         reach: 24.0,
-        // The cello's mapping: the violin strings have no flat zone (no
-        // torsion), but the force band is calibrated and tested only there.
-        beta: (0.115, 0.07),
+        // Wider than the cello's: the violin strings have no flat zone (no
+        // torsion). Closer than 0.065, notes high on the E string miss their
+        // pitch; farther than about 0.16 at pp, attacks hold multiple slips.
+        beta: (0.16, 0.065),
+        // Flautando moves toward the fingerboard. At the band's lower edge
+        // there, attacks hold multiple slips; a little above it they start.
+        tasto: 0.2,
+        flautando: 0.3,
+        // Quiet attacks aren't slowed: far from the bridge, slow attacks hold
+        // multiple slips (PLAN.md "Phase 5: the violin").
+        pp_attack: 0.0,
         // Matched to the cello's median level on the example scales (the
         // violin strings' impedance is a third of the cello's); not yet by ear.
         output_gain: 0.5,
@@ -447,6 +455,9 @@ pub mod cello {
         // Above β ≈ 0.12 the model's cello strings play up to 45 cents flat
         // (STATUS.md), so the mapping stays below.
         beta: (0.115, 0.07),
+        tasto: 0.0,
+        flautando: crate::performer::PRESSURE_FLAUTANDO,
+        pp_attack: 1.6,
         output_gain: 0.065,
         seat: Placement::CELLOS,
     };

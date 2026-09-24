@@ -86,7 +86,8 @@ enum Command {
     /// Play a score through the performer and body. SCORE is a file (format in
     /// score.rs) or a built-in: scale, legato, staccato, phrase, doublestops,
     /// ostinato, sul (cello), or violin-scale, violin-legato, violin-staccato,
-    /// violin-phrase, violin-doublestops, violin-sul.
+    /// violin-phrase, violin-doublestops, violin-ostinato, violin-sul,
+    /// violin-tasto.
     Play {
         score: String,
         #[arg(long, default_value = "cello")]
@@ -395,7 +396,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "violin-doublestops" => {
                     include_str!("../scores/violin-doublestops.score").to_string()
                 }
+                "violin-ostinato" => include_str!("../scores/violin-ostinato.score").to_string(),
                 "violin-sul" => include_str!("../scores/violin-sul.score").to_string(),
+                "violin-tasto" => include_str!("../scores/violin-tasto.score").to_string(),
                 path => std::fs::read_to_string(path)?,
             };
             let spec = instrument.instrument();
