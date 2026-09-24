@@ -20,6 +20,13 @@ const HOP: f32 = 0.005;
 const WINDOW: f32 = 0.010;
 /// Harmonic bands: partials 1, 2–3, 4–7, 8–15 and 16 up.
 const BANDS: [(usize, usize); 5] = [(1, 1), (2, 3), (4, 7), (8, 15), (16, usize::MAX)];
+/// Noise bands (Hz): the inter-harmonic power below 1 kHz, 1–2, 2–4 and 4–8 kHz.
+const NOISE_BANDS: [(f32, f32); 4] = [
+    (0.0, 1000.0),
+    (1000.0, 2000.0),
+    (2000.0, 4000.0),
+    (4000.0, 8000.0),
+];
 /// Highest partial frequency measured (Hz).
 const TOP: f32 = 10_000.0;
 /// Both signals are high-passed here (Hz) before measuring: the recordings
@@ -45,6 +52,9 @@ pub struct Options {
     pub bridge: bool,
     /// Override the width of the bow hair in contact (m).
     pub bow_width: Option<f32>,
+    /// Override the bow noise's level and bandwidth (Hz).
+    pub bow_noise: Option<f32>,
+    pub noise_cutoff: Option<f32>,
 }
 
 /// What both the recording and the model are measured for.
@@ -70,6 +80,9 @@ struct Features {
     centroid: f32,
     /// Harmonic to non-harmonic power in the sustain (dB, median over frames).
     hnr: f32,
+    /// The noise's spectrum: power halfway between the partials in
+    /// `NOISE_BANDS`, dB relative to all harmonic power.
+    noise: [f32; 4],
     /// Samples of the attack's start and the ring's end.
     span: (usize, usize),
 }
@@ -99,6 +112,7 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
     if let (Some(width), Some(hair)) = (opts.bow_width, &mut spec.hair) {
         hair.width = width;
     }
+    let spec = crate::with_bow_noise(&spec, opts.bow_noise, opts.noise_cutoff);
     let mut csv = opts.csv.as_ref().map(|_| {
         String::from(
             "dynamic,string,note,source,level_db,attack_s,stroke_s,ring_s,cents,vib_cents,vib_hz,\
@@ -291,6 +305,7 @@ fn summary(pairs: &[(&str, Features, Features)]) {
         let bands: Vec<_> = (0..5).map(|i| med(&|f| f.bands[i])).collect();
         let centroid = med(&|f| f.centroid);
         let hnr = med(&|f| f.hnr);
+        let noise: Vec<_> = (0..4).map(|i| med(&|f| f.noise[i])).collect();
         let level = med(&|f| f.level);
         let pair = |(a, b): (f32, f32), d: usize| format!("{a:.d$} / {b:.d$}");
         let bands = bands
@@ -309,6 +324,16 @@ fn summary(pairs: &[(&str, Features, Features)]) {
             pair(centroid, 1),
             pair(hnr, 1),
             pair(level, 1),
+        );
+        println!(
+            "{:<3} {:>3} | noise between partials dB (<1k 1-2k 2-4k 4-8k Hz): {}",
+            "",
+            "",
+            noise
+                .iter()
+                .map(|&(a, b)| format!("{a:.0}/{b:.0}"))
+                .collect::<Vec<_>>()
+                .join(" ")
         );
     }
 }
@@ -512,7 +537,7 @@ fn analyze(x: &[f32], fs: f32, nominal: f32) -> Option<Features> {
         coarse
     };
     let (vibrato_depth, vibrato_rate) = vibrato(&pitch_track(sustain, fs, lo, hi, 0.01), f0);
-    let (bands, centroid, hnr) = spectrum(sustain, fs, f0);
+    let (bands, centroid, hnr, noise) = spectrum(sustain, fs, f0);
     Some(Features {
         level,
         attack: t(attacked - onset),
@@ -524,6 +549,7 @@ fn analyze(x: &[f32], fs: f32, nominal: f32) -> Option<Features> {
         bands,
         centroid,
         hnr,
+        noise,
         span: (
             onset * hop,
             (ended * hop + (WINDOW * fs) as usize).min(x.len()),
@@ -618,13 +644,19 @@ fn vibrato(track: &[f32], f0: f32) -> (f32, f32) {
 }
 
 /// Harmonic band levels (dB relative to all harmonic power), the mean
-/// partial number weighted by power, and the harmonic-to-noise ratio (dB),
-/// over Hann frames 6 periods long, each at its own fundamental.
-fn spectrum(x: &[f32], fs: f32, f0: f32) -> ([f32; 5], f32, f32) {
+/// partial number weighted by power, the harmonic-to-noise ratio (dB) and the
+/// noise's spectrum (see [`Features::noise`]), over Hann frames 6 periods
+/// long, each at its own fundamental.
+///
+/// The noise is measured halfway between partials: in a Hann window 6
+/// periods long those frequencies sit on the window's zeros for every
+/// partial, so the partials don't leak into them.
+fn spectrum(x: &[f32], fs: f32, f0: f32) -> ([f32; 5], f32, f32, [f32; 4]) {
     let len = (6.0 * fs / f0) as usize;
     let hop = len / 3;
     let partials = ((TOP.min(0.45 * fs)) / f0) as usize;
     let mut power = vec![0.0f64; partials + 1];
+    let mut between = [0.0f64; 4];
     let mut hnrs = Vec::new();
     let w: Vec<f32> = (0..len)
         .map(|i| 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / len as f32).cos())
@@ -650,6 +682,14 @@ fn spectrum(x: &[f32], fs: f32, f0: f32) -> ([f32; 5], f32, f32) {
             let pw = a * a / 2.0;
             *p += pw as f64;
             harmonic += pw;
+            let mid = (n as f32 - 0.5) * local;
+            if let Some(b) = NOISE_BANDS
+                .iter()
+                .position(|&(lo, hi)| (lo..hi).contains(&mid))
+            {
+                let a = windowed_amplitude(frame, &w, fs, mid);
+                between[b] += (a * a / 2.0) as f64;
+            }
         }
         // Capped at 60 dB: the model has no noise at all.
         hnrs.push(10.0 * (harmonic / (total - harmonic).max(1e-6 * total)).log10());
@@ -672,7 +712,8 @@ fn spectrum(x: &[f32], fs: f32, f0: f32) -> ([f32; 5], f32, f32) {
         .map(|(n, p)| n as f64 * p)
         .sum::<f64>()
         / all;
-    (bands, centroid as f32, median(hnrs))
+    let noise = between.map(|p| 10.0 * ((p / all).max(1e-12)).log10() as f32);
+    (bands, centroid as f32, median(hnrs), noise)
 }
 
 /// Amplitude of the component at `frequency` in a frame already weighed by

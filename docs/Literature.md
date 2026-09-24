@@ -33,6 +33,12 @@ Papers the model takes numbers or methods from, and what was used from each. Dat
 
 - **R. Pitteroff & J. Woodhouse, "Mechanics of the contact area between a violin bow and a string", Parts I–III, Acta Acustica united with Acustica 84 (1998).** A finite-width contact between bow and string, in which part of the ribbon can slip while the rest sticks (differential slipping).
   - Used for: the idea behind `BowHair::width` (several contact points, each with its own stick/slip state). No numbers are taken from it, and its results are not checked against the model yet (PLAN.md "The bow's width").
+## Bow noise
+
+- **C. Chafe, "Pulsed noise in self-sustained oscillations of musical instruments", Proc. IEEE ICASSP 1990, 1157–1160.** Not read here; known from citations.
+  - The noise in bowed (and blown) tones comes in pulses synchronized with the oscillation, in the bowed string with the slip.
+  - Used for: gating the bow noise to the slip phase (`bow::BowNoise`, PLAN.md "Bow noise"). The level is fitted to the Iowa cello notes, not taken from the paper.
+
 ## Stiffness (dispersion filters)
 
 - S. A. Van Duyne, J. O. Smith, "A simplified approach to modeling dispersion caused by stiffness in strings and plates", Proc. ICMC (1994). Cascade of identical first-order allpasses; used in `filters::DispersionAllpass`.

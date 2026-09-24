@@ -8,7 +8,7 @@
 //! into denormals.
 
 use crate::body::{Body, BodySpec, BodyTuning};
-use crate::bow::FrictionParams;
+use crate::bow::{BowNoise, FrictionParams};
 use crate::filters::HalfbandDecimator;
 use crate::stage::Placement;
 use crate::string::{
@@ -83,6 +83,8 @@ pub struct InstrumentSpec {
     pub strings: [StringSpec; 4],
     pub friction: FrictionParams,
     pub hair: Option<BowHair>,
+    /// The friction's fluctuation while the string slips.
+    pub bow_noise: BowNoise,
     pub body: BodySpec,
     /// Helmholtz band per string, lowest first (`strings-render calibrate`).
     pub force_limits: [ForceLimits; 4],
@@ -189,6 +191,8 @@ impl Instrument {
             let s = &spec.strings[i];
             let mut string = BowedString::new(s, spec.friction, string_rate, s.frequency);
             string.set_bow_hair(spec.hair);
+            string.set_bow_noise(spec.bow_noise);
+            string.reseed_noise(i as u32);
             string
         });
         Self {
@@ -263,6 +267,20 @@ impl Instrument {
         self.spec.hair = hair;
         for s in &mut self.strings {
             s.set_bow_hair(hair);
+        }
+    }
+
+    pub fn set_bow_noise(&mut self, noise: BowNoise) {
+        self.spec.bow_noise = noise;
+        for s in &mut self.strings {
+            s.set_bow_noise(noise);
+        }
+    }
+
+    /// Restarts the bow noise from `seed`, so a clone plays other noise.
+    pub fn reseed_noise(&mut self, seed: u32) {
+        for (i, s) in self.strings.iter_mut().enumerate() {
+            s.reseed_noise(seed.wrapping_mul(4).wrapping_add(i as u32));
         }
     }
 

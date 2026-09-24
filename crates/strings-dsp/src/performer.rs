@@ -103,7 +103,7 @@ pub struct PerformerSettings {
     pub vibrato_depth: f32,
     /// Output gain applied after the body.
     pub output_gain: f32,
-    /// Seed for the humanizing drift.
+    /// Seed for the humanizing drift and the bow noise.
     pub seed: u32,
     /// String samples per output sample, 1 or 2 (see [`Instrument::new`]).
     /// Fixed when the performer is built; [`Performer::set_settings`] keeps it.
@@ -718,6 +718,7 @@ impl Performer {
             articulations: [None; ARTICULATIONS],
             articulation_count: 0,
         };
+        p.instrument.reseed_noise(settings.seed);
         p.update_controls();
         p
     }
@@ -936,6 +937,7 @@ impl Performer {
         self.rng = seed.max(1);
         self.vibrato_phase = std::f32::consts::TAU * next_random(&mut self.rng);
         self.drift_timer = 0.0;
+        self.instrument.reseed_noise(seed);
     }
 
     /// Silences everything at once.

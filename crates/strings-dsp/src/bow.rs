@@ -44,6 +44,83 @@ impl FrictionParams {
     }
 }
 
+/// Bow noise: the sliding friction's random fluctuation while the string
+/// slips (rosin and hair roughness). Sticking hair moves with the string and
+/// adds none, so the noise comes in pulses at each slip (Chafe 1990), and
+/// more of it at attacks, where the string slips longer and irregularly.
+///
+/// The fluctuation multiplies the friction force: `F · (1 + level · n)`, with
+/// `n` band-limited noise of unit RMS. It is inside the loop, so the string and
+/// the body shape it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BowNoise {
+    /// RMS of the relative fluctuation (dimensionless). Zero is no noise.
+    pub level: f32,
+    /// Bandwidth (Hz): a one-pole lowpass on white noise. The noise's density
+    /// below it doesn't depend on the sample rate.
+    pub cutoff: f32,
+}
+
+/// Band-limited noise of unit RMS, for [`BowNoise`].
+#[derive(Clone, Copy, Debug)]
+struct NoiseSource {
+    level: f32,
+    /// One-pole lowpass coefficient, and the gain that keeps its output at unit RMS.
+    pole: f32,
+    gain: f32,
+    state: f32,
+    rng: u32,
+}
+
+impl NoiseSource {
+    fn new(noise: BowNoise, sample_rate: f32, seed: u32) -> Self {
+        let mut source = Self {
+            level: 0.0,
+            pole: 0.0,
+            gain: 0.0,
+            state: 0.0,
+            rng: 1,
+        };
+        source.set(noise, sample_rate);
+        source.reseed(seed);
+        source
+    }
+
+    fn set(&mut self, noise: BowNoise, sample_rate: f32) {
+        self.level = noise.level.max(0.0);
+        self.pole = if noise.cutoff > 0.0 && noise.cutoff < 0.5 * sample_rate {
+            (-std::f32::consts::TAU * noise.cutoff / sample_rate).exp()
+        } else {
+            0.0
+        };
+        // Uniform white noise in ±1 has a variance of 1/3; the lowpass passes
+        // (1 − a)/(1 + a) of it.
+        self.gain = (3.0 * (1.0 + self.pole) / (1.0 - self.pole)).sqrt();
+    }
+
+    fn reseed(&mut self, seed: u32) {
+        // Murmur3's finalizer, so neighbouring seeds draw unrelated noise.
+        let mut x = seed;
+        x ^= x >> 16;
+        x = x.wrapping_mul(0x85eb_ca6b);
+        x ^= x >> 13;
+        x = x.wrapping_mul(0xc2b2_ae35);
+        x ^= x >> 16;
+        self.rng = x.max(1);
+        self.state = 0.0;
+    }
+
+    /// The next sample of `level · n`.
+    fn next(&mut self) -> f32 {
+        self.rng ^= self.rng << 13;
+        self.rng ^= self.rng >> 17;
+        self.rng ^= self.rng << 5;
+        let white = (self.rng >> 8) as f32 * (2.0 / (1u32 << 24) as f32) - 1.0;
+        self.state = white + self.pole * (self.state - white);
+        self.level * self.gain * self.state
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ContactState {
     /// Bow not touching the string.
@@ -74,6 +151,7 @@ pub struct JunctionResult {
 pub struct BowJunction {
     pub friction: FrictionParams,
     state: ContactState,
+    noise: NoiseSource,
 }
 
 impl BowJunction {
@@ -81,7 +159,19 @@ impl BowJunction {
         Self {
             friction,
             state: ContactState::Off,
+            noise: NoiseSource::new(BowNoise::default(), 48_000.0, 0),
         }
+    }
+
+    /// Sets the bow noise, at the rate `solve` is called at.
+    pub fn set_noise(&mut self, noise: BowNoise, sample_rate: f32) {
+        self.noise.set(noise, sample_rate);
+    }
+
+    /// Restarts the noise from `seed`: junctions with different seeds draw
+    /// unrelated noise.
+    pub fn reseed_noise(&mut self, seed: u32) {
+        self.noise.reseed(seed);
     }
 
     pub fn state(&self) -> ContactState {
@@ -130,9 +220,16 @@ impl BowJunction {
             None => (0.0, ContactState::Stick),
         };
         self.state = state;
+        let force = 2.0 * z * (d - dv);
+        let noise = if state.is_slipping() && self.noise.level > 0.0 {
+            force * self.noise.next()
+        } else {
+            0.0
+        };
         JunctionResult {
-            force: 2.0 * z * (d - dv),
-            string_velocity: v_b - dv,
+            force: force + noise,
+            // On the load line: the noise moves the string as any force does.
+            string_velocity: v_b - dv + noise / (2.0 * z),
             state,
         }
     }
@@ -238,6 +335,47 @@ mod tests {
         slipping.solve(-1.0, 0.1, f_b, Z);
         let r = slipping.solve(v_h, 0.1, f_b, Z);
         assert_eq!(r.state, ContactState::Slip { positive: true });
+    }
+
+    #[test]
+    fn noise_has_unit_rms_at_any_sample_rate() {
+        for fs in [48_000.0, 96_000.0] {
+            let noise = BowNoise {
+                level: 1.0,
+                cutoff: 2000.0,
+            };
+            let mut source = NoiseSource::new(noise, fs, 1);
+            let n = 400_000;
+            let power = (0..n).map(|_| source.next().powi(2)).sum::<f32>() / n as f32;
+            assert!(
+                (power.sqrt() - 1.0).abs() < 0.03,
+                "fs {fs}: rms {}",
+                power.sqrt()
+            );
+        }
+    }
+
+    #[test]
+    fn noise_moves_the_force_only_while_slipping() {
+        let noise = BowNoise {
+            level: 0.1,
+            cutoff: 2000.0,
+        };
+        let (mut clean, mut noisy) = (junction(), junction());
+        noisy.set_noise(noise, 48_000.0);
+        // Sticking: the same force.
+        let a = clean.solve(0.05, 0.1, 0.5, Z);
+        let b = noisy.solve(0.05, 0.1, 0.5, Z);
+        assert_eq!(b.state, ContactState::Stick);
+        assert_eq!(a.force, b.force);
+        // Slipping: off the friction curve, but on the load line.
+        let (v_h, f_b) = (-0.8, 0.2);
+        let a = clean.solve(v_h, 0.1, f_b, Z);
+        let b = noisy.solve(v_h, 0.1, f_b, Z);
+        assert!(b.state.is_slipping());
+        assert_ne!(a.force, b.force);
+        assert!((b.force / a.force - 1.0).abs() < 0.5);
+        assert!((b.string_velocity - (v_h + b.force / (2.0 * Z))).abs() < 1e-5);
     }
 
     #[test]

@@ -381,6 +381,7 @@ impl Engine {
             let instrument = self.section.player_mut(i).instrument_mut();
             instrument.set_friction(live.friction);
             instrument.set_hair(live.hair);
+            instrument.set_bow_noise(live.bow_noise);
         }
         self.section.set_body(&live.body);
     }

@@ -5,8 +5,8 @@
 use strings_dsp::analysis::{Regime, cents, classify, measure_frequency};
 use strings_dsp::presets::{bass, cello, viola, violin};
 use strings_dsp::{
-    Articulation, BowLift, ContactState, Fingering, InstrumentSpec, Performer, PerformerFrame,
-    PerformerSettings, PerformerTuning, Polyphony,
+    Articulation, BowLift, BowNoise, ContactState, Fingering, InstrumentSpec, Performer,
+    PerformerFrame, PerformerSettings, PerformerTuning, Polyphony,
 };
 
 const FS: f32 = 48_000.0;
@@ -119,6 +119,8 @@ fn steady_performer() -> Performer {
     steady(&cello::INSTRUMENT)
 }
 
+/// Without the bow's randomness: no wander and no bow noise. The seed sweeps
+/// check them.
 fn steady(spec: &InstrumentSpec) -> Performer {
     let settings = PerformerSettings::for_instrument(spec);
     let settings = PerformerSettings {
@@ -130,7 +132,9 @@ fn steady(spec: &InstrumentSpec) -> Performer {
         },
         ..settings
     };
-    Performer::new(spec, settings, FS)
+    let mut p = Performer::new(spec, settings, FS);
+    p.instrument_mut().set_bow_noise(BowNoise::default());
+    p
 }
 
 /// Across the range and dynamics every note settles into Helmholtz motion

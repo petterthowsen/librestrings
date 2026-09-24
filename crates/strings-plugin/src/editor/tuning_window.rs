@@ -577,6 +577,13 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
             .log(0.01, 1.0)
             .unit(" m/s")
             .help("How fast friction falls from μs to μd as the slip speeds up."),
+        Knob::new(Bow, "Bow noise", field!(live.bow_noise.level))
+            .range(0.0, 0.3)
+            .help("How much the friction fluctuates while the string slips (rosin and hair). Fitted to recorded cello notes."),
+        Knob::new(Bow, "Bow noise bandwidth", field!(live.bow_noise.cutoff))
+            .log(200.0, 20_000.0)
+            .unit(" Hz")
+            .help("Gated to the slips, the noise is broadband whatever this is; it tilts it a little."),
     ];
     if defaults.live.hair.is_some() {
         k.push(

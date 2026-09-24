@@ -19,9 +19,10 @@ In this order, from the comparison with recorded notes (items 40–45). Quiet he
 
 The bow's width (the cello's and bass's bows touch the string over 12 and 14 mm; PLAN.md "The bow's width") was listened to in `out/ab-bow-width/` (September 2026): it sounds better.
 
-1. **Bow noise (item 42),** in the sustain and more at the attack: the target is the recording's HNR (26–34 dB) and the brighter, more obvious onset heard at mf. The bow's width made the model cleaner still (42–50 dB).
-2. **Thermal friction** (Woodhouse's plastic model), for the dark pp (item 40), the high prompt lower force limit (items 4–5) and attacks.
-3. **Attacks against measured data (item 44):** the Guettler attack waveforms (mdw), then attack length and bite by ear.
+The bow noise (item 42) was listened to in `out/ab-bow-noise/` (September 2026): it sounds good.
+
+1. **Thermal friction** (Woodhouse's plastic model), for the dark pp (item 40), the high prompt lower force limit (items 4–5) and attacks.
+2. **Attacks against measured data (item 44):** the Guettler attack waveforms (mdw), then attack length and bite by ear.
 
 Re-run `strings-render compare` after each and A/B the listening files.
 
@@ -116,7 +117,12 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 - The sharp, noisy high positions are audible (fixed since; see item 45), and so is the weak low end: the low strings lack the deep cello presence (item 43).
 
 40. **The spectrum doesn't follow the dynamics.** Recorded notes brighten from pp to ff by 7–11 dB in partials 4–7 and 9–14 dB in partials 8–15; the model's spectrum stays about the same. The bow's width darkened pp on the low strings above partial 8 (C string −8 → −14 dB, recorded −32; centroid 4.7 → 3.0, recorded 1.3) and brought up the C string's pp fundamental (−10 → −5 dB, recorded −1), but partials 4–7 at pp are still about 13–15 dB too strong on the C and G strings, and at mf–ff the A string is now 13 dB too dark above partial 8 (−36 against −23). Easing quiet held notes down the band (`quiet_ease`, cello and bass) brought the C string's pp partials 8–15 from −15 to −18.5 dB and 4–7 from −5.5 to −6.6 (PLAN.md "Soft, dark pp"); the A/B files in `out/ab-quiet-ease/` are not yet heard. **The model can't get much darker than an ideal sawtooth:** once settled, even far below the band a pp note's bridge force keeps partials 4–7 near −9 dB, and no bow width, hair or friction-curve setting tried goes further. Real strings round the Helmholtz corner at low force (Cremer); the model's friction curve keeps sharpening it. Next candidate: thermal friction.
-42. **No bow noise:** the model's harmonic-to-noise ratio is 10–20 dB higher than the recording's at every dynamic (42–50 dB against 26–34 dB; 37–45 dB before the bow's width, which cleaned it up).
+42. **Bow noise is in, and sounds good** (September 2026). Friction noise while the string slips (PLAN.md "Bow noise") brings the HNR to 31–32.5 dB at pp–ff (recorded 27–32; 43–49 before). Still open:
+   - pp is 2–6 dB cleaner than the recording;
+   - the noise is 6–8 dB too strong at 1–2 kHz and 2–5 dB weak at 4–8 kHz, partly the estimated 1.3 kHz bridge hill (item 16);
+   - the attack's noise against the recorded mf onset isn't measured (`compare` measures the sustain only);
+   - the seed sweeps fail a few more quiet attacks (bass 0 → 9 of 1296, violin 4 → 6), within the 1% limit.
+   The level is fitted to one recorded cello and used on all four instruments.
 43. **The low strings' fundamental is mostly fixed.** The body lost it, not the string (`compare --bridge`). Two fitted modes (118 and 144 Hz) fill the gap between A0 and the dense modes. On the C string A2–D3 went from −6 to −31 dB to −1 to −8 at mf–ff (recorded −1 to −5), and to −3 to −15 at pp, and the G string's median from −5 to −2.5 dB (recorded −2.2) at mf (PLAN.md "The body's low end"). Still weak: G2–Ab2 (−7 to −17 against −1 to −2) and, on the C string, Ab3–C4 around 220 Hz (−10 to −13 against 0 to −2). The A/B renders (`out/ab-body-low-end/`) were listened to (September 2026): the change sounds good.
 44. **One recorded player and one microphone.** The Iowa notes have no vibrato and one way of starting (a slow swell at pp–mf), and the player plays a median 15 cents sharp. Attack times and rings compare how the notes were played as much as the instrument; the Guettler attack data (mdw) is still the measured target for attacks.
 45. **Two high positions are still a little off:** ff sul D B4 plays 17 cents sharp and sul D C#5 5 cents flat, with clean Helmholtz motion, in `compare`. In the seed sweep sul G D4 at mf settles slowly (0.4–1 s) on 2 of 24 seeds. The bow's minimum distance (0.024 m per kg/s of impedance) is fitted to where the model fails, not to players; it works from 3.5 to 4.5 cm on the C string. The A/B renders (`out/ab-bow-distance/`: `play sul` and `play phrase --fingering bridge`, before and after) were listened to (September 2026): the change sounds better.

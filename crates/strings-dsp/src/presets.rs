@@ -168,6 +168,7 @@ pub mod violin {
             width: 0.0,
             ..super::cello::HAIR
         }),
+        bow_noise: super::cello::BOW_NOISE,
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: None,
@@ -334,6 +335,7 @@ pub mod viola {
             width: 0.0,
             ..super::cello::HAIR
         }),
+        bow_noise: super::cello::BOW_NOISE,
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: None,
@@ -409,7 +411,7 @@ pub mod cello {
     use crate::body::{BodyMode, BodySpec, DenseModes, Hill};
     use crate::instrument::{ForceLimits, InstrumentSpec};
     use crate::stage::Placement;
-    use crate::{BowHair, DampingCurve, FrictionParams, Loss, StringSpec, TorsionSpec};
+    use crate::{BowHair, BowNoise, DampingCurve, FrictionParams, Loss, StringSpec, TorsionSpec};
 
     /// Vibrating length (m): the mdw monochord's, within the usual 690–700 mm.
     const LENGTH: f32 = 0.70;
@@ -482,6 +484,16 @@ pub mod cello {
         stiffness: 1000.0,
         damping: 3.0,
         width: 0.012,
+    };
+
+    /// Bow noise, fitted to the recorded cello notes' harmonic-to-noise
+    /// ratio (`strings-render compare`: 31–32.5 dB at pp–ff, recorded 27–32;
+    /// without it 43–49). The bandwidth hardly matters: gated to the slips,
+    /// the noise is broadband anyway. The other instruments use the same
+    /// (PLAN.md "Bow noise").
+    pub const BOW_NOISE: BowNoise = BowNoise {
+        level: 0.065,
+        cutoff: 2000.0,
     };
 
     /// Body resonances below 300 Hz. Frequencies from Zhang, Woodhouse &
@@ -626,6 +638,7 @@ pub mod cello {
             v0: 0.1,
         },
         hair: Some(HAIR),
+        bow_noise: BOW_NOISE,
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: None,
@@ -835,6 +848,7 @@ pub mod bass {
             width: 0.014,
             ..super::cello::HAIR
         }),
+        bow_noise: super::cello::BOW_NOISE,
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: Some(EXTENSION),

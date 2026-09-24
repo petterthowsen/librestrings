@@ -146,6 +146,12 @@ enum Command {
         /// Override the width of the bow hair in contact with the string (m).
         #[arg(long)]
         bow_width: Option<f32>,
+        /// Override the bow noise: the friction's RMS fluctuation while slipping.
+        #[arg(long)]
+        bow_noise: Option<f32>,
+        /// Override the bow noise's bandwidth (Hz).
+        #[arg(long)]
+        noise_cutoff: Option<f32>,
         #[arg(long, short)]
         out: PathBuf,
         /// Also write the summed bridge force (before the body) to this WAV
@@ -201,6 +207,12 @@ enum Command {
         /// Override the width of the bow hair in contact with the string (m).
         #[arg(long)]
         bow_width: Option<f32>,
+        /// Override the bow noise: the friction's RMS fluctuation while slipping.
+        #[arg(long)]
+        bow_noise: Option<f32>,
+        /// Override the bow noise's bandwidth (Hz).
+        #[arg(long)]
+        noise_cutoff: Option<f32>,
     },
     /// Compare the model with a measured Schelleng diagram (mdw cello string A T1),
     /// point by point. Fetch the data with scripts/fetch-reference-data.sh.
@@ -344,6 +356,22 @@ fn with_bow_width(spec: &InstrumentSpec, width: Option<f32>) -> InstrumentSpec {
     spec
 }
 
+/// `spec` with its bow noise's level and bandwidth overridden, if given.
+fn with_bow_noise(
+    spec: &InstrumentSpec,
+    level: Option<f32>,
+    cutoff: Option<f32>,
+) -> InstrumentSpec {
+    let mut spec = *spec;
+    if let Some(level) = level {
+        spec.bow_noise.level = level;
+    }
+    if let Some(cutoff) = cutoff {
+        spec.bow_noise.cutoff = cutoff;
+    }
+    spec
+}
+
 /// An open string and the bow hair it is played with.
 fn open_string(family: Family, name: &str) -> Result<(StringSpec, Option<BowHair>), String> {
     let found = match family {
@@ -444,6 +472,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             mic_distance,
             reflections,
             bow_width,
+            bow_noise,
+            noise_cutoff,
             out,
             bridge_out,
         } => {
@@ -451,7 +481,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some((_, text)) => text.to_string(),
                 None => std::fs::read_to_string(&score)?,
             };
-            let spec = &with_bow_width(instrument.instrument(), bow_width);
+            let spec = &with_bow_noise(
+                &with_bow_width(instrument.instrument(), bow_width),
+                bow_noise,
+                noise_cutoff,
+            );
             let mut events = score::parse(&text, spec.strings.map(|s| s.name))?;
             let mut settings = PerformerSettings::for_instrument(spec);
             if let Some(p) = pressure {
@@ -515,6 +549,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             csv,
             bridge,
             bow_width,
+            bow_noise,
+            noise_cutoff,
         } => compare::run(&compare::Options {
             data,
             out,
@@ -525,6 +561,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             csv,
             bridge,
             bow_width,
+            bow_noise,
+            noise_cutoff,
         })?,
         Command::Calibrate {
             instrument,

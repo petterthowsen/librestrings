@@ -19,7 +19,7 @@ pub mod stage;
 pub mod string;
 
 pub use body::{Body, BodyMode, BodySpec, BodyTuning, DenseModes, Hill};
-pub use bow::{BowJunction, ContactState, FrictionParams, schelleng_limits};
+pub use bow::{BowJunction, BowNoise, ContactState, FrictionParams, schelleng_limits};
 pub use instrument::{Extension, ForceLimits, Instrument, InstrumentFrame, InstrumentSpec};
 pub use loss::{DampingCurve, Loss};
 pub use performer::{

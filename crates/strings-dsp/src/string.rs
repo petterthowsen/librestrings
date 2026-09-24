@@ -40,7 +40,7 @@
 //! at one edge while the other still sticks (Pitteroff & Woodhouse 1998).
 //! Torsional waves get lines between the contacts too.
 
-use crate::bow::{BowJunction, ContactState, FrictionParams, JunctionResult};
+use crate::bow::{BowJunction, BowNoise, ContactState, FrictionParams, JunctionResult};
 use crate::delay::DelayLine;
 use crate::filters::DispersionAllpass;
 use crate::loss::{DampingCurve, Loss, LossDesign, LossFilter};
@@ -166,6 +166,7 @@ pub struct BowedString {
     hair_deflection: [f32; MAX_CONTACTS],
     /// How many contact points the bow touches the string at.
     contacts: usize,
+    noise: BowNoise,
     /// Between neighboring contacts: the delay (whole samples, one way), and
     /// the waves traveling toward the nut and toward the bridge.
     gap: usize,
@@ -332,6 +333,7 @@ impl BowedString {
             hair: None,
             hair_deflection: [0.0; MAX_CONTACTS],
             contacts: 1,
+            noise: BowNoise::default(),
             gap: 0,
             to_nut_gaps: std::array::from_fn(|_| DelayLine::new(MAX_GAP)),
             to_bridge_gaps: std::array::from_fn(|_| DelayLine::new(MAX_GAP)),
@@ -343,6 +345,7 @@ impl BowedString {
             bridge_delay: 0.0,
         };
         s.update_delays();
+        s.reseed_noise(0);
         s
     }
 
@@ -491,6 +494,34 @@ impl BowedString {
     pub fn set_friction(&mut self, friction: FrictionParams) {
         for bow in &mut self.bow {
             bow.friction = friction;
+        }
+    }
+
+    /// The bow noise. Off by default.
+    pub fn set_bow_noise(&mut self, noise: BowNoise) {
+        self.noise = noise;
+        self.apply_noise();
+    }
+
+    /// Each contact point draws its own noise, raised by √n so that their sum
+    /// fluctuates by the noise's level whatever the bow's width.
+    fn apply_noise(&mut self) {
+        let noise = BowNoise {
+            level: self.noise.level * (self.contacts as f32).sqrt(),
+            ..self.noise
+        };
+        for bow in &mut self.bow {
+            bow.set_noise(noise, self.sample_rate);
+        }
+    }
+
+    /// Restarts the bow noise from `seed`; each contact point draws its own.
+    pub fn reseed_noise(&mut self, seed: u32) {
+        for (i, bow) in self.bow.iter_mut().enumerate() {
+            bow.reseed_noise(
+                seed.wrapping_mul(MAX_CONTACTS as u32)
+                    .wrapping_add(i as u32),
+            );
         }
     }
 
@@ -738,6 +769,7 @@ impl BowedString {
                     line.clear();
                 }
             }
+            self.apply_noise();
         }
         self.update_delays();
     }
