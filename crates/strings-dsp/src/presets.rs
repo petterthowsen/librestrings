@@ -165,6 +165,7 @@ pub mod violin {
         hair: Some(super::cello::HAIR),
         body: BODY,
         force_limits: FORCE_LIMITS,
+        extension: None,
         reach: 24.0,
         // Wider than the cello's: the violin strings have no flat zone (no
         // torsion). Closer than 0.065, notes high on the E string miss their
@@ -322,6 +323,7 @@ pub mod viola {
         hair: Some(super::cello::HAIR),
         body: BODY,
         force_limits: FORCE_LIMITS,
+        extension: None,
         reach: 24.0,
         beta: (0.16, 0.065),
         speed: (0.04, 0.5),
@@ -603,6 +605,7 @@ pub mod cello {
         hair: Some(HAIR),
         body: BODY,
         force_limits: FORCE_LIMITS,
+        extension: None,
         reach: 24.0,
         // Above β ≈ 0.12 the model's cello strings play up to 45 cents flat
         // (STATUS.md), so the mapping stays below.
@@ -622,7 +625,7 @@ pub mod cello {
 /// stiffness and torsion, played with the cello's bow hair.
 pub mod bass {
     use crate::body::{BodyMode, BodySpec, DenseModes, Hill};
-    use crate::instrument::{ForceLimits, InstrumentSpec};
+    use crate::instrument::{Extension, ForceLimits, InstrumentSpec};
     use crate::stage::Placement;
     use crate::{DampingCurve, FrictionParams, Loss, StringSpec, TorsionSpec};
 
@@ -630,21 +633,29 @@ pub mod bass {
     /// chart is for.
     const LENGTH: f32 = 1.06;
 
+    /// The E string's length with a C extension: it runs on past the nut
+    /// (over the scroll) a major third farther, so the same string at the
+    /// same tension sounds C1 open. Orchestral basses stop it at E with the
+    /// extension's gates; here E1 is a stopped note, and from E1 up the
+    /// string vibrates at the same lengths as without the extension.
+    const EXTENDED_LENGTH: f32 = LENGTH * 1.259_921;
+
     /// Bending stiffness (N·m²), shared by the strings as on the cello. Not
     /// measured: a solid steel core of 0.85 mm (the cello G's acts like one
     /// of 0.42 mm; bass gauges are 1.2–2.6 mm against its 0.95 mm), less
     /// for the rope cores of most bass strings. It gives B = 1.4e-4 on the E
-    /// string and 1.5e-4 on the G, about 3.5 × the cello G's.
+    /// string stopped at E1 (0.9e-4 on its open C, 1.26 × longer) and 1.5e-4
+    /// on the G, about 3.5 × the cello G's.
     const BENDING_STIFFNESS: f32 = 5.0e-3;
 
     /// Torsion estimated as for the cello (f_t = 5.5·f0, Z_t = 3.3 × Z, Q 50)
     /// and the cello's damping curve: no bass string has been measured.
-    const fn string(name: &'static str, frequency: f32, tension: f32) -> StringSpec {
-        let impedance = tension / (2.0 * LENGTH * frequency);
+    const fn string(name: &'static str, frequency: f32, length: f32, tension: f32) -> StringSpec {
+        let impedance = tension / (2.0 * length * frequency);
         StringSpec {
             name,
             frequency,
-            length: LENGTH,
+            length,
             tension,
             loss: Loss::Measured(DAMPING),
             bending_stiffness: BENDING_STIFFNESS,
@@ -657,7 +668,7 @@ pub mod bass {
     }
 
     /// The cello's (the measured G string's plus loss into the body). With
-    /// it the open E rings for about 27 s (−60 dB), longer than the cello's
+    /// it the E string rings for about 27 s (−60 dB), longer than the cello's
     /// open G: the same damping ratio at a lower pitch.
     const DAMPING: DampingCurve = super::cello::DAMPING;
 
@@ -666,11 +677,13 @@ pub mod bass {
 
     /// Open strings, lowest first: Thomastik Spirocore Orchestra, medium
     /// (Mittel), on a 3/4 bass at 106 cm (G 67.2, D 68.3, A 70.5, E 72.8 lb).
+    /// The E string has a C extension ([`EXTENDED_LENGTH`]), so it is named
+    /// for its open C1; its tension and impedance are the E string's.
     pub const STRINGS: [StringSpec; 4] = [
-        string("E", 41.20, 72.8 * LBF),
-        string("A", 55.00, 70.5 * LBF),
-        string("D", 73.42, 68.3 * LBF),
-        string("G", 98.00, 67.2 * LBF),
+        string("C", 32.70, EXTENDED_LENGTH, 72.8 * LBF),
+        string("A", 55.00, LENGTH, 70.5 * LBF),
+        string("D", 73.42, LENGTH, 68.3 * LBF),
+        string("G", 98.00, LENGTH, 67.2 * LBF),
     ];
 
     pub fn string_named(name: &str) -> Option<&'static StringSpec> {
@@ -734,17 +747,19 @@ pub mod bass {
 
     /// Fitted by `strings-render calibrate --instrument bass --sample-rate
     /// 96000`, as for the cello (see [`super::cello`]). Band positions 0.5–0.8
-    /// give prompt Helmholtz motion in 79–100% of checked cases, the E string
-    /// lowest (79–88%): its band was found in only 22 of 48 columns (the G
-    /// string's in 38), and it is narrow, one or two rows of the map. That
-    /// holds without torsion or stiffness, with the one-pole loss, and with
-    /// stiffer or softer bow hair (PLAN.md "Phase 5: viola and double bass").
+    /// give prompt Helmholtz motion in 67–100% of checked cases, the extended
+    /// string lowest: open C 67–92%, stopped at E 79–88% ([`EXTENSION`]). The
+    /// E string's band was found in only 22 of 48 columns, the open C's in
+    /// 15 (the G string's in 38), and it is narrow, one or two rows of the
+    /// map. That holds without torsion or stiffness, with the one-pole loss,
+    /// and with stiffer or softer bow hair (PLAN.md "Phase 5: viola and
+    /// double bass").
     const FORCE_LIMITS: [ForceLimits; 4] = [
         ForceLimits {
-            lower: 1.823,
-            lower_exponent: -0.754,
-            upper: 4.333,
-            upper_exponent: -0.624,
+            lower: 2.579,
+            lower_exponent: -0.661,
+            upper: 5.610,
+            upper_exponent: -0.567,
         },
         ForceLimits {
             lower: 1.745,
@@ -766,6 +781,21 @@ pub mod bass {
         },
     ];
 
+    /// The C extension ([`EXTENDED_LENGTH`]), with the band of the string
+    /// stopped at its gates: the E string's without the extension. The open
+    /// C's band lies about 15% higher at the β of stopped notes, where it
+    /// makes G1–E2 at ff raucous; with this one, C1 and D1 settle late
+    /// (0.2–0.3 s). Blended in between (PLAN.md "The bass's C extension").
+    const EXTENSION: Extension = Extension {
+        semitones: 4.0,
+        force_limits: ForceLimits {
+            lower: 1.823,
+            lower_exponent: -0.754,
+            upper: 4.333,
+            upper_exponent: -0.624,
+        },
+    };
+
     pub const INSTRUMENT: InstrumentSpec = InstrumentSpec {
         name: "bass",
         strings: STRINGS,
@@ -777,6 +807,7 @@ pub mod bass {
         hair: Some(super::cello::HAIR),
         body: BODY,
         force_limits: FORCE_LIMITS,
+        extension: Some(EXTENSION),
         reach: 24.0,
         beta: (0.115, 0.07),
         // Slower at ff than the other instruments (0.5 m/s): faster, high

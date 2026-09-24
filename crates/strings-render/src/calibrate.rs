@@ -10,7 +10,7 @@
 //! forces for its notes.
 
 use strings_dsp::analysis::{Regime, bow_steady, classify};
-use strings_dsp::{BowedString, ForceLimits, InstrumentSpec};
+use strings_dsp::{BowedString, ForceLimits, InstrumentSpec, StringSpec};
 
 const SPEEDS: [f32; 4] = [0.05, 0.1, 0.2, 0.4];
 const COLUMNS: usize = 12;
@@ -32,8 +32,9 @@ struct Cell {
     force: f32,
 }
 
-/// Simulates every cell on its string; results in the order given.
-fn regimes(spec: &InstrumentSpec, fs: f32, cells: &[Cell]) -> Vec<Regime> {
+/// Simulates every cell on its string (of `strings`); results in the order
+/// given.
+fn regimes(spec: &InstrumentSpec, strings: &[StringSpec], fs: f32, cells: &[Cell]) -> Vec<Regime> {
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
     let chunk = cells.len().div_ceil(threads).max(1);
     std::thread::scope(|scope| {
@@ -41,8 +42,7 @@ fn regimes(spec: &InstrumentSpec, fs: f32, cells: &[Cell]) -> Vec<Regime> {
             .chunks(chunk)
             .map(|chunk| {
                 scope.spawn(move || {
-                    let mut strings: Vec<BowedString> = spec
-                        .strings
+                    let mut bowed: Vec<BowedString> = strings
                         .iter()
                         .map(|s| {
                             let mut b = BowedString::new(s, spec.friction, fs, s.frequency);
@@ -53,11 +53,11 @@ fn regimes(spec: &InstrumentSpec, fs: f32, cells: &[Cell]) -> Vec<Regime> {
                     chunk
                         .iter()
                         .map(|c| {
-                            let s = &mut strings[c.string];
+                            let s = &mut bowed[c.string];
                             s.reset();
                             s.set_bow_position(c.beta);
                             let frames = bow_steady(s, fs, c.speed, c.force, 0.8, 0.05);
-                            let period = fs / spec.strings[c.string].frequency;
+                            let period = fs / strings[c.string].frequency;
                             let (settled, steady) =
                                 ((SETTLED * fs) as usize, (STEADY * fs) as usize);
                             let early = classify(&frames[settled..steady], period);
@@ -100,7 +100,19 @@ fn fit(points: &[(f32, f32)]) -> (f32, f32) {
     ((my - alpha * mx).exp() as f32, alpha as f32)
 }
 
+/// Maps the instrument's strings and, on an instrument with an extension, the
+/// lowest string stopped at the gates ([`strings_dsp::Extension::gated`]),
+/// fitted last.
 pub fn run(spec: &InstrumentSpec, fs: f32) {
+    let mut strings = spec.strings.to_vec();
+    let mut names: Vec<String> = strings
+        .iter()
+        .map(|s| format!("{} string", s.name))
+        .collect();
+    if let Some(extension) = spec.extension {
+        strings.push(extension.gated(&spec.strings[0]));
+        names.push(format!("{} string at the gates", spec.strings[0].name));
+    }
     let betas: Vec<f32> = (0..COLUMNS)
         .map(|c| log_lerp(BETA.0, BETA.1, c as f32 / (COLUMNS - 1) as f32))
         .collect();
@@ -114,7 +126,7 @@ pub fn run(spec: &InstrumentSpec, fs: f32) {
         })
         .collect();
     let mut cells = Vec::new();
-    for (string, s) in spec.strings.iter().enumerate() {
+    for (string, s) in strings.iter().enumerate() {
         for &speed in &SPEEDS {
             for &beta in &betas {
                 for &n in &norm {
@@ -132,13 +144,13 @@ pub fn run(spec: &InstrumentSpec, fs: f32) {
         "{}: mapping {} cells ({} strings × {} speeds × {COLUMNS} β × {ROWS} forces)...",
         spec.name,
         cells.len(),
-        spec.strings.len(),
+        strings.len(),
         SPEEDS.len()
     );
-    let result = regimes(spec, fs, &cells);
+    let result = regimes(spec, &strings, fs, &cells);
 
     // Band edges per (string, speed, β) column, as F / (Z·v).
-    let mut per_string = vec![(Vec::new(), Vec::new()); spec.strings.len()];
+    let mut per_string = vec![(Vec::new(), Vec::new()); strings.len()];
     for (col, chunk) in result.chunks(ROWS).enumerate() {
         let beta = betas[col % COLUMNS];
         let string = col / (COLUMNS * SPEEDS.len());
@@ -162,17 +174,14 @@ pub fn run(spec: &InstrumentSpec, fs: f32) {
     let mut limits = Vec::new();
     for (i, (lo, hi)) in per_string.iter().enumerate() {
         if lo.len() < 3 || hi.len() < 3 {
-            println!(
-                "{} string: not enough bracketed edges to fit",
-                spec.strings[i].name
-            );
+            println!("{}: not enough bracketed edges to fit", names[i]);
             return;
         }
         let (lower, lower_exponent) = fit(lo);
         let (upper, upper_exponent) = fit(hi);
         println!(
-            "  {} string: lower F/(Zv) = {lower:.3}·β^{lower_exponent:.2} ({} cols), upper = {upper:.3}·β^{upper_exponent:.2} ({} cols)",
-            spec.strings[i].name,
+            "  {}: lower F/(Zv) = {lower:.3}·β^{lower_exponent:.2} ({} cols), upper = {upper:.3}·β^{upper_exponent:.2} ({} cols)",
+            names[i],
             lo.len(),
             hi.len()
         );
@@ -183,7 +192,11 @@ pub fn run(spec: &InstrumentSpec, fs: f32) {
             upper_exponent,
         });
     }
-    println!("\nFitted limits, lowest string first:\n{limits:#.3?}");
+    let (open, gated) = limits.split_at(spec.strings.len());
+    println!("\nFitted limits, lowest string first:\n{open:#.3?}");
+    if let Some(gated) = gated.first() {
+        println!("At the extension's gates (`Extension::force_limits`):\n{gated:#.3?}");
+    }
     println!(
         "(Schelleng's F_max is {:.2}·β^-1)",
         2.0 / (spec.friction.mu_s - spec.friction.mu_d)
@@ -192,7 +205,7 @@ pub fn run(spec: &InstrumentSpec, fs: f32) {
     let positions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
     let check_betas = [0.06, 0.08, 0.1, 0.13, 0.16, 0.2];
     let mut cells = Vec::new();
-    for (string, s) in spec.strings.iter().enumerate() {
+    for (string, s) in strings.iter().enumerate() {
         for &speed in &SPEEDS {
             for &beta in &check_betas {
                 for &p in &positions {
@@ -206,11 +219,11 @@ pub fn run(spec: &InstrumentSpec, fs: f32) {
             }
         }
     }
-    let result = regimes(spec, fs, &cells);
+    let result = regimes(spec, &strings, fs, &cells);
     println!(
         "\nHelmholtz fraction by band position (β {check_betas:?}, all speeds), per string and overall:"
     );
-    let per_string = result.len() / spec.strings.len();
+    let per_string = result.len() / strings.len();
     for (k, p) in positions.iter().enumerate() {
         let fraction = |range: std::ops::Range<usize>| {
             let (hits, total) = range
@@ -220,12 +233,12 @@ pub fn run(spec: &InstrumentSpec, fs: f32) {
                 });
             100.0 * hits as f32 / total as f32
         };
-        let strings: Vec<String> = (0..spec.strings.len())
+        let columns: Vec<String> = (0..strings.len())
             .map(|s| format!("{:>4.0}%", fraction(s * per_string..(s + 1) * per_string)))
             .collect();
         println!(
             "  p = {p:.1}: {}  | {:>3.0}%",
-            strings.join(" "),
+            columns.join(" "),
             fraction(0..result.len())
         );
     }

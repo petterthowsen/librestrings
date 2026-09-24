@@ -142,7 +142,7 @@ strings-render bow --string G --csv out/g.csv -o out/g.wav
 | Option | Default | Meaning |
 |---|---|---|
 | `--instrument` | `violin` | `violin`, `viola`, `cello` or `bass` |
-| `--string` | `A` | Open string: `G`, `D`, `A` or `E` on the violin, `C`, `G`, `D` or `A` on the viola and cello, `E`, `A`, `D` or `G` on the bass |
+| `--string` | `A` | Open string: `G`, `D`, `A` or `E` on the violin, `C`, `G`, `D` or `A` on the viola and cello, `C`, `A`, `D` or `G` on the bass (its E string with a C extension, open C1) |
 | `--semitones` | `0` | Stopped note, in semitones above the open string |
 | `--force` | 0.3 × F_max | Bow force in newtons. The default sits inside the playable range |
 | `--speed` | `0.1` | Bow speed in m/s |

@@ -1675,7 +1675,9 @@ impl Performer {
                 self.termination_loss[i] = loss;
                 string.set_termination_loss(loss);
             }
-            self.unit_force[i] = spec.force_limits[i].force(z, 1.0, beta, pressure);
+            self.unit_force[i] = spec
+                .force_limits_at(i, finger.max(0.0))
+                .force(z, 1.0, beta, pressure);
         }
     }
 }

@@ -299,12 +299,15 @@ const VIOLA_NOTES: [(u8, Option<usize>); 16] = {
     notes
 };
 
-/// The double bass's: its range from the open E1 to G4 (two octaves up the
-/// G string), then high positions as bassists play them: up to an octave on
-/// the E string, 17 semitones on the A, and thumb position on the D, 19 and
-/// 24 up. (18–23 up the E string the bow's distance from the bridge puts it
-/// near the middle of the string, and those notes hold multiple slips.)
-const BASS_NOTES: [(u8, Option<usize>); 16] = [
+/// The double bass's: its range from the open C1 (the E string's C
+/// extension) to G4 (two octaves up the G string), then high positions as
+/// bassists play them: up to an octave above E1 on the extended string, 17
+/// semitones on the A, and thumb position on the D, 19 and 24 up. (Higher
+/// up the lowest string the bow's distance from the bridge puts it near the
+/// middle of the string, and those notes hold multiple slips.)
+const BASS_NOTES: [(u8, Option<usize>); 18] = [
+    (24, None),
+    (26, None),
     (28, None),
     (31, None),
     (35, None),
@@ -324,8 +327,9 @@ const BASS_NOTES: [(u8, Option<usize>); 16] = [
 ];
 
 /// Open strings can't be intonated, and the bowed string flattens with bow
-/// force: they may be this far off (cents). The bass's open E plays 20–25
-/// cents flat at mf–ff, the other instruments' open strings 6–14.
+/// force: they may be this far off (cents). The bass's open strings play
+/// flattest (its open E, before the C extension, 20–25 cents at mf–ff), the
+/// other instruments' 6–14.
 fn open_tolerance(spec: &InstrumentSpec) -> f32 {
     if spec.name == "bass" { 30.0 } else { 20.0 }
 }

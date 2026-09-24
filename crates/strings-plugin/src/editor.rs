@@ -469,7 +469,11 @@ fn debug_view(ui: &mut egui::Ui, t: &Telemetry, bowed: usize, v: f32, beta: f32)
     // The calibrated Helmholtz band at the current speed and position (PLAN.md 4.2).
     let instrument = t.instrument().spec();
     let spec = &instrument.strings[bowed];
-    let (lo, hi) = instrument.force_limits[bowed].band(spec.impedance(), v, beta);
+    let semitones = 12.0 * (t.strings[bowed].frequency.load(Relaxed) / spec.frequency).log2();
+    let (lo, hi) =
+        instrument
+            .force_limits_at(bowed, semitones.max(0.0))
+            .band(spec.impedance(), v, beta);
     let force = t.bow_force.load(Relaxed);
     ui.label(RichText::new("Force band").weak());
     ui.label(RichText::new(format!("{lo:.2} – {hi:.2} N")).monospace());

@@ -20,7 +20,7 @@ pub mod string;
 
 pub use body::{Body, BodyMode, BodySpec, BodyTuning, DenseModes, Hill};
 pub use bow::{BowJunction, ContactState, FrictionParams, schelleng_limits};
-pub use instrument::{ForceLimits, Instrument, InstrumentFrame, InstrumentSpec};
+pub use instrument::{Extension, ForceLimits, Instrument, InstrumentFrame, InstrumentSpec};
 pub use loss::{DampingCurve, Loss};
 pub use performer::{
     ARTICULATIONS, Articulation, BowLift, Fingering, Performer, PerformerFrame, PerformerSettings,

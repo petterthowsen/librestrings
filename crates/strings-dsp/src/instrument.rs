@@ -11,7 +11,9 @@ use crate::body::{Body, BodySpec, BodyTuning};
 use crate::bow::FrictionParams;
 use crate::filters::HalfbandDecimator;
 use crate::stage::Placement;
-use crate::string::{BowHair, BowInput, BowedString, StringDesign, StringFrame, StringSpec};
+use crate::string::{
+    BowHair, BowInput, BowedString, StringDesign, StringFrame, StringSpec, TorsionSpec,
+};
 
 /// The Helmholtz band of bow force, calibrated per instrument (PLAN.md 4.2).
 ///
@@ -44,6 +46,36 @@ impl ForceLimits {
     }
 }
 
+/// A low extension on the lowest string, as on orchestral basses: the string
+/// runs on past the nut, and gates stop it `semitones` above its open pitch.
+/// Its Helmholtz band shifts with the pitch more than the other strings'
+/// over their range, so it is calibrated twice, open and at the gates.
+#[derive(Clone, Copy, Debug)]
+pub struct Extension {
+    /// How far below the gates the string's open pitch lies.
+    pub semitones: f32,
+    /// The band of the string stopped at the gates ([`Self::gated`]), used
+    /// from there up; below, it blends into the open string's.
+    pub force_limits: ForceLimits,
+}
+
+impl Extension {
+    /// The lowest string as it is at the gates: shorter and higher, at the
+    /// same tension and impedance, as a string without the extension.
+    pub fn gated(&self, open: &StringSpec) -> StringSpec {
+        let ratio = 2f32.powf(self.semitones / 12.0);
+        StringSpec {
+            frequency: open.frequency * ratio,
+            length: open.length / ratio,
+            torsion: open.torsion.map(|t| TorsionSpec {
+                frequency: t.frequency * ratio,
+                ..t
+            }),
+            ..*open
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct InstrumentSpec {
     pub name: &'static str,
@@ -54,6 +86,8 @@ pub struct InstrumentSpec {
     pub body: BodySpec,
     /// Helmholtz band per string, lowest first (`strings-render calibrate`).
     pub force_limits: [ForceLimits; 4],
+    /// A low extension on the lowest string (the bass's C extension).
+    pub extension: Option<Extension>,
     /// How far above each open string it is played (semitones).
     pub reach: f32,
     /// The performer's bow position (fraction of the vibrating length from
@@ -85,6 +119,29 @@ pub struct InstrumentSpec {
     pub output_gain: f32,
     /// Where a section of these sits on the stage.
     pub seat: Placement,
+}
+
+impl InstrumentSpec {
+    /// The Helmholtz band of `string` stopped `semitones` above its open
+    /// pitch: its calibrated band, or on an extended string a blend toward
+    /// the band at the gates (log-linear in the force, like the band itself).
+    pub fn force_limits_at(&self, string: usize, semitones: f32) -> ForceLimits {
+        let open = self.force_limits[string];
+        match self.extension {
+            Some(e) if string == 0 => {
+                let t = (semitones / e.semitones).clamp(0.0, 1.0);
+                let gated = e.force_limits;
+                let blend = |a: f32, b: f32| a + (b - a) * t;
+                ForceLimits {
+                    lower: blend(open.lower.ln(), gated.lower.ln()).exp(),
+                    lower_exponent: blend(open.lower_exponent, gated.lower_exponent),
+                    upper: blend(open.upper.ln(), gated.upper.ln()).exp(),
+                    upper_exponent: blend(open.upper_exponent, gated.upper_exponent),
+                }
+            }
+            _ => open,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
