@@ -25,6 +25,14 @@ Papers the model takes numbers or methods from, and what was used from each. Dat
 - **J. Woodhouse, P. M. Galluzzo, "The bowed string as we know it today", Acta Acustica united with Acustica 90, 579–589 (2004).** [PDF (euphonics.org)](https://euphonics.org/wp-content/uploads/2022/03/BowedStringReview.pdf).
   - Summarizes Woodhouse & Loach: constant Q for torsional damping. Waveguide models put frequency-dependent loss in the reflection functions as recursive IIR filters, as `string.rs` does.
 
+- **J. Woodhouse, "Bowed string simulation using a thermal friction model", Acta Acustica united with Acustica 89, 355–368 (2003).** [PDF (euphonics.org)](https://euphonics.org/wp-content/uploads/2022/03/Thermal_bowing.pdf).
+  - Friction as a function of the contact temperature only: μ(T) (Fig. 3), the heat balance (Eq. 1), Table I's thermal values for a rosin-coated perspex rod on a cello D string. The Helmholtz region is larger and transients shorter than with the friction curve; torsion matters little; flattening grows linearly with force (to about 2%). Simulated at 0.05 m/s only.
+  - Used for: `bow::ThermalFriction` (PLAN.md "Thermal friction"). μ(T) is digitized from Fig. 3; recomputed from Eq. 20 with the caption's values its temperature axis comes out about 1.3× longer.
+
+- **J. H. Smith, J. Woodhouse, "The tribology of rosin", J. Mech. Phys. Solids 48, 1633–1681 (2000).** [PDF (euphonics.org)](https://euphonics.org/wp-content/uploads/2022/03/Jonathan_rosin.pdf).
+  - The steady-sliding friction fit `μ = 0.4·e^(−v/0.01) + 0.45·e^(−v/0.1) + 0.35`, the heat balance (Eq. 6), the discrete Green's function of 1-D conduction (Eq. 13, `g₀ = 2λ/√h`), the moving surface's history cut at `8a/(3πv)` (Eq. 16) and its steady flux (Eq. 20).
+  - Used for: the conduction in `bow.rs`, tested against Eqs. 13 and 20.
+
 - **É. Bavu, C. Besnainou, V. Gibiat, J. Frelat, M. François, "Torsional waves in a bowed string", Acta Acustica united with Acustica 91, 241–246 (2005).** [PDF (UNSW)](https://www.phys.unsw.edu.au/jw/reprints/Bavuetal.pdf).
   - Measured the torsional and transverse fundamentals' Q on a bowed string: the torsional Q is "more than fifty times lower", lower than Mores' order of magnitude. The preset's Q = 50 is between the two readings.
 

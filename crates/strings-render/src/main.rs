@@ -16,8 +16,8 @@ use strings_dsp::presets::{bass, cello, reference, viola, violin};
 use strings_dsp::{
     Absorption, BowHair, BowInput, BowedString, DampingCurve, Fingering, FrictionParams,
     Humanization, InstrumentSpec, Loss, MAX_PLAYERS, Performer, PerformerSettings, Placement,
-    Polyphony, RoomPreset, Section, Stage, StageSettings, StringFrame, StringSpec, TorsionSpec,
-    schelleng_limits,
+    Polyphony, RoomPreset, Section, Stage, StageSettings, StringFrame, StringSpec, ThermalFriction,
+    TorsionSpec, schelleng_limits,
 };
 
 #[derive(Parser)]
@@ -82,6 +82,10 @@ enum Command {
         /// Override the string's bridge lowpass pole (at 48 kHz).
         #[arg(long)]
         loss_lowpass: Option<f32>,
+        /// Thermal friction (Woodhouse) instead of the friction curve; the value
+        /// stretches μ(T)'s temperature axis (default 1).
+        #[arg(long, num_args = 0..=1, default_missing_value = "1")]
+        thermal: Option<f32>,
     },
     /// Play a score through the performer and body. SCORE is a file (format in
     /// score.rs) or a built-in: scale, legato, staccato, phrase, doublestops,
@@ -152,6 +156,10 @@ enum Command {
         /// Override the bow noise's bandwidth (Hz).
         #[arg(long)]
         noise_cutoff: Option<f32>,
+        /// Thermal friction (Woodhouse) instead of the friction curve; the value
+        /// stretches μ(T)'s temperature axis (default 1).
+        #[arg(long, num_args = 0..=1, default_missing_value = "1")]
+        thermal: Option<f32>,
         #[arg(long, short)]
         out: PathBuf,
         /// Also write the summed bridge force (before the body) to this WAV
@@ -175,6 +183,10 @@ enum Command {
         /// Override the width of the bow hair in contact with the string (m).
         #[arg(long)]
         bow_width: Option<f32>,
+        /// Thermal friction (Woodhouse) instead of the friction curve; the value
+        /// stretches μ(T)'s temperature axis (default 1).
+        #[arg(long, num_args = 0..=1, default_missing_value = "1")]
+        thermal: Option<f32>,
     },
     /// Compare the solo cello with recorded notes (University of Iowa, arco):
     /// each note played again on the same string at the same dynamic, both
@@ -213,6 +225,10 @@ enum Command {
         /// Override the bow noise's bandwidth (Hz).
         #[arg(long)]
         noise_cutoff: Option<f32>,
+        /// Thermal friction (Woodhouse) instead of the friction curve; the value
+        /// stretches μ(T)'s temperature axis (default 1).
+        #[arg(long, num_args = 0..=1, default_missing_value = "1")]
+        thermal: Option<f32>,
     },
     /// Compare the model with a measured Schelleng diagram (mdw cello string A T1),
     /// point by point. Fetch the data with scripts/fetch-reference-data.sh.
@@ -267,6 +283,10 @@ enum Command {
         /// Write every point's parameters and both regimes to this CSV file.
         #[arg(long)]
         csv: Option<PathBuf>,
+        /// Thermal friction (Woodhouse) instead of the friction curve; the value
+        /// stretches μ(T)'s temperature axis (default 1).
+        #[arg(long, num_args = 0..=1, default_missing_value = "1")]
+        thermal: Option<f32>,
     },
 }
 
@@ -285,6 +305,10 @@ struct Common {
     /// Override the string's bridge lowpass pole (at 48 kHz).
     #[arg(long)]
     loss_lowpass: Option<f32>,
+    /// Thermal friction (Woodhouse) instead of the friction curve; the value
+    /// stretches μ(T)'s temperature axis (default 1).
+    #[arg(long, num_args = 0..=1, default_missing_value = "1")]
+    thermal: Option<f32>,
     #[arg(long, short)]
     out: PathBuf,
 }
@@ -354,6 +378,15 @@ fn with_bow_width(spec: &InstrumentSpec, width: Option<f32>) -> InstrumentSpec {
         hair.width = width;
     }
     spec
+}
+
+/// The instruments' thermal friction with its temperature axis stretched by
+/// `scale`, if given.
+fn thermal_friction(scale: Option<f32>) -> Option<ThermalFriction> {
+    scale.map(|scale| ThermalFriction {
+        temperature_scale: scale * cello::THERMAL.temperature_scale,
+        ..cello::THERMAL
+    })
 }
 
 /// `spec` with its bow noise's level and bandwidth overridden, if given.
@@ -447,10 +480,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             rows,
             cols,
             loss_lowpass,
+            thermal,
         } => {
             let (spec, hair) = open_string(instrument, &string)?;
             let spec = with_loss(&spec, loss_lowpass);
-            schelleng(&spec, hair, sample_rate, speed, rows, cols);
+            schelleng(
+                &spec,
+                hair,
+                thermal_friction(thermal),
+                sample_rate,
+                speed,
+                rows,
+                cols,
+            );
         }
         Command::Play {
             score,
@@ -474,6 +516,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             bow_width,
             bow_noise,
             noise_cutoff,
+            thermal,
             out,
             bridge_out,
         } => {
@@ -481,11 +524,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some((_, text)) => text.to_string(),
                 None => std::fs::read_to_string(&score)?,
             };
-            let spec = &with_bow_noise(
-                &with_bow_width(instrument.instrument(), bow_width),
-                bow_noise,
-                noise_cutoff,
-            );
+            let spec = &InstrumentSpec {
+                thermal: thermal_friction(thermal),
+                ..with_bow_noise(
+                    &with_bow_width(instrument.instrument(), bow_width),
+                    bow_noise,
+                    noise_cutoff,
+                )
+            };
             let mut events = score::parse(&text, spec.strings.map(|s| s.name))?;
             let mut settings = PerformerSettings::for_instrument(spec);
             if let Some(p) = pressure {
@@ -551,6 +597,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             bow_width,
             bow_noise,
             noise_cutoff,
+            thermal,
         } => compare::run(&compare::Options {
             data,
             out,
@@ -563,6 +610,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             bow_width,
             bow_noise,
             noise_cutoff,
+            thermal: thermal_friction(thermal),
         })?,
         Command::Calibrate {
             instrument,
@@ -570,8 +618,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hair_stiffness,
             hair_damping,
             bow_width,
+            thermal,
         } => {
             let mut spec = with_bow_width(instrument.instrument(), bow_width);
+            spec.thermal = thermal_friction(thermal);
             if let (Some(stiffness), Some(damping)) = (hair_stiffness, hair_damping) {
                 spec.hair = Some(BowHair {
                     stiffness,
@@ -598,6 +648,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hair_damping,
             bow_width,
             csv,
+            thermal,
         } => {
             let base = reference::MONOCHORD_CELLO_G_A_T1;
             let torsion = base.torsion.filter(|_| !no_torsion).map(|t| TorsionSpec {
@@ -635,7 +686,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     damping,
                     width: bow_width.unwrap_or(0.0),
                 });
-            measured::run(&data, &spec, friction, hair, csv.as_deref())?;
+            measured::run(
+                &data,
+                &spec,
+                friction,
+                hair,
+                thermal_friction(thermal),
+                csv.as_deref(),
+            )?;
         }
     }
     Ok(())
@@ -834,6 +892,7 @@ fn build(common: &Common) -> Result<(StringSpec, BowedString), Box<dyn std::erro
     let spec = with_loss(&spec, common.loss_lowpass);
     let mut string = BowedString::new(&spec, FrictionParams::default(), common.sample_rate, 50.0);
     string.set_bow_hair(hair);
+    string.set_thermal_friction(thermal_friction(common.thermal));
     string.set_frequency(spec.frequency * 2f32.powf(common.semitones / 12.0));
     Ok((spec, string))
 }
@@ -893,6 +952,7 @@ fn render_note(
 fn schelleng(
     spec: &StringSpec,
     hair: Option<BowHair>,
+    thermal: Option<ThermalFriction>,
     fs: f32,
     speed: f32,
     rows: usize,
@@ -900,6 +960,7 @@ fn schelleng(
 ) {
     let mut string = BowedString::new(spec, FrictionParams::default(), fs, 50.0);
     string.set_bow_hair(hair);
+    string.set_thermal_friction(thermal);
     let period = fs / spec.frequency;
     let betas: Vec<f32> = (0..cols)
         .map(|c| log_lerp(0.04, 0.25, c as f32 / (cols - 1) as f32))

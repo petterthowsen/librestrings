@@ -40,7 +40,9 @@
 //! at one edge while the other still sticks (Pitteroff & Woodhouse 1998).
 //! Torsional waves get lines between the contacts too.
 
-use crate::bow::{BowJunction, BowNoise, ContactState, FrictionParams, JunctionResult};
+use crate::bow::{
+    BowJunction, BowNoise, ContactState, FrictionParams, JunctionResult, ThermalFriction,
+};
 use crate::delay::DelayLine;
 use crate::filters::DispersionAllpass;
 use crate::loss::{DampingCurve, Loss, LossDesign, LossFilter};
@@ -495,6 +497,19 @@ impl BowedString {
         for bow in &mut self.bow {
             bow.friction = friction;
         }
+    }
+
+    /// Thermal friction at every contact point, replacing the friction curve.
+    /// `None` (the default) uses the curve.
+    pub fn set_thermal_friction(&mut self, thermal: Option<ThermalFriction>) {
+        for bow in &mut self.bow {
+            bow.set_thermal(thermal, self.sample_rate);
+        }
+    }
+
+    /// The middle contact's temperature above ambient (K), with thermal friction.
+    pub fn contact_temperature(&self) -> Option<f32> {
+        self.bow[(self.contacts - 1) / 2].temperature()
     }
 
     /// The bow noise. Off by default.

@@ -11,7 +11,7 @@ Open issues as of September 2026, end of Phase 2 (built, not yet judged by ear).
 | 1b. Measured string physics | Stiffness, torsion and measured damping built and verified. The acceptance target is **met with the bow hair and its width** (83–86% of the measured Helmholtz area; see below) |
 | 2. Solo cello | Built: cello presets, bow hair, body, instrument, performer (legato, détaché, the bow lift, double stops), calibrated force band, `play` renderer with example scores. Objective checks pass (`tests/performer.rs`). **First listening done** (Phase 3 notes); the "sounds like a cello" criterion is open |
 | 3. CLAP plugin | Built: nih-plug CLAP plugin with MIDI, CCs, keyswitches, parameters and an egui editor (status, instrument view, keyboard, faders, tuning window); standalone app. Tests pass and the engine runs at 4.8% of real time (strings at 2×). **Plays in Bitwig** (September 2026); not yet tried in Reaper |
-| 5. More instruments | **All four built:** violin (PLAN.md "Phase 5: the violin"; its bow positions heard), viola and double bass (PLAN.md "Phase 5: viola and double bass"), each with a body from published mode frequencies and a calibrated force band, in the renderer and the plugin. Objective checks pass; the viola and bass are not yet heard |
+| 5. More instruments | **All four built:** violin (PLAN.md "Phase 5: the violin"; its bow positions heard), viola and double bass (PLAN.md "Phase 5: viola and double bass"), each with a body from published mode frequencies and a calibrated force band, in the renderer and the plugin. Objective checks pass; the viola and bass renders sound good (first listening, September 2026) |
 
 ## Next steps
 
@@ -21,8 +21,9 @@ The bow's width (the cello's and bass's bows touch the string over 12 and 14 mm;
 
 The bow noise (item 42) was listened to in `out/ab-bow-noise/` (September 2026): it sounds good.
 
-1. **Thermal friction** (Woodhouse's plastic model), for the dark pp (item 40), the high prompt lower force limit (items 4–5) and attacks.
-2. **Attacks against measured data (item 44):** the Guettler attack waveforms (mdw), then attack length and bite by ear.
+Thermal friction (Woodhouse) is built as an option (PLAN.md "Thermal friction"): closer to the measured string's playability map and darker at pp, but no audible difference in `compare` (September 2026), so it is off by default (item 63).
+
+1. **Attacks against measured data (item 44):** the Guettler attack waveforms (mdw), then attack length and bite by ear. Try thermal friction there too.
 
 Re-run `strings-render compare` after each and A/B the listening files.
 
@@ -116,7 +117,7 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 - mf on the G string: the recording sounds brighter overall, with more characteristic bow noise. Its harmonics are actually darker than the model's (partials 4–7: −13 against −6 dB), so the brightness heard is probably the noise (item 42). Its attacks are slightly longer, brighter and more obvious.
 - The sharp, noisy high positions are audible (fixed since; see item 45), and so is the weak low end: the low strings lack the deep cello presence (item 43).
 
-40. **The spectrum doesn't follow the dynamics.** Recorded notes brighten from pp to ff by 7–11 dB in partials 4–7 and 9–14 dB in partials 8–15; the model's spectrum stays about the same. The bow's width darkened pp on the low strings above partial 8 (C string −8 → −14 dB, recorded −32; centroid 4.7 → 3.0, recorded 1.3) and brought up the C string's pp fundamental (−10 → −5 dB, recorded −1), but partials 4–7 at pp are still about 13–15 dB too strong on the C and G strings, and at mf–ff the A string is now 13 dB too dark above partial 8 (−36 against −23). Easing quiet held notes down the band (`quiet_ease`, cello and bass) brought the C string's pp partials 8–15 from −15 to −18.5 dB and 4–7 from −5.5 to −6.6 (PLAN.md "Soft, dark pp"); the A/B files in `out/ab-quiet-ease/` are not yet heard. **The model can't get much darker than an ideal sawtooth:** once settled, even far below the band a pp note's bridge force keeps partials 4–7 near −9 dB, and no bow width, hair or friction-curve setting tried goes further. Real strings round the Helmholtz corner at low force (Cremer); the model's friction curve keeps sharpening it. Next candidate: thermal friction.
+40. **The spectrum doesn't follow the dynamics.** Recorded notes brighten from pp to ff by 7–11 dB in partials 4–7 and 9–14 dB in partials 8–15; the model's spectrum stays about the same. The bow's width darkened pp on the low strings above partial 8 (C string −8 → −14 dB, recorded −32; centroid 4.7 → 3.0, recorded 1.3) and brought up the C string's pp fundamental (−10 → −5 dB, recorded −1), but partials 4–7 at pp are still about 13–15 dB too strong on the C and G strings, and at mf–ff the A string is now 13 dB too dark above partial 8 (−36 against −23). Easing quiet held notes down the band (`quiet_ease`, cello and bass) brought the C string's pp partials 8–15 from −15 to −18.5 dB and 4–7 from −5.5 to −6.6 (PLAN.md "Soft, dark pp"); the A/B files in `out/ab-quiet-ease/` sound good (September 2026). **The model can't get much darker than an ideal sawtooth:** once settled, even far below the band a pp note's bridge force keeps partials 4–7 near −9 dB, and no bow width, hair or friction-curve setting tried goes further. Real strings round the Helmholtz corner at low force (Cremer); the model's friction curve keeps sharpening it. Thermal friction (item 63) takes pp partials 4–7 from −9 to −13 dB and 8–15 from −24 to −28 (recorded −19, −32), inaudibly in `compare`; it is off by default.
 42. **Bow noise is in, and sounds good** (September 2026). Friction noise while the string slips (PLAN.md "Bow noise") brings the HNR to 31–32.5 dB at pp–ff (recorded 27–32; 43–49 before). Still open:
    - pp is 2–6 dB cleaner than the recording;
    - the noise is 6–8 dB too strong at 1–2 kHz and 2–5 dB weak at 4–8 kHz, partly the estimated 1.3 kHz bridge hill (item 16);
@@ -136,7 +137,7 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 
 ## Viola and double bass
 
-55. **The viola and the double bass are not yet heard.** Renders of every `viola-*` and `bass-*` score and 8-player sections are in `out/viola/` and `out/bass/`. As on the violin, everything that shapes the sound is a first guess: the bodies' damping, signs and levels (only the mode frequencies are from data; the viola's CBR, both bridge hills and the bass's 90 Hz rise are estimates), the viola strings' decay times, the output gains (matched to the cello's level, not by ear) and the performer's timings, which are the cello's.
+55. **The viola and the double bass have had one listening** (September 2026: the renders in `out/viola/` and `out/bass/` sound good). As on the violin, everything that shapes the sound is a first guess: the bodies' damping, signs and levels (only the mode frequencies are from data; the viola's CBR, both bridge hills and the bass's 90 Hz rise are estimates), the viola strings' decay times, the output gains (matched to the cello's level, not by ear) and the performer's timings, which are the cello's.
 56. **The bass strings are not measured.** The bending stiffness (EI 5e-3, B ≈ 1.4e-4) is an estimate from core size; the damping curve and the torsion are the cello's. Real bass strings (steel rope cores) may be less stiff. Dispersion is accurate only to about 2.5 kHz (item 18), about partial 60 of the open E, which the body's rolloff above 1.5 kHz mostly hides.
 57. **The bass E string's Helmholtz band is narrow** (PLAN.md "Phase 5: viola and double bass"): found in 22 of 48 calibration columns, one or two force rows deep; prompt Helmholtz motion at band positions 0.5–0.8 in 79–88% of cells. No string or bow parameter tried widens it. The performer's range checks pass on it, but a bass-specific bow (more hair, heavier), fitted to a measured bass string, is open.
 58. **The bass plays slower and farther from the bridge:** at most 0.3 m/s at ff (the others 0.5) and 0.032 m per kg/s from the bridge (the others 0.024), fitted to where high positions fail, not to players. Notes 18–23 semitones up the E string hold multiple slips at pp (the bow sits near the middle of the string there) and are left out of the checks; the seed sweep failed 4 of 1152 checks, ff thumb-position notes 33–72 cents flat; with the bow's width it fails none of 1296.
@@ -144,6 +145,16 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 60. **The bass's left hand is the cello's:** it spans 4 semitones (`hand_span`), where a bassist covers about 2 in the lower positions, so legato lines shift less often than on a real bass. Its fingering modes assume nothing about tuning, and work in fourths.
 61. **No recorded viola or bass notes to compare with.** `strings-render compare` only knows the Iowa cello notes; the Iowa library has viola and double bass notes recorded the same way.
 62. **The bass's C extension has no gates.** E1 is a stopped note on the extended string (finger damping, intonated by ear) where a real extension stops it with a metal gate or a machine, closer to an open string. The extended string's force band blends between two fits (PLAN.md "The bass's C extension"); C1 and D1 have been checked, not heard.
+
+## Thermal friction
+
+63. **Thermal friction is an experiment, off by default** (PLAN.md "Thermal friction"). Before it could be the default:
+   - the pitch falls with the force (open strings up to 20 cents flat, some stopped notes 25–49 after the ear's correction) and wobbles by 4–5 cents;
+   - the bow noise's level was fitted with the friction curve: with thermal friction the HNR is 3–5 dB too low;
+   - ff is 4–7 dB too dark above partial 8;
+   - its speed dependence (`speed_exponent` 0.5) is a fit, not from the literature: Woodhouse's model alone fails above about 0.2 m/s;
+   - it costs 30–50% more per string, which puts 12-player sections further over budget (item 47);
+   - the plugin's debug view shows the friction curve's band while it is on.
 
 ## Open decisions
 

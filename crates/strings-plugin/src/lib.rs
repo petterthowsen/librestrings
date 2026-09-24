@@ -382,6 +382,7 @@ impl Engine {
             instrument.set_friction(live.friction);
             instrument.set_hair(live.hair);
             instrument.set_bow_noise(live.bow_noise);
+            instrument.set_thermal_friction(live.thermal);
         }
         self.section.set_body(&live.body);
     }

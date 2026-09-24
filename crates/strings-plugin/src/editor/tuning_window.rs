@@ -94,6 +94,8 @@ struct Knob {
     range: RangeInclusive<f32>,
     log: bool,
     integer: bool,
+    /// A checkbox: 0 or 1.
+    toggle: bool,
     help: &'static str,
     get: Get,
     set: Set,
@@ -109,6 +111,7 @@ impl Knob {
             range: 0.0..=1.0,
             log: false,
             integer: false,
+            toggle: false,
             help: "",
             get,
             set,
@@ -133,6 +136,13 @@ impl Knob {
     }
 
     fn integer(mut self) -> Self {
+        self.integer = true;
+        self
+    }
+
+    /// A checkbox instead of a slider.
+    fn toggle(mut self) -> Self {
+        self.toggle = true;
         self.integer = true;
         self
     }
@@ -585,6 +595,23 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
             .unit(" Hz")
             .help("Gated to the slips, the noise is broadband whatever this is; it tilts it a little."),
     ];
+    if let Some(band) = spec.thermal_band {
+        k.push(
+            Knob::new(
+                Bow,
+                "Thermal friction",
+                (
+                    "live.thermal",
+                    Box::new(|t: &Tuning| f32::from(u8::from(t.live.thermal.is_some()))),
+                    Box::new(move |t: &mut Tuning, v| {
+                        t.live.thermal = (v >= 0.5).then_some(band.friction);
+                    }),
+                ),
+            )
+            .toggle()
+            .help("Friction from the rosin's temperature (Woodhouse) instead of the friction curve, in its own calibrated force band. Experimental."),
+        );
+    }
     if defaults.live.hair.is_some() {
         k.push(
             Knob::new(
@@ -1136,16 +1163,23 @@ impl TuningState {
                     if !k.help.is_empty() {
                         response.on_hover_text(k.help);
                     }
-                    let mut slider = egui::Slider::new(&mut value, k.range.clone())
-                        .logarithmic(k.log)
-                        .suffix(k.unit)
-                        .custom_formatter(|v, _| format_value(v as f32))
-                        .custom_parser(|s| s.trim().parse::<f64>().ok());
-                    if k.integer {
-                        slider = slider.integer();
-                    }
-                    if ui.add(slider).changed() {
-                        (k.set)(&mut self.tuning, value);
+                    if k.toggle {
+                        let mut on = value >= 0.5;
+                        if ui.checkbox(&mut on, "").changed() {
+                            (k.set)(&mut self.tuning, if on { 1.0 } else { 0.0 });
+                        }
+                    } else {
+                        let mut slider = egui::Slider::new(&mut value, k.range.clone())
+                            .logarithmic(k.log)
+                            .suffix(k.unit)
+                            .custom_formatter(|v, _| format_value(v as f32))
+                            .custom_parser(|s| s.trim().parse::<f64>().ok());
+                        if k.integer {
+                            slider = slider.integer();
+                        }
+                        if ui.add(slider).changed() {
+                            (k.set)(&mut self.tuning, value);
+                        }
                     }
                     if changed {
                         let reset = ui
@@ -1344,7 +1378,13 @@ mod tests {
         let knobs = knobs(spec, &defaults);
         for (i, k) in knobs.iter().enumerate() {
             let mut t = defaults;
-            let value = if k.integer { 7.0 } else { 0.123 };
+            let value = if k.toggle {
+                1.0 - (k.get)(&defaults)
+            } else if k.integer {
+                7.0
+            } else {
+                0.123
+            };
             (k.set)(&mut t, value);
             assert_eq!((k.get)(&t), value, "{}", k.path);
             // No other knob sees the change (two knobs on one field would).

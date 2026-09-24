@@ -10,7 +10,7 @@
 use crate::params::InstrumentParam;
 use strings_dsp::{
     BodyTuning, BowHair, BowNoise, DampingCurve, FrictionParams, Humanization, InstrumentSpec,
-    Loss, PerformerSettings, StringDesign, StringSpec, TorsionSpec,
+    Loss, PerformerSettings, StringDesign, StringSpec, ThermalFriction, TorsionSpec,
 };
 
 /// Everything the audio thread can take at once.
@@ -20,6 +20,9 @@ pub struct LiveTuning {
     pub friction: FrictionParams,
     pub hair: Option<BowHair>,
     pub bow_noise: BowNoise,
+    /// Thermal friction instead of the friction curve; the performer plays
+    /// in the band calibrated with it.
+    pub thermal: Option<ThermalFriction>,
     pub body: BodyTuning,
     /// How far a section's players spread around player 0.
     pub humanization: Humanization,
@@ -96,6 +99,7 @@ impl Tuning {
                 friction: spec.friction,
                 hair: spec.hair,
                 bow_noise: spec.bow_noise,
+                thermal: spec.thermal,
                 body: BodyTuning::from(&spec.body),
                 humanization: Humanization::default(),
             },

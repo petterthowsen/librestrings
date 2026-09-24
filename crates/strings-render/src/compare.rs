@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use strings_dsp::analysis::{cents, measure_frequency};
 use strings_dsp::presets::cello;
-use strings_dsp::{InstrumentSpec, Performer, PerformerSettings};
+use strings_dsp::{InstrumentSpec, Performer, PerformerSettings, ThermalFriction};
 
 /// Envelope hop and window (s).
 const HOP: f32 = 0.005;
@@ -55,6 +55,8 @@ pub struct Options {
     /// Override the bow noise's level and bandwidth (Hz).
     pub bow_noise: Option<f32>,
     pub noise_cutoff: Option<f32>,
+    /// Thermal friction instead of the friction curve.
+    pub thermal: Option<ThermalFriction>,
 }
 
 /// What both the recording and the model are measured for.
@@ -112,7 +114,8 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
     if let (Some(width), Some(hair)) = (opts.bow_width, &mut spec.hair) {
         hair.width = width;
     }
-    let spec = crate::with_bow_noise(&spec, opts.bow_noise, opts.noise_cutoff);
+    let mut spec = crate::with_bow_noise(&spec, opts.bow_noise, opts.noise_cutoff);
+    spec.thermal = opts.thermal;
     let mut csv = opts.csv.as_ref().map(|_| {
         String::from(
             "dynamic,string,note,source,level_db,attack_s,stroke_s,ring_s,cents,vib_cents,vib_hz,\

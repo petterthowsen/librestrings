@@ -47,6 +47,7 @@ fn regimes(spec: &InstrumentSpec, strings: &[StringSpec], fs: f32, cells: &[Cell
                         .map(|s| {
                             let mut b = BowedString::new(s, spec.friction, fs, s.frequency);
                             b.set_bow_hair(spec.hair);
+                            b.set_thermal_friction(spec.thermal);
                             b
                         })
                         .collect();

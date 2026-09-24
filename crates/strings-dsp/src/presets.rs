@@ -2,7 +2,7 @@
 
 pub mod violin {
     use crate::body::{BodyMode, BodySpec, DenseModes, Hill};
-    use crate::instrument::{ForceLimits, InstrumentSpec};
+    use crate::instrument::{ForceLimits, InstrumentSpec, ThermalBand};
     use crate::stage::Placement;
     use crate::{FrictionParams, Loss, StringSpec};
 
@@ -118,6 +118,39 @@ pub mod violin {
         },
     };
 
+    /// The Helmholtz band with thermal friction (`calibrate --instrument
+    /// violin --thermal`, 96 kHz).
+    const THERMAL_BAND: ThermalBand = ThermalBand {
+        friction: super::cello::THERMAL,
+        force_limits: [
+            ForceLimits {
+                lower: 0.130,
+                lower_exponent: -1.753,
+                upper: 1.326,
+                upper_exponent: -1.316,
+            },
+            ForceLimits {
+                lower: 0.095,
+                lower_exponent: -1.831,
+                upper: 0.582,
+                upper_exponent: -1.664,
+            },
+            ForceLimits {
+                lower: 0.092,
+                lower_exponent: -1.807,
+                upper: 0.821,
+                upper_exponent: -1.562,
+            },
+            ForceLimits {
+                lower: 0.152,
+                lower_exponent: -1.597,
+                upper: 1.710,
+                upper_exponent: -1.330,
+            },
+        ],
+        extension_limits: None,
+    };
+
     /// Fitted by `strings-render calibrate --instrument violin --sample-rate
     /// 96000`, as for the cello (see [`super::cello`]). Band positions 0.5–0.8
     /// give prompt Helmholtz motion in 88–100% of checked cases (the E string
@@ -169,6 +202,8 @@ pub mod violin {
             ..super::cello::HAIR
         }),
         bow_noise: super::cello::BOW_NOISE,
+        thermal: None,
+        thermal_band: Some(THERMAL_BAND),
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: None,
@@ -200,7 +235,7 @@ pub mod violin {
 /// loss, played with the cello's bow hair.
 pub mod viola {
     use crate::body::{BodyMode, BodySpec, DenseModes, Hill};
-    use crate::instrument::{ForceLimits, InstrumentSpec};
+    use crate::instrument::{ForceLimits, InstrumentSpec, ThermalBand};
     use crate::stage::Placement;
     use crate::{FrictionParams, Loss, StringSpec};
 
@@ -290,6 +325,39 @@ pub mod viola {
         },
     };
 
+    /// The Helmholtz band with thermal friction (`calibrate --instrument
+    /// viola --thermal`, 96 kHz).
+    const THERMAL_BAND: ThermalBand = ThermalBand {
+        friction: super::cello::THERMAL,
+        force_limits: [
+            ForceLimits {
+                lower: 0.215,
+                lower_exponent: -1.597,
+                upper: 2.738,
+                upper_exponent: -0.993,
+            },
+            ForceLimits {
+                lower: 0.123,
+                lower_exponent: -1.781,
+                upper: 1.191,
+                upper_exponent: -1.357,
+            },
+            ForceLimits {
+                lower: 0.094,
+                lower_exponent: -1.830,
+                upper: 0.608,
+                upper_exponent: -1.641,
+            },
+            ForceLimits {
+                lower: 0.088,
+                lower_exponent: -1.829,
+                upper: 1.508,
+                upper_exponent: -1.341,
+            },
+        ],
+        extension_limits: None,
+    };
+
     /// Fitted by `strings-render calibrate --instrument viola --sample-rate
     /// 96000`, as for the cello (see [`super::cello`]). Band positions 0.5–0.8
     /// give prompt Helmholtz motion in 92–100% of checked cases, as on the
@@ -336,6 +404,8 @@ pub mod viola {
             ..super::cello::HAIR
         }),
         bow_noise: super::cello::BOW_NOISE,
+        thermal: None,
+        thermal_band: Some(THERMAL_BAND),
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: None,
@@ -409,9 +479,12 @@ pub mod reference {
 /// G string, scaled where the physics says how.
 pub mod cello {
     use crate::body::{BodyMode, BodySpec, DenseModes, Hill};
-    use crate::instrument::{ForceLimits, InstrumentSpec};
+    use crate::instrument::{ForceLimits, InstrumentSpec, ThermalBand};
     use crate::stage::Placement;
-    use crate::{BowHair, BowNoise, DampingCurve, FrictionParams, Loss, StringSpec, TorsionSpec};
+    use crate::{
+        BowHair, BowNoise, DampingCurve, FrictionParams, Loss, StringSpec, ThermalFriction,
+        TorsionSpec,
+    };
 
     /// Vibrating length (m): the mdw monochord's, within the usual 690–700 mm.
     const LENGTH: f32 = 0.70;
@@ -602,6 +675,47 @@ pub mod cello {
     /// 96–100% of checked cases. The model's band sits above the measured
     /// string's (at β = 0.1, v_b = 0.1 m/s the G string's is 1.17–3.12 N;
     /// measured 0.31–1.89 N): the lower-limit gap of PLAN.md 4.2.
+    /// Thermal friction for the bow: Woodhouse's model, with rosin that
+    /// softens at higher temperatures the faster the bow moves (PLAN.md
+    /// "Thermal friction"). All four instruments use it.
+    pub const THERMAL: ThermalFriction = ThermalFriction {
+        speed_exponent: 0.5,
+        ..ThermalFriction::WOODHOUSE
+    };
+
+    /// The Helmholtz band with thermal friction (`calibrate --thermal`,
+    /// 96 kHz).
+    const THERMAL_BAND: ThermalBand = ThermalBand {
+        friction: THERMAL,
+        force_limits: [
+            ForceLimits {
+                lower: 0.348,
+                lower_exponent: -1.256,
+                upper: 3.351,
+                upper_exponent: -0.670,
+            },
+            ForceLimits {
+                lower: 0.554,
+                lower_exponent: -1.074,
+                upper: 3.825,
+                upper_exponent: -0.674,
+            },
+            ForceLimits {
+                lower: 1.174,
+                lower_exponent: -0.894,
+                upper: 4.022,
+                upper_exponent: -0.753,
+            },
+            ForceLimits {
+                lower: 0.874,
+                lower_exponent: -0.934,
+                upper: 5.712,
+                upper_exponent: -0.661,
+            },
+        ],
+        extension_limits: None,
+    };
+
     const FORCE_LIMITS: [ForceLimits; 4] = [
         ForceLimits {
             lower: 1.200,
@@ -639,6 +753,8 @@ pub mod cello {
         },
         hair: Some(HAIR),
         bow_noise: BOW_NOISE,
+        thermal: None,
+        thermal_band: Some(THERMAL_BAND),
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: None,
@@ -664,7 +780,7 @@ pub mod cello {
 /// stiffness and torsion, played with the cello's bow hair.
 pub mod bass {
     use crate::body::{BodyMode, BodySpec, DenseModes, Hill};
-    use crate::instrument::{Extension, ForceLimits, InstrumentSpec};
+    use crate::instrument::{Extension, ForceLimits, InstrumentSpec, ThermalBand};
     use crate::stage::Placement;
     use crate::{DampingCurve, FrictionParams, Loss, StringSpec, TorsionSpec};
 
@@ -784,6 +900,44 @@ pub mod bass {
         },
     };
 
+    /// The Helmholtz band with thermal friction (`calibrate --instrument
+    /// bass --thermal`, 96 kHz).
+    const THERMAL_BAND: ThermalBand = ThermalBand {
+        friction: super::cello::THERMAL,
+        force_limits: [
+            ForceLimits {
+                lower: 0.106,
+                lower_exponent: -1.892,
+                upper: 2.270,
+                upper_exponent: -0.663,
+            },
+            ForceLimits {
+                lower: 0.184,
+                lower_exponent: -1.504,
+                upper: 2.907,
+                upper_exponent: -0.599,
+            },
+            ForceLimits {
+                lower: 0.249,
+                lower_exponent: -1.348,
+                upper: 3.038,
+                upper_exponent: -0.665,
+            },
+            ForceLimits {
+                lower: 0.281,
+                lower_exponent: -1.286,
+                upper: 4.311,
+                upper_exponent: -0.586,
+            },
+        ],
+        extension_limits: Some(ForceLimits {
+            lower: 0.150,
+            lower_exponent: -1.623,
+            upper: 2.719,
+            upper_exponent: -0.542,
+        }),
+    };
+
     /// Fitted by `strings-render calibrate --instrument bass --sample-rate
     /// 96000`, as for the cello (see [`super::cello`]), with the hair's width.
     /// Band positions 0.5–0.8 give prompt Helmholtz motion in 71–100% of
@@ -849,6 +1003,8 @@ pub mod bass {
             ..super::cello::HAIR
         }),
         bow_noise: super::cello::BOW_NOISE,
+        thermal: None,
+        thermal_band: Some(THERMAL_BAND),
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: Some(EXTENSION),

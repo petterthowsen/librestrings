@@ -8,7 +8,7 @@
 //! into denormals.
 
 use crate::body::{Body, BodySpec, BodyTuning};
-use crate::bow::{BowNoise, FrictionParams};
+use crate::bow::{BowNoise, FrictionParams, ThermalFriction};
 use crate::filters::HalfbandDecimator;
 use crate::stage::Placement;
 use crate::string::{
@@ -76,6 +76,17 @@ impl Extension {
     }
 }
 
+/// Thermal friction and the Helmholtz band calibrated with it
+/// (`strings-render calibrate --thermal`).
+#[derive(Clone, Copy, Debug)]
+pub struct ThermalBand {
+    pub friction: ThermalFriction,
+    /// Per string, lowest first.
+    pub force_limits: [ForceLimits; 4],
+    /// At the extension's gates, if the instrument has one.
+    pub extension_limits: Option<ForceLimits>,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct InstrumentSpec {
     pub name: &'static str,
@@ -85,6 +96,11 @@ pub struct InstrumentSpec {
     pub hair: Option<BowHair>,
     /// The friction's fluctuation while the string slips.
     pub bow_noise: BowNoise,
+    /// Thermal friction, replacing `friction`'s curve (`None`: the curve).
+    pub thermal: Option<ThermalFriction>,
+    /// Thermal friction as calibrated for this instrument, with its own
+    /// Helmholtz band, which the performer plays in while `thermal` is on.
+    pub thermal_band: Option<ThermalBand>,
     pub body: BodySpec,
     /// Helmholtz band per string, lowest first (`strings-render calibrate`).
     pub force_limits: [ForceLimits; 4],
@@ -132,12 +148,18 @@ impl InstrumentSpec {
     /// The Helmholtz band of `string` stopped `semitones` above its open
     /// pitch: its calibrated band, or on an extended string a blend toward
     /// the band at the gates (log-linear in the force, like the band itself).
+    /// With thermal friction on, the band calibrated with it, if there is one.
     pub fn force_limits_at(&self, string: usize, semitones: f32) -> ForceLimits {
-        let open = self.force_limits[string];
-        match self.extension {
-            Some(e) if string == 0 => {
+        let (open, gated) = match self.thermal_band.filter(|_| self.thermal.is_some()) {
+            Some(band) => (band.force_limits[string], band.extension_limits),
+            None => (
+                self.force_limits[string],
+                self.extension.map(|e| e.force_limits),
+            ),
+        };
+        match self.extension.zip(gated) {
+            Some((e, gated)) if string == 0 => {
                 let t = (semitones / e.semitones).clamp(0.0, 1.0);
-                let gated = e.force_limits;
                 let blend = |a: f32, b: f32| a + (b - a) * t;
                 ForceLimits {
                     lower: blend(open.lower.ln(), gated.lower.ln()).exp(),
@@ -192,6 +214,7 @@ impl Instrument {
             let mut string = BowedString::new(s, spec.friction, string_rate, s.frequency);
             string.set_bow_hair(spec.hair);
             string.set_bow_noise(spec.bow_noise);
+            string.set_thermal_friction(spec.thermal);
             string.reseed_noise(i as u32);
             string
         });
@@ -274,6 +297,13 @@ impl Instrument {
         self.spec.bow_noise = noise;
         for s in &mut self.strings {
             s.set_bow_noise(noise);
+        }
+    }
+
+    pub fn set_thermal_friction(&mut self, thermal: Option<ThermalFriction>) {
+        self.spec.thermal = thermal;
+        for s in &mut self.strings {
+            s.set_thermal_friction(thermal);
         }
     }
 
