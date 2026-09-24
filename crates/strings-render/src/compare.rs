@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use strings_dsp::analysis::{cents, measure_frequency};
 use strings_dsp::presets::cello;
-use strings_dsp::{Performer, PerformerSettings};
+use strings_dsp::{InstrumentSpec, Performer, PerformerSettings};
 
 /// Envelope hop and window (s).
 const HOP: f32 = 0.005;
@@ -43,6 +43,8 @@ pub struct Options {
     /// Measure the model's bridge force instead of its output: whether a
     /// difference comes from the strings or the body.
     pub bridge: bool,
+    /// Override the width of the bow hair in contact (m).
+    pub bow_width: Option<f32>,
 }
 
 /// What both the recording and the model are measured for.
@@ -93,6 +95,10 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
     std::fs::create_dir_all(&opts.out)?;
+    let mut spec = cello::INSTRUMENT;
+    if let (Some(width), Some(hair)) = (opts.bow_width, &mut spec.hair) {
+        hair.width = width;
+    }
     let mut csv = opts.csv.as_ref().map(|_| {
         String::from(
             "dynamic,string,note,source,level_db,attack_s,stroke_s,ring_s,cents,vib_cents,vib_hz,\
@@ -166,6 +172,7 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
                 (rec.vibrato_depth / full).clamp(0.0, 1.0)
             });
             let mut y = render(
+                &spec,
                 midi,
                 take.string,
                 dyn_value,
@@ -368,6 +375,7 @@ fn find_takes(dir: &Path, opts: &Options) -> Result<Vec<Take>, Box<dyn std::erro
 /// With `bridge`, the strings' bridge force instead of the body's output.
 #[allow(clippy::too_many_arguments)]
 fn render(
+    spec: &InstrumentSpec,
     note: u8,
     string: usize,
     dynamics: f32,
@@ -378,7 +386,7 @@ fn render(
     bridge: bool,
     fs: f32,
 ) -> Vec<f32> {
-    let mut p = Performer::new(&cello::INSTRUMENT, PerformerSettings::default(), fs);
+    let mut p = Performer::new(spec, PerformerSettings::default(), fs);
     p.set_string(Some(string));
     p.set_dynamics(dynamics);
     p.set_vibrato(vibrato);

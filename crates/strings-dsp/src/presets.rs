@@ -162,7 +162,12 @@ pub mod violin {
             mu_d: 0.3,
             v0: 0.1,
         },
-        hair: Some(super::cello::HAIR),
+        // The cello's hair touching at one point: with the width, the band
+        // shrinks by about a third (STATUS.md item 53).
+        hair: Some(crate::BowHair {
+            width: 0.0,
+            ..super::cello::HAIR
+        }),
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: None,
@@ -320,7 +325,12 @@ pub mod viola {
             mu_d: 0.3,
             v0: 0.1,
         },
-        hair: Some(super::cello::HAIR),
+        // The cello's hair touching at one point: with the width, the band
+        // shrinks by about a third (STATUS.md item 53).
+        hair: Some(crate::BowHair {
+            width: 0.0,
+            ..super::cello::HAIR
+        }),
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: None,
@@ -456,9 +466,16 @@ pub mod cello {
     /// The damping is close to the wave impedance of the hairs in contact; the
     /// stiffness is softer than the hair ribbon alone and stands for the whole
     /// contact (hairs, stick and hand). Not measured.
+    ///
+    /// The width is about a cello bow's hair ribbon, flat on the string as
+    /// the robot bowed it in the measurement (an estimate). It brings the
+    /// measured string's Helmholtz region to 86 / 83 / 85% of the measured one
+    /// (PLAN.md "The bow's width"); the stiffness and damping above are still
+    /// the best fit with it.
     pub const HAIR: BowHair = BowHair {
         stiffness: 1000.0,
         damping: 3.0,
+        width: 0.012,
     };
 
     /// Body resonances below 300 Hz. Frequencies from Zhang, Woodhouse &
@@ -562,35 +579,35 @@ pub mod cello {
     /// Fitted by `strings-render calibrate --sample-rate 96000` (the strings'
     /// rate with the default 2× oversampling) to simulated Schelleng maps of
     /// each string (bow speeds 0.05–0.4 m/s, β 0.04–0.25), counting only cells
-    /// that are Helmholtz within 0.15 s of the bow starting. Band positions
-    /// 0.5–0.8 give such prompt Helmholtz motion in 91–99% of checked cases.
-    /// The model's band sits above the measured string's (at β = 0.1,
-    /// v_b = 0.1 m/s the G string's is 1.2–2.9 N; measured 0.31–1.89 N): the
-    /// lower-limit gap of PLAN.md 4.2.
+    /// that are Helmholtz within 0.15 s of the bow starting, with the hair's
+    /// width. Band positions 0.5–0.8 give such prompt Helmholtz motion in
+    /// 96–100% of checked cases. The model's band sits above the measured
+    /// string's (at β = 0.1, v_b = 0.1 m/s the G string's is 1.17–3.12 N;
+    /// measured 0.31–1.89 N): the lower-limit gap of PLAN.md 4.2.
     const FORCE_LIMITS: [ForceLimits; 4] = [
         ForceLimits {
-            lower: 1.465,
-            lower_exponent: -0.943,
-            upper: 6.211,
-            upper_exponent: -0.622,
+            lower: 1.200,
+            lower_exponent: -1.033,
+            upper: 6.533,
+            upper_exponent: -0.621,
         },
         ForceLimits {
-            lower: 1.028,
-            lower_exponent: -1.053,
-            upper: 6.785,
-            upper_exponent: -0.606,
+            lower: 0.864,
+            lower_exponent: -1.106,
+            upper: 7.325,
+            upper_exponent: -0.605,
         },
         ForceLimits {
-            lower: 0.682,
-            lower_exponent: -1.138,
-            upper: 8.914,
-            upper_exponent: -0.562,
+            lower: 0.338,
+            lower_exponent: -1.389,
+            upper: 3.240,
+            upper_exponent: -0.963,
         },
         ForceLimits {
-            lower: 0.231,
-            lower_exponent: -1.435,
-            upper: 9.915,
-            upper_exponent: -0.504,
+            lower: 0.161,
+            lower_exponent: -1.552,
+            upper: 7.409,
+            upper_exponent: -0.638,
         },
     ];
 
@@ -746,38 +763,38 @@ pub mod bass {
     };
 
     /// Fitted by `strings-render calibrate --instrument bass --sample-rate
-    /// 96000`, as for the cello (see [`super::cello`]). Band positions 0.5–0.8
-    /// give prompt Helmholtz motion in 67–100% of checked cases, the extended
-    /// string lowest: open C 67–92%, stopped at E 79–88% ([`EXTENSION`]). The
-    /// E string's band was found in only 22 of 48 columns, the open C's in
-    /// 15 (the G string's in 38), and it is narrow, one or two rows of the
-    /// map. That holds without torsion or stiffness, with the one-pole loss,
+    /// 96000`, as for the cello (see [`super::cello`]), with the hair's width.
+    /// Band positions 0.5–0.8 give prompt Helmholtz motion in 71–100% of
+    /// checked cases, the extended string lowest: open C 71–92%, stopped at E
+    /// 79–88% ([`EXTENSION`]). The E string's band was found in only 20 of 48
+    /// columns, the open C's in 16 (the G string's in 44), and it is narrow,
+    /// one or two rows of the map. That holds without torsion or stiffness, with the one-pole loss,
     /// and with stiffer or softer bow hair (PLAN.md "Phase 5: viola and
     /// double bass").
     const FORCE_LIMITS: [ForceLimits; 4] = [
         ForceLimits {
-            lower: 2.579,
-            lower_exponent: -0.661,
-            upper: 5.610,
-            upper_exponent: -0.567,
+            lower: 2.410,
+            lower_exponent: -0.694,
+            upper: 5.056,
+            upper_exponent: -0.618,
         },
         ForceLimits {
-            lower: 1.745,
-            lower_exponent: -0.782,
-            upper: 5.842,
-            upper_exponent: -0.535,
+            lower: 1.742,
+            lower_exponent: -0.801,
+            upper: 5.548,
+            upper_exponent: -0.569,
         },
         ForceLimits {
-            lower: 1.393,
-            lower_exponent: -0.898,
-            upper: 6.711,
-            upper_exponent: -0.520,
+            lower: 1.083,
+            lower_exponent: -0.994,
+            upper: 6.368,
+            upper_exponent: -0.547,
         },
         ForceLimits {
-            lower: 1.065,
-            lower_exponent: -1.004,
-            upper: 8.627,
-            upper_exponent: -0.451,
+            lower: 0.972,
+            lower_exponent: -1.038,
+            upper: 8.074,
+            upper_exponent: -0.493,
         },
     ];
 
@@ -789,10 +806,10 @@ pub mod bass {
     const EXTENSION: Extension = Extension {
         semitones: 4.0,
         force_limits: ForceLimits {
-            lower: 1.823,
-            lower_exponent: -0.754,
-            upper: 4.333,
-            upper_exponent: -0.624,
+            lower: 1.708,
+            lower_exponent: -0.802,
+            upper: 4.264,
+            upper_exponent: -0.644,
         },
     };
 
@@ -804,7 +821,11 @@ pub mod bass {
             mu_d: 0.3,
             v0: 0.1,
         },
-        hair: Some(super::cello::HAIR),
+        // The cello's hair on a bass bow's wider ribbon (estimated).
+        hair: Some(crate::BowHair {
+            width: 0.014,
+            ..super::cello::HAIR
+        }),
         body: BODY,
         force_limits: FORCE_LIMITS,
         extension: Some(EXTENSION),

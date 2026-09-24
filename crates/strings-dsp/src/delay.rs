@@ -60,6 +60,13 @@ impl DelayLine {
         a + t * (b - a)
     }
 
+    /// Reads the signal a whole number of samples ago, without interpolation;
+    /// `read_whole(1)` is the most recent push. For lines shorter than
+    /// [`Self::MIN_DELAY`].
+    pub fn read_whole(&self, delay: usize) -> f32 {
+        self.tap(delay.clamp(1, self.buf.len() - 1))
+    }
+
     pub fn clear(&mut self) {
         self.buf.fill(0.0);
     }

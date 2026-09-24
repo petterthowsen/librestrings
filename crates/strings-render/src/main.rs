@@ -143,6 +143,9 @@ enum Command {
         /// Early reflections, 0 (off) to 1.
         #[arg(long, default_value_t = 1.0)]
         reflections: f32,
+        /// Override the width of the bow hair in contact with the string (m).
+        #[arg(long)]
+        bow_width: Option<f32>,
         #[arg(long, short)]
         out: PathBuf,
         /// Also write the summed bridge force (before the body) to this WAV
@@ -163,6 +166,9 @@ enum Command {
         /// Override the bow hair's damping (kg/s), with --hair-stiffness.
         #[arg(long, requires = "hair_stiffness")]
         hair_damping: Option<f32>,
+        /// Override the width of the bow hair in contact with the string (m).
+        #[arg(long)]
+        bow_width: Option<f32>,
     },
     /// Compare the solo cello with recorded notes (University of Iowa, arco):
     /// each note played again on the same string at the same dynamic, both
@@ -192,6 +198,9 @@ enum Command {
         /// instead of its output.
         #[arg(long)]
         bridge: bool,
+        /// Override the width of the bow hair in contact with the string (m).
+        #[arg(long)]
+        bow_width: Option<f32>,
     },
     /// Compare the model with a measured Schelleng diagram (mdw cello string A T1),
     /// point by point. Fetch the data with scripts/fetch-reference-data.sh.
@@ -240,6 +249,9 @@ enum Command {
         /// Bow hair damping (kg/s), with --hair-stiffness.
         #[arg(long, requires = "hair_stiffness")]
         hair_damping: Option<f32>,
+        /// Width of the bow hair in contact with the string (m), with --hair-stiffness.
+        #[arg(long, requires = "hair_stiffness")]
+        bow_width: Option<f32>,
         /// Write every point's parameters and both regimes to this CSV file.
         #[arg(long)]
         csv: Option<PathBuf>,
@@ -321,6 +333,15 @@ impl Family {
             Family::Bass => &bass::INSTRUMENT,
         }
     }
+}
+
+/// `spec` with the width of its bow hair overridden, if given.
+fn with_bow_width(spec: &InstrumentSpec, width: Option<f32>) -> InstrumentSpec {
+    let mut spec = *spec;
+    if let (Some(width), Some(hair)) = (width, &mut spec.hair) {
+        hair.width = width;
+    }
+    spec
 }
 
 /// An open string and the bow hair it is played with.
@@ -422,6 +443,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             absorption,
             mic_distance,
             reflections,
+            bow_width,
             out,
             bridge_out,
         } => {
@@ -429,7 +451,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some((_, text)) => text.to_string(),
                 None => std::fs::read_to_string(&score)?,
             };
-            let spec = instrument.instrument();
+            let spec = &with_bow_width(instrument.instrument(), bow_width);
             let mut events = score::parse(&text, spec.strings.map(|s| s.name))?;
             let mut settings = PerformerSettings::for_instrument(spec);
             if let Some(p) = pressure {
@@ -492,6 +514,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             out,
             csv,
             bridge,
+            bow_width,
         } => compare::run(&compare::Options {
             data,
             out,
@@ -501,16 +524,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             velocity: velocity / 127.0,
             csv,
             bridge,
+            bow_width,
         })?,
         Command::Calibrate {
             instrument,
             sample_rate,
             hair_stiffness,
             hair_damping,
+            bow_width,
         } => {
-            let mut spec = *instrument.instrument();
+            let mut spec = with_bow_width(instrument.instrument(), bow_width);
             if let (Some(stiffness), Some(damping)) = (hair_stiffness, hair_damping) {
-                spec.hair = Some(BowHair { stiffness, damping });
+                spec.hair = Some(BowHair {
+                    stiffness,
+                    damping,
+                    width: 0.0,
+                });
             }
             calibrate::run(&spec, sample_rate)
         }
@@ -529,6 +558,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             torsion_q,
             hair_stiffness,
             hair_damping,
+            bow_width,
             csv,
         } => {
             let base = reference::MONOCHORD_CELLO_G_A_T1;
@@ -562,7 +592,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let hair = hair_stiffness
                 .zip(hair_damping)
-                .map(|(stiffness, damping)| BowHair { stiffness, damping });
+                .map(|(stiffness, damping)| BowHair {
+                    stiffness,
+                    damping,
+                    width: bow_width.unwrap_or(0.0),
+                });
             measured::run(&data, &spec, friction, hair, csv.as_deref())?;
         }
     }

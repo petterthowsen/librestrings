@@ -28,6 +28,11 @@ Papers the model takes numbers or methods from, and what was used from each. Dat
 - **É. Bavu, C. Besnainou, V. Gibiat, J. Frelat, M. François, "Torsional waves in a bowed string", Acta Acustica united with Acustica 91, 241–246 (2005).** [PDF (UNSW)](https://www.phys.unsw.edu.au/jw/reprints/Bavuetal.pdf).
   - Measured the torsional and transverse fundamentals' Q on a bowed string: the torsional Q is "more than fifty times lower", lower than Mores' order of magnitude. The preset's Q = 50 is between the two readings.
 
+
+## Bow width
+
+- **R. Pitteroff & J. Woodhouse, "Mechanics of the contact area between a violin bow and a string", Parts I–III, Acta Acustica united with Acustica 84 (1998).** A finite-width contact between bow and string, in which part of the ribbon can slip while the rest sticks (differential slipping).
+  - Used for: the idea behind `BowHair::width` (several contact points, each with its own stick/slip state). No numbers are taken from it, and its results are not checked against the model yet (PLAN.md "The bow's width").
 ## Stiffness (dispersion filters)
 
 - S. A. Van Duyne, J. O. Smith, "A simplified approach to modeling dispersion caused by stiffness in strings and plates", Proc. ICMC (1994). Cascade of identical first-order allpasses; used in `filters::DispersionAllpass`.

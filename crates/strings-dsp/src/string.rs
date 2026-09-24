@@ -32,6 +32,13 @@
 //! bow stick and the contact point. The hairs at the contact move with the
 //! string while sticking, so a bow stopped on the string no longer clamps it
 //! rigidly: the dashpot absorbs the waves that would otherwise stay trapped.
+//!
+//! A hair ribbon with width touches the string at several contact points
+//! (up to [`MAX_CONTACTS`]), a whole number of samples apart, with short
+//! lines between them. Each takes an equal share of the bow force and of the
+//! hair's compliance and has its own stick/slip state, so the ribbon can slip
+//! at one edge while the other still sticks (Pitteroff & Woodhouse 1998).
+//! Torsional waves get lines between the contacts too.
 
 use crate::bow::{BowJunction, ContactState, FrictionParams, JunctionResult};
 use crate::delay::DelayLine;
@@ -100,7 +107,16 @@ pub struct BowHair {
     pub stiffness: f32,
     /// Dashpot resistance (kg/s).
     pub damping: f32,
+    /// Width of the ribbon in contact with the string, along the string (m).
+    /// Zero touches the string at one point.
+    pub width: f32,
 }
+
+/// The most contact points a bow with width touches the string at.
+pub const MAX_CONTACTS: usize = 4;
+
+/// The longest line between two contact points (samples).
+const MAX_GAP: usize = 64;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BowInput {
@@ -142,11 +158,21 @@ pub struct BowedString {
     bridge_share: f32,
     /// Extra loss at the nut or stopping finger (nepers per reflection).
     termination_loss: f32,
-    bow: BowJunction,
+    /// One junction per contact point, from the bridge side.
+    bow: [BowJunction; MAX_CONTACTS],
     torsion: Option<Torsion>,
     hair: Option<BowHair>,
-    /// Deflection of the hair at the contact point relative to the bow stick (m).
-    hair_deflection: f32,
+    /// Deflection of the hair at each contact point relative to the bow stick (m).
+    hair_deflection: [f32; MAX_CONTACTS],
+    /// How many contact points the bow touches the string at.
+    contacts: usize,
+    /// Between neighboring contacts: the delay (whole samples, one way), and
+    /// the waves traveling toward the nut and toward the bridge.
+    gap: usize,
+    to_nut_gaps: [DelayLine; MAX_CONTACTS - 1],
+    to_bridge_gaps: [DelayLine; MAX_CONTACTS - 1],
+    /// Transverse wave speed (m/s).
+    wave_speed: f32,
 
     open_frequency: f32,
     frequency: f32,
@@ -182,13 +208,19 @@ const NO_LOSS: LossDesign = LossDesign {
 };
 
 /// Torsional waveguide: one round-trip line on each side of the bow, with the
-/// loss filter at the nut-side reflection.
+/// loss filter at the nut-side reflection, and one-way lines between the
+/// contact points of a bow with width.
 #[derive(Clone)]
 struct Torsion {
     spec: TorsionSpec,
     impedance: f32,
     nut: DelayLine,
     bridge: DelayLine,
+    /// Delay between neighboring contacts (whole samples, one way): the
+    /// transverse gap scaled by the ratio of wave speeds, at least one sample.
+    gap: usize,
+    to_nut_gaps: [DelayLine; MAX_CONTACTS - 1],
+    to_bridge_gaps: [DelayLine; MAX_CONTACTS - 1],
     filter: LossFilter,
     nut_delay: f32,
     bridge_delay: f32,
@@ -197,7 +229,15 @@ struct Torsion {
 }
 
 impl Torsion {
-    fn update(&mut self, frequency_ratio: f32, beta: f32, sample_rate: f32, loss: &LossDesign) {
+    /// `width` is the torsional delay across the contacts (samples, one way).
+    fn update(
+        &mut self,
+        frequency_ratio: f32,
+        beta: f32,
+        width: f32,
+        sample_rate: f32,
+        loss: &LossDesign,
+    ) {
         let frequency = self.spec.frequency * frequency_ratio;
         self.filter.set(loss);
         // The filter's phase delay at the fundamental comes off the nut side,
@@ -205,8 +245,9 @@ impl Torsion {
         let omega = std::f32::consts::TAU * frequency / sample_rate;
         let period = sample_rate / frequency - self.filter.phase_delay(omega);
         let max = self.nut.max_delay();
-        self.bridge_delay = (beta * period).clamp(DelayLine::MIN_DELAY, max);
-        self.nut_delay = (period - self.bridge_delay).clamp(DelayLine::MIN_DELAY, max);
+        self.bridge_delay = (beta * period - width).clamp(DelayLine::MIN_DELAY, max);
+        self.nut_delay =
+            (period - self.bridge_delay - 2.0 * width).clamp(DelayLine::MIN_DELAY, max);
         let loop_gain = (-loss.dc_loss).exp();
         let bridge_share = self.bridge_delay / period;
         self.bridge_gain = loop_gain.powf(bridge_share);
@@ -228,6 +269,9 @@ impl Torsion {
         self.nut.clear();
         self.bridge.clear();
         self.filter.reset();
+        for line in self.to_nut_gaps.iter_mut().chain(&mut self.to_bridge_gaps) {
+            line.clear();
+        }
     }
 }
 
@@ -257,6 +301,9 @@ impl BowedString {
                 impedance: t.impedance,
                 nut: DelayLine::new(max_torsion),
                 bridge: DelayLine::new(max_torsion),
+                gap: 1,
+                to_nut_gaps: std::array::from_fn(|_| DelayLine::new(MAX_GAP)),
+                to_bridge_gaps: std::array::from_fn(|_| DelayLine::new(MAX_GAP)),
                 filter: LossFilter::new(sample_rate, true),
                 nut_delay: 0.0,
                 bridge_delay: 0.0,
@@ -280,10 +327,15 @@ impl BowedString {
             nut_gain: 1.0,
             bridge_share: 0.0,
             termination_loss: 0.0,
-            bow: BowJunction::new(friction),
+            bow: std::array::from_fn(|_| BowJunction::new(friction)),
             torsion,
             hair: None,
-            hair_deflection: 0.0,
+            hair_deflection: [0.0; MAX_CONTACTS],
+            contacts: 1,
+            gap: 0,
+            to_nut_gaps: std::array::from_fn(|_| DelayLine::new(MAX_GAP)),
+            to_bridge_gaps: std::array::from_fn(|_| DelayLine::new(MAX_GAP)),
+            wave_speed: spec.wave_speed(),
             open_frequency: spec.frequency,
             frequency: spec.frequency,
             beta: 0.1,
@@ -372,6 +424,7 @@ impl BowedString {
         self.loss = spec.loss;
         self.stiff = spec.inharmonicity() > 0.0;
         self.impedance = spec.impedance();
+        self.wave_speed = spec.wave_speed();
         if let (Some(t), Some(t_spec)) = (&mut self.torsion, spec.torsion) {
             t.spec = t_spec;
             t.impedance = t_spec.impedance;
@@ -379,7 +432,7 @@ impl BowedString {
         if !self.stiff {
             self.dispersion.reset();
         }
-        self.update_delays();
+        self.update_contacts();
         true
     }
 
@@ -420,16 +473,25 @@ impl BowedString {
         self.update_delays();
     }
 
-    /// Makes the bow hair compliant; `None` (the default) grips rigidly.
+    /// Makes the bow hair compliant, and gives it its width; `None` (the
+    /// default) grips rigidly at one point.
     pub fn set_bow_hair(&mut self, hair: Option<BowHair>) {
         if hair.is_none() || self.hair.is_none() {
-            self.hair_deflection = 0.0;
+            self.hair_deflection = [0.0; MAX_CONTACTS];
         }
         self.hair = hair;
+        self.update_contacts();
+    }
+
+    /// How many points the bow touches the string at.
+    pub fn contacts(&self) -> usize {
+        self.contacts
     }
 
     pub fn set_friction(&mut self, friction: FrictionParams) {
-        self.bow.friction = friction;
+        for bow in &mut self.bow {
+            bow.friction = friction;
+        }
     }
 
     /// Extra loss where the string is stopped (nepers per reflection at the
@@ -440,13 +502,18 @@ impl BowedString {
     }
 
     pub fn reset(&mut self) {
-        self.hair_deflection = 0.0;
+        self.hair_deflection = [0.0; MAX_CONTACTS];
         self.nut.clear();
         self.to_bridge.clear();
         self.from_bridge.clear();
+        for line in self.to_nut_gaps.iter_mut().chain(&mut self.to_bridge_gaps) {
+            line.clear();
+        }
         self.loss_filter.reset();
         self.dispersion.reset();
-        self.bow.reset();
+        for bow in &mut self.bow {
+            bow.reset();
+        }
         if let Some(t) = &mut self.torsion {
             t.reset();
         }
@@ -466,42 +533,100 @@ impl BowedString {
         let reflected = -self.bridge_gain * self.loss_filter.process(arriving_at_bridge);
         let from_bridge = self.from_bridge.read(self.bridge_delay);
 
-        let v_h = from_nut + from_bridge + external_force / (2.0 * z);
-        let j = match &mut self.torsion {
-            None => Self::solve_bow(
-                &mut self.bow,
-                self.hair,
-                &mut self.hair_deflection,
-                self.sample_rate,
-                v_h,
-                bow,
-                z,
-            ),
-            Some(t) => {
-                let from_t_nut = -t.nut_gain * t.filter.process(t.nut.read(t.nut_delay));
-                let from_t_bridge = -t.bridge_gain * t.bridge.read(t.bridge_delay);
-                // The bow sees the transverse and torsional impedances in parallel.
-                let z_t = t.impedance;
-                let z_bow = z * z_t / (z + z_t);
-                let j = Self::solve_bow(
-                    &mut self.bow,
-                    self.hair,
-                    &mut self.hair_deflection,
-                    self.sample_rate,
-                    v_h + from_t_nut + from_t_bridge,
-                    bow,
-                    z_bow,
-                );
-                let half_t = j.force / (2.0 * z_t);
-                t.nut.push(from_t_bridge + half_t);
-                t.bridge.push(from_t_nut + half_t);
-                j
+        // The waves arriving at each contact point, from the bridge side (`a`)
+        // and from the nut side (`b`); `ta` and `tb` the torsional ones.
+        let n = self.contacts;
+        let mut a = [0.0; MAX_CONTACTS];
+        let mut b = [0.0; MAX_CONTACTS];
+        let mut ta = [0.0; MAX_CONTACTS];
+        let mut tb = [0.0; MAX_CONTACTS];
+        a[0] = from_bridge;
+        b[n - 1] = from_nut;
+        for i in 1..n {
+            a[i] = self.to_nut_gaps[i - 1].read_whole(self.gap);
+            b[i - 1] = self.to_bridge_gaps[i - 1].read_whole(self.gap);
+        }
+        if let Some(t) = &mut self.torsion {
+            ta[0] = -t.bridge_gain * t.bridge.read(t.bridge_delay);
+            tb[n - 1] = -t.nut_gain * t.filter.process(t.nut.read(t.nut_delay));
+            for i in 1..n {
+                ta[i] = t.to_nut_gaps[i - 1].read_whole(t.gap);
+                tb[i - 1] = t.to_bridge_gaps[i - 1].read_whole(t.gap);
             }
-        };
-        let half = (j.force + external_force) / (2.0 * z);
+        }
 
-        self.to_bridge.push(from_nut + half);
-        self.nut.push(from_bridge + half);
+        // Each contact takes an equal share of the bow force and the hair.
+        let share = 1.0 / n as f32;
+        let contact_bow = BowInput {
+            velocity: bow.velocity,
+            force: bow.force * share,
+        };
+        let hair = self.hair.map(|h| BowHair {
+            stiffness: h.stiffness * share,
+            damping: h.damping * share,
+            ..h
+        });
+        // External forces and the frame's velocity and state are at the middle contact.
+        let middle = (n - 1) / 2;
+        let mut frame = StringFrame::default();
+        for i in 0..n {
+            let external = if i == middle { external_force } else { 0.0 };
+            let v_h = b[i] + a[i] + external / (2.0 * z);
+            let j = match &mut self.torsion {
+                None => Self::solve_bow(
+                    &mut self.bow[i],
+                    hair,
+                    &mut self.hair_deflection[i],
+                    self.sample_rate,
+                    v_h,
+                    contact_bow,
+                    z,
+                ),
+                Some(t) => {
+                    // The bow sees the transverse and torsional impedances in parallel.
+                    let z_t = t.impedance;
+                    let z_bow = z * z_t / (z + z_t);
+                    let j = Self::solve_bow(
+                        &mut self.bow[i],
+                        hair,
+                        &mut self.hair_deflection[i],
+                        self.sample_rate,
+                        v_h + tb[i] + ta[i],
+                        contact_bow,
+                        z_bow,
+                    );
+                    let half_t = j.force / (2.0 * z_t);
+                    let (to_nut, to_bridge) = (ta[i] + half_t, tb[i] + half_t);
+                    if i + 1 == n {
+                        t.nut.push(to_nut);
+                    } else {
+                        t.to_nut_gaps[i].push(to_nut);
+                    }
+                    if i == 0 {
+                        t.bridge.push(to_bridge);
+                    } else {
+                        t.to_bridge_gaps[i - 1].push(to_bridge);
+                    }
+                    j
+                }
+            };
+            let half = (j.force + external) / (2.0 * z);
+            if i == 0 {
+                self.to_bridge.push(b[i] + half);
+            } else {
+                self.to_bridge_gaps[i - 1].push(b[i] + half);
+            }
+            if i + 1 == n {
+                self.nut.push(a[i] + half);
+            } else {
+                self.to_nut_gaps[i].push(a[i] + half);
+            }
+            frame.friction_force += j.force;
+            if i == middle {
+                frame.bow_point_velocity = j.string_velocity;
+                frame.state = j.state;
+            }
+        }
         self.from_bridge.push(reflected);
 
         let bridge_force = z * (arriving_at_bridge - reflected);
@@ -511,9 +636,7 @@ impl BowedString {
         }
         StringFrame {
             bridge_force,
-            bow_point_velocity: j.string_velocity,
-            friction_force: j.force,
-            state: j.state,
+            ..frame
         }
     }
 
@@ -560,19 +683,23 @@ impl BowedString {
         let filter_delay = self.loss_filter.phase_delay(omega);
         let total = self.sample_rate / self.frequency - filter_delay;
         let max_bridge = self.to_bridge.max_delay();
-        self.bridge_delay = (0.5 * self.beta * total).clamp(DelayLine::MIN_DELAY, max_bridge);
+        // The contacts are centered on the bow position.
+        let width = ((self.contacts - 1) * self.gap) as f32;
+        self.bridge_delay =
+            (0.5 * (self.beta * total - width)).clamp(DelayLine::MIN_DELAY, max_bridge);
         self.dispersion.a = note.dispersion;
         let dispersion_delay = if self.stiff {
             DispersionAllpass::phase_lag(self.dispersion.a, omega) / omega
         } else {
             0.0
         };
-        self.nut_delay = (total - 2.0 * self.bridge_delay - dispersion_delay)
+        self.nut_delay = (total - 2.0 * self.bridge_delay - 2.0 * width - dispersion_delay)
             .clamp(DelayLine::MIN_DELAY, self.nut.max_delay());
         if let Some(t) = &mut self.torsion {
             t.update(
                 self.frequency / self.open_frequency,
                 self.beta,
+                ((self.contacts - 1) * t.gap) as f32,
                 self.sample_rate,
                 &note.torsion,
             );
@@ -583,6 +710,36 @@ impl BowedString {
         };
         self.bridge_share = 2.0 * self.bridge_delay / total;
         self.update_gains();
+    }
+
+    /// Spreads the contact points over the hair's width, whole samples apart:
+    /// the most contacts (up to [`MAX_CONTACTS`]) whose span is within half a
+    /// sample or 10% of the width. A width under half a sample is one contact.
+    fn update_contacts(&mut self) {
+        let width =
+            self.hair.map_or(0.0, |h| h.width.max(0.0)) / self.wave_speed * self.sample_rate;
+        let tolerance = (0.1 * width).max(0.5);
+        let (contacts, gap) = (2..=MAX_CONTACTS)
+            .rev()
+            .map(|n| (n, (width / (n - 1) as f32).round() as usize))
+            .find(|&(n, gap)| gap >= 1 && ((n - 1) as f32 * gap as f32 - width).abs() <= tolerance)
+            .map_or((1, 0), |(n, gap)| (n, gap.min(MAX_GAP)));
+        if (contacts, gap) != (self.contacts, self.gap) {
+            self.contacts = contacts;
+            self.gap = gap;
+            for line in self.to_nut_gaps.iter_mut().chain(&mut self.to_bridge_gaps) {
+                line.clear();
+            }
+            if let Some(t) = &mut self.torsion {
+                // Torsional waves are faster: c_t / c = f_t / f0 on the same string.
+                let ratio = self.open_frequency / t.spec.frequency;
+                t.gap = ((gap as f32 * ratio).round() as usize).clamp(1, MAX_GAP);
+                for line in t.to_nut_gaps.iter_mut().chain(&mut t.to_bridge_gaps) {
+                    line.clear();
+                }
+            }
+        }
+        self.update_delays();
     }
 
     /// Splits the loop's DC loss between the reflections in proportion to the

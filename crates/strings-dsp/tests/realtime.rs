@@ -138,6 +138,7 @@ fn retuning_never_allocates() {
         instrument.set_hair(Some(BowHair {
             stiffness: 2000.0,
             damping: 5.0,
+            width: 0.008,
         }));
         assert!(instrument.apply_strings(&strings, &mut designs));
         for _ in 0..4800 {

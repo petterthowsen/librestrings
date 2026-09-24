@@ -688,7 +688,9 @@ fn settle_time(pitch: &[f32]) -> f32 {
 
 /// Legato: the landing note's velocity sets the transition. Pressed hard, a
 /// note within the hand changes as a finger drops, and a shift slides only
-/// quickly; pressed softly, the finger slides slowly (portamento).
+/// quickly; pressed softly, the finger slides slowly (portamento). The ear is
+/// off: its correction, learned on the note before, then eases to the new
+/// note's over a few hundred ms (about 15 cents from E4 to C4 on the A string).
 #[test]
 fn legato_velocity_sets_the_slide() {
     // (from, to, string, velocity, fastest, slowest) in seconds to settle.
@@ -697,8 +699,20 @@ fn legato_velocity_sets_the_slide() {
         (45, 47, 1, 0.1, 0.12, 0.3),      // the same, soft: portamento
         (64, 60, 3, 0.8, 0.012, 0.04),    // E4 down to C4 on the A string: a shift
     ];
+    let spec = &cello::INSTRUMENT;
+    let settings = PerformerSettings::for_instrument(spec);
+    let settings = PerformerSettings {
+        tuning: PerformerTuning {
+            wander_pressure: 0.0,
+            wander_speed: 0.0,
+            wander_beta: 0.0,
+            ear_range: 0.0,
+            ..settings.tuning
+        },
+        ..settings
+    };
     for (from, to, string, velocity, fastest, slowest) in cases {
-        let mut p = steady_performer();
+        let mut p = Performer::new(spec, settings, FS);
         p.note_on(from, 0.8);
         run(&mut p, 0.4);
         p.note_on(to, velocity);

@@ -596,6 +596,24 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
             .log(0.3, 100.0)
             .unit(" kg/s"),
         );
+        k.push(
+            Knob::new(
+                Bow,
+                "Hair width",
+                (
+                    "live.hair.width",
+                    Box::new(|t: &Tuning| t.live.hair.map_or(0.0, |h| h.width)),
+                    Box::new(|t: &mut Tuning, v| {
+                        if let Some(h) = &mut t.live.hair {
+                            h.width = v;
+                        }
+                    }),
+                ),
+            )
+            .range(0.0, 0.02)
+            .unit(" m")
+            .help("How much of the hair ribbon touches the string. Wider: darker at pp, a wider band."),
+        );
     }
 
     for i in 0..defaults.live.body.mode_count {

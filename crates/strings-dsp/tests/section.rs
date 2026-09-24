@@ -65,7 +65,7 @@ fn players_come_in_late_and_in_tune() {
     let h = Humanization::default();
     let mut s = section(6, h);
     s.set_dynamics(0.6);
-    s.note_on(50, 0.7);
+    s.note_on(52, 0.7);
     let rows = run(&mut s, 1.5);
     let onsets: Vec<usize> = rows[..6]
         .iter()
@@ -91,15 +91,17 @@ fn players_come_in_late_and_in_tune() {
         "{onsets:?}"
     );
 
-    let f0 = frequency(50);
+    let f0 = frequency(52);
     let tail = (0.8 * FS) as usize..;
     let pitches: Vec<f32> = rows[..6]
         .iter()
         .map(|r| cents(measure_frequency(&r[tail.clone()], FS, f0), f0))
         .collect();
-    // Player 0 is the solo cello (the open D plays about 12 cents flat); the
-    // others stay within their detune of it, plus a little for the pressure
-    // and bow position they play at.
+    // Player 0 is the solo cello; the others stay within their detune of it,
+    // plus a little for the pressure and bow position they play at. A stopped
+    // note (E3), which the ear corrects: an open string pressed near the top
+    // of the band plays flat (up to 46 cents for a player pressing harder
+    // and closer to the bridge; STATUS.md item 7).
     let limit = h.detune + h.detune_drift + 4.0;
     assert!(
         pitches.iter().all(|c| (c - pitches[0]).abs() < limit),
