@@ -115,6 +115,11 @@ pub struct InstrumentSpec {
     ///
     /// [`PerformerTuning::pp_attack`]: crate::PerformerTuning::pp_attack
     pub pp_attack: f32,
+    /// How far quiet strokes ease down the band once going
+    /// ([`PerformerTuning::quiet_ease`]).
+    ///
+    /// [`PerformerTuning::quiet_ease`]: crate::PerformerTuning::quiet_ease
+    pub quiet_ease: f32,
     /// Gain after the body, so every instrument plays at a similar level.
     pub output_gain: f32,
     /// Where a section of these sits on the stage.

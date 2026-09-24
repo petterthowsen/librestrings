@@ -137,6 +137,7 @@ impl PerformerSettings {
             oversampling: 2,
             tuning: PerformerTuning {
                 pp_attack: spec.pp_attack,
+                quiet_ease: spec.quiet_ease,
                 ..PerformerTuning::default()
             },
         }
@@ -172,6 +173,17 @@ pub struct PerformerTuning {
     /// attacks start cleanly only high in the band, and loud notes flatten
     /// less low in it.
     pub pressure_tilt: f32,
+    /// Once a quiet stroke is going, the bow eases this far down the band
+    /// (at dynamics 0, in proportion to 1 − dynamics, and fully only at the
+    /// pressure control's middle: flautando and scratch are the player's
+    /// choice), over about `ease_time`
+    /// after the attack. Players bow softly with a light bow, low in the
+    /// band, where the corner is rounder and the tone darker; the model's
+    /// attacks need the tilt's higher pressure, its sustained notes don't.
+    /// Per instrument ([`InstrumentSpec::quiet_ease`]); the default is the
+    /// cello's.
+    pub quiet_ease: f32,
+    pub ease_time: f32,
     /// Extra pressure (band position) at the start of a stroke off the string,
     /// at MIDI velocity 1 (scaled by velocity), fading out over
     /// `attack_bite_time`: the player's bite into the string.
@@ -268,6 +280,8 @@ impl Default for PerformerTuning {
             bow_change: 0.01,
             pp_attack: 1.6,
             pressure_tilt: 0.15,
+            quiet_ease: 0.5,
+            ease_time: 0.3,
             attack_bite: 0.2,
             attack_bite_time: 0.08,
             release: 0.15,
@@ -586,6 +600,9 @@ pub struct Performer {
     /// fades once the bow moves.
     stroke_bite: f32,
     stroke_bite_time: f32,
+    /// 1 while a stroke starts (or crosses to another string), easing to 0
+    /// once the bow is going: how much of `quiet_ease` is still held back.
+    settle: f32,
     /// A stroke waiting for its bow change: the attack (s) to start once the
     /// bow has stopped.
     pending_attack: Option<f32>,
@@ -671,6 +688,7 @@ impl Performer {
             stroke_velocity: 0.0,
             stroke_bite: 0.0,
             stroke_bite_time: 0.0,
+            settle: 1.0,
             pending_attack: None,
             direction: -1.0,
             velocity: Ramp::at(0.0),
@@ -800,6 +818,7 @@ impl Performer {
         self.phase_time = 0.0;
         self.stroke_bite = t.attack_bite * velocity;
         self.stroke_bite_time = t.attack_bite_time;
+        self.settle = 1.0;
         self.articulate(Articulation::BowChange);
     }
 
@@ -988,6 +1007,7 @@ impl Performer {
         self.quiet_bow_change = self.dynamics.target < QUIET;
         self.vibrato_age = 0.0;
         self.phase_time = 0.0;
+        self.settle = 1.0;
         let fs = self.fs;
         match self.bow_lift {
             BowLift::OffString => {
@@ -1417,6 +1437,8 @@ impl Performer {
                 self.contact[string].go(1.0, t.crossing, fs);
             }
             self.string = string;
+            // The new string starts as a stroke does.
+            self.settle = 1.0;
         } else {
             self.finger[string].go(semitones, place, fs);
         }
@@ -1592,8 +1614,16 @@ impl Performer {
         } else {
             lerp(s.pressure, scratch, 2.0 * c - 1.0)
         };
-        let pressure = (normal
-            + t.pressure_tilt * (1.0 - 2.0 * d)
+        // Eases down once the bow is going.
+        let going = self.phase == Phase::Sustain
+            && self.pending_attack.is_none()
+            && self.velocity.pos >= 1.0
+            && !self.ending;
+        if going {
+            self.settle *= (-dt / t.ease_time.max(1e-3)).exp();
+        }
+        let pressure = (normal + t.pressure_tilt * (1.0 - 2.0 * d)
+            - t.quiet_ease * (1.0 - self.settle) * (1.0 - d) * (1.0 - (2.0 * c - 1.0).abs())
             + t.wander_pressure * wander_pressure
             + bite)
             .clamp(flautando.min(0.0), scratch.max(1.0));

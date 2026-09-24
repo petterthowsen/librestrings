@@ -211,6 +211,24 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
             "The pressure sits this much higher in the band at dynamics 0 and as much lower \
                  at 1. Quiet attacks only start cleanly high in the band.",
         ),
+        Knob::new(
+            Sustain,
+            "Quiet ease",
+            field!(live.performer.tuning.quiet_ease),
+        )
+        .range(0.0, 1.0)
+        .help(
+            "Once a quiet stroke is going, the bow eases this far down the band (at \
+                 dynamics 0, less when louder): a lighter bow and a darker pp.",
+        ),
+        Knob::new(
+            Sustain,
+            "Ease time",
+            field!(live.performer.tuning.ease_time),
+        )
+        .log(0.05, 2.0)
+        .unit(" s")
+        .help("How long the quiet stroke takes to ease down after its attack."),
         Knob::new(Sustain, "Pressure, normal", field!(live.performer.pressure)).help(
             "Position in the Helmholtz band (0 its lower edge, 1 its upper) at the middle \
                  of the pressure control.",

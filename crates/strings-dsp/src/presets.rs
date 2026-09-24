@@ -185,6 +185,9 @@ pub mod violin {
         // Quiet attacks aren't slowed: far from the bridge, slow attacks hold
         // multiple slips (PLAN.md "Phase 5: the violin").
         pp_attack: 0.0,
+        // Not eased, as the viola: no recorded violin notes to justify it, and
+        // the wander test's E6 at ff went 10 cents sharp with it.
+        quiet_ease: 0.0,
         // Matched to the cello's median level on the example scales (the
         // violin strings' impedance is a third of the cello's); not yet by ear.
         output_gain: 0.5,
@@ -341,6 +344,9 @@ pub mod viola {
         tasto: 0.2,
         flautando: 0.3,
         pp_attack: 0.0,
+        // Not eased: at pp its low notes fell into multiple slips or lost
+        // their pitch (the seed sweep failed 14 checks).
+        quiet_ease: 0.0,
         // Matched to the cello's median level on the example scales; not yet
         // by ear.
         output_gain: 0.4,
@@ -633,6 +639,9 @@ pub mod cello {
         tasto: 0.0,
         flautando: crate::performer::PRESSURE_FLAUTANDO,
         pp_attack: 1.6,
+        // Quiet strokes ease down the band once going: a darker pp
+        // (PLAN.md "Soft, dark pp").
+        quiet_ease: 0.5,
         output_gain: 0.065,
         seat: Placement::CELLOS,
     };
@@ -842,6 +851,8 @@ pub mod bass {
         tasto: 0.0,
         flautando: crate::performer::PRESSURE_FLAUTANDO,
         pp_attack: 1.6,
+        // As the cello's.
+        quiet_ease: 0.5,
         // Matched to the cello's median level on the example scales; not yet
         // by ear.
         output_gain: 0.06,
