@@ -154,7 +154,7 @@ fn selection_row(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter
             InstrumentParam::name,
             130.0,
         )
-        .on_hover_text("Changing it cuts off what is sounding. Viola and double bass: Phase 5.");
+        .on_hover_text("Changing it cuts off what is sounding.");
         ui.add_space(12.0);
         ui.label("Players");
         players(ui, params, setter);

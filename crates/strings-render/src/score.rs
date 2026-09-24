@@ -8,7 +8,7 @@
 //! 0    bow on              # bow lift: on (stops on the string) | off (lifts, the default)
 //! 0    fingering mid       # nut | mid | bridge
 //! 0    string G            # play on this string where it can ("sul G"): a string's name
-//!                          # (cello: C G D A; violin: G D A E) or any
+//!                          # (violin: G D A E; viola, cello: C G D A; bass: E A D G) or any
 //! 0    poly on             # on: overlapping notes are double stops where they can be
 //! 0    pedal on            # sustain pedal: separate notes are détaché (a bow change)
 //! 0    stroke up           # the next stroke's direction (down | up); in a note, a bow change

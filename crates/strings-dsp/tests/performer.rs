@@ -3,7 +3,7 @@
 //! and the pressure range. The violin's range is checked the same way.
 
 use strings_dsp::analysis::{Regime, cents, classify, measure_frequency};
-use strings_dsp::presets::{cello, violin};
+use strings_dsp::presets::{bass, cello, viola, violin};
 use strings_dsp::{
     Articulation, BowLift, ContactState, Fingering, InstrumentSpec, Performer, PerformerFrame,
     PerformerSettings, PerformerTuning, Polyphony,
@@ -165,6 +165,31 @@ fn violin_notes_stay_helmholtz_while_the_bow_wanders() {
     check_range(&mut p, &VIOLIN_NOTES, 10.0);
 }
 
+/// The viola and the double bass, as the cello above.
+#[test]
+fn viola_notes_across_the_range_are_helmholtz_and_in_tune() {
+    check_range(&mut steady(&viola::INSTRUMENT), &VIOLA_NOTES, 5.0);
+}
+
+#[test]
+fn viola_notes_stay_helmholtz_while_the_bow_wanders() {
+    check_range(&mut wandering(&viola::INSTRUMENT), &VIOLA_NOTES, 10.0);
+}
+
+#[test]
+fn bass_notes_across_the_range_are_helmholtz_and_in_tune() {
+    check_range(&mut steady(&bass::INSTRUMENT), &BASS_NOTES, 5.0);
+}
+
+#[test]
+fn bass_notes_stay_helmholtz_while_the_bow_wanders() {
+    check_range(&mut wandering(&bass::INSTRUMENT), &BASS_NOTES, 10.0);
+}
+
+fn wandering(spec: &InstrumentSpec) -> Performer {
+    Performer::new(spec, PerformerSettings::for_instrument(spec), FS)
+}
+
 /// Across the range, the wander's randomness decides a few borderline attacks
 /// (the open G at pp most of all), so one seed says little. Over 24 seeds,
 /// failed checks may number at most 1% of the notes. Slow: run with `--release --ignored`.
@@ -178,6 +203,18 @@ fn notes_stay_helmholtz_across_wander_seeds() {
 #[ignore]
 fn violin_notes_stay_helmholtz_across_wander_seeds() {
     across_seeds(&violin::INSTRUMENT, &VIOLIN_NOTES);
+}
+
+#[test]
+#[ignore]
+fn viola_notes_stay_helmholtz_across_wander_seeds() {
+    across_seeds(&viola::INSTRUMENT, &VIOLA_NOTES);
+}
+
+#[test]
+#[ignore]
+fn bass_notes_stay_helmholtz_across_wander_seeds() {
+    across_seeds(&bass::INSTRUMENT, &BASS_NOTES);
 }
 
 fn across_seeds(spec: &InstrumentSpec, notes: &[(u8, Option<usize>)]) {
@@ -251,10 +288,52 @@ const VIOLIN_NOTES: [(u8, Option<usize>); 16] = [
     (88, Some(2)),
 ];
 
+/// The viola's: the cello's notes an octave up (the same tuning).
+const VIOLA_NOTES: [(u8, Option<usize>); 16] = {
+    let mut notes = RANGE_NOTES;
+    let mut i = 0;
+    while i < notes.len() {
+        notes[i].0 += 12;
+        i += 1;
+    }
+    notes
+};
+
+/// The double bass's: its range from the open E1 to G4 (two octaves up the
+/// G string), then high positions as bassists play them: up to an octave on
+/// the E string, 17 semitones on the A, and thumb position on the D, 19 and
+/// 24 up. (18–23 up the E string the bow's distance from the bridge puts it
+/// near the middle of the string, and those notes hold multiple slips.)
+const BASS_NOTES: [(u8, Option<usize>); 16] = [
+    (28, None),
+    (31, None),
+    (35, None),
+    (38, None),
+    (42, None),
+    (45, None),
+    (50, None),
+    (55, None),
+    (62, None),
+    (67, None),
+    (35, Some(0)),
+    (40, Some(0)),
+    (45, Some(1)),
+    (50, Some(1)),
+    (57, Some(2)),
+    (62, Some(2)),
+];
+
+/// Open strings can't be intonated, and the bowed string flattens with bow
+/// force: they may be this far off (cents). The bass's open E plays 20–25
+/// cents flat at mf–ff, the other instruments' open strings 6–14.
+fn open_tolerance(spec: &InstrumentSpec) -> f32 {
+    if spec.name == "bass" { 30.0 } else { 20.0 }
+}
+
 /// Plays notes across the range at three dynamics and lists every one that
 /// isn't Helmholtz, settles later than 180 ms (a mid-velocity attack at mf
 /// takes about 150 ms to reach full speed) or misses its pitch (open strings
-/// may be 20 cents flat).
+/// by more than [`open_tolerance`]).
 fn range_failures(
     p: &mut Performer,
     notes: &[(u8, Option<usize>)],
@@ -286,7 +365,11 @@ fn range_failures(
             let err = cents(measure_frequency(&bridge, FS, target), target);
             let played = &p.instrument().spec().strings[frames.last().unwrap().string];
             let open = cents(played.frequency, target).abs() < 1.0;
-            let tolerance = if open { 20.0 } else { stopped_tolerance };
+            let tolerance = if open {
+                open_tolerance(p.instrument().spec())
+            } else {
+                stopped_tolerance
+            };
             if err.abs() >= tolerance {
                 failures.push(format!("{what}: {err:.1} cents"));
             }

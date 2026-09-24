@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-LibreStrings: a free, physically modeled bowed-string synthesizer in Rust (cello and violin so far): a DSP library, an offline renderer, and a CLAP plugin (nih-plug, egui editor). [PLAN.md](PLAN.md) is the roadmap and design reference; read the relevant section before changing DSP.
+LibreStrings: a free, physically modeled bowed-string synthesizer in Rust (violin, viola, cello and double bass): a DSP library, an offline renderer, and a CLAP plugin (nih-plug, egui editor). [PLAN.md](PLAN.md) is the roadmap and design reference; read the relevant section before changing DSP.
 
 ## Commands
 
@@ -10,9 +10,10 @@ cargo clippy --all-targets                   # must be clean
 cargo fmt
 cargo run --release -p strings-render -- play scale -o out/scale.wav   # solo cello: scale | legato | staccato | phrase | doublestops | ostinato | sul | file.score (--players N: a section on the stage, stereo; --stage for a solo)
 cargo run --release -p strings-render -- play violin-scale --instrument violin -o out/violin-scale.wav   # violin: violin-scale | -legato | -staccato | -phrase | -doublestops | -ostinato | -sul | -tasto
+cargo run --release -p strings-render -- play viola-scale --instrument viola -o out/viola-scale.wav      # viola-*: the same set (the cello's scores an octave up); bass-* with --instrument bass (no tasto)
 cargo run --release -p strings-render -- bow --string A -o out/a.wav
-cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument cello for cello strings)
-cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate (--instrument violin)
+cargo run --release -p strings-render -- schelleng --string A   # playability map (--instrument viola | cello | bass for their strings)
+cargo run --release -p strings-render -- calibrate --sample-rate 96000   # cello force band (ForceLimits), at the strings' 2x rate (--instrument violin | viola | bass)
 cargo run --release -p strings-render -- measured              # vs measured cello string (needs scripts/fetch-reference-data.sh)
 cargo run --release -p strings-render -- compare --dynamics mf --string G   # vs recorded cello notes (fetch-reference-data.sh iowa-cello; all: ~4 min)
 cargo run --release -p strings-render -- compare --string C --bridge    # the same on the strings' bridge force (before the body)
@@ -50,8 +51,10 @@ Renders go in `out/` (gitignored).
 - The bridge loss lowpass at 0.5 (at 48 kHz) is needed for a clean Helmholtz band at 48 kHz; brighter settings fragment the slip phase.
 - A rigid bow stopped on the string damps it slowly, and bow hair doesn't change that much. Notes stop cleanly because the performer eases the force with the bow speed (PLAN.md "Phase 2 notes"). Keep that coupling when changing strokes.
 - Bow hair (`BowHair`) is off by default, so the Phase 1 violin strings (physics tests, `schelleng --instrument violin`) and the reference results stay unchanged. The cello and violin instruments turn it on, with the same parameters, fitted to the measured cello map; without it the violin's G string barely plays Helmholtz motion.
-- Per-instrument performer values (`beta`, `tasto`, `flautando`, `pp_attack`, `output_gain`) and a section's seat live in `InstrumentSpec`; build performers with `PerformerSettings::for_instrument(spec)`. `PerformerSettings::default()` is the cello's.
-- After changing the violin's strings, bow or friction, re-run `calibrate --instrument violin --sample-rate 96000` into `presets::violin::FORCE_LIMITS` and the violin seed sweep (`violin_notes_stay_helmholtz_across_wander_seeds`).
+- Per-instrument performer values (`beta`, `speed`, `bow_distance`, `tasto`, `flautando`, `pp_attack`, `output_gain`) and a section's seat live in `InstrumentSpec`; build performers with `PerformerSettings::for_instrument(spec)`. `PerformerSettings::default()` is the cello's.
+- After changing the violin's, viola's or bass's strings, bow or friction, re-run `calibrate --instrument <name> --sample-rate 96000` into that preset's `FORCE_LIMITS` and its seed sweep (`violin_`, `viola_` or `bass_notes_stay_helmholtz_across_wander_seeds`).
+- The viola is built like the violin (one-pole strings, no stiffness or torsion), the bass like the cello (damping curve, stiffness, torsion); both use the cello's bow hair. The bass's E string has a narrow Helmholtz band whatever its string physics or hair (PLAN.md "Phase 5: viola and double bass"), and the bass bows slower (0.3 m/s at ff) and farther from the bridge (0.032 m per kg/s) because high positions fail otherwise. Its open E plays 20–25 cents flat at mf–ff; the range checks allow it 30.
+- Keyswitches sit at the highest C that keeps C, D, E and F below the instrument's lowest note (the bass's are C0–F0). Telemetry stores the instrument as its position in `InstrumentParam::ALL`, which lists them high to low, not in declaration order.
 - The cello strings play flat at β ≈ 0.124–0.156 (a torsion effect), so the performer's β range stays below 0.115. Bowed pitch also drifts with force; the performer intonates stopped notes by ear (slip-period feedback), which is deliberate, not a tuning bug.
 - After changing the strings, bow or friction of the cello, re-run `calibrate --sample-rate 96000` and paste its limits into `presets::cello::FORCE_LIMITS`. Then run the seed sweep (`cargo test --release -p strings-dsp --test performer across_wander_seeds -- --ignored --nocapture`): one seed passing says little about attacks.
 - The strings run at 2× the sample rate by default (`PerformerSettings::oversampling`, `Instrument::new`); the body stays at the sample rate. At 1× high notes lock onto whole-sample periods (C5 steps by 5–20 cents). Fit string designs at `Instrument::string_sample_rate`, not the host rate.

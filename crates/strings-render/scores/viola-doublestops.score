@@ -1,0 +1,23 @@
+# Viola: notes held together are bowed together on adjacent strings.
+# A moving line over a held open D, then sustained and short chords.
+tempo 60
+0 poly on
+0 dyn 0.5
+0 vib 0.5
+0 on D4 70              # open D, held under the line on the A string
+0 note A4 1.05 70
+1 note B4 1.05 70
+2 note C#5 1.05 70
+3 note D5 1.9 80
+3 off D4
+5 note G3 1.9 70        # a sixth: open G, E4 on the D string
+5 note E4 1.9 70
+7 note A3 1.9 70        # a third: A3 on the C string, C4 on the G string
+7 note C4 1.9 70
+9 bow on
+9 note G3 0.2 90        # short chords on the string: both notes in one stroke
+9 note D4 0.2 90
+9.5 note G3 0.2 90
+9.5 note D4 0.2 90
+10 note C4 0.2 90
+10 note G4 0.2 90

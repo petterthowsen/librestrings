@@ -52,3 +52,13 @@ Papers the model takes numbers or methods from, and what was used from each. Dat
 ## Violin body (Phase 5)
 
 - **J. Woodhouse, [euphonics.org](https://euphonics.org/5-3-signature-modes-and-formants/) §5.3, Fig. 5:** the signature modes of one violin: A0 272 Hz, CBR 407 Hz, B1− 462 Hz, B1+ 551 Hz; the bridge hill peaks around 2.3 kHz. No damping values. Used for: the listed modes and the bridge hill of `presets::violin::BODY`.
+
+## Viola (Phase 5)
+
+- **H. Jóhannsson, [Acoustics](https://hansjohannsson.com/rapidweaver%20export/rapidweaver%20export/ac.php)** (a maker's notes): in the viola the main air resonances are at 230 Hz and 330–360 Hz, the main body resonances around 350 and 440 Hz. Used for: A0 and the B1 modes of `presets::viola::BODY`. A maker's measurements, not a paper; the CBR mode and the bridge hill are scaled from the violin's.
+- **Viola string tensions:** [Larsen Original viola](https://larsenstrings.com/original-viola/), medium: A 8.0 kg, D, G and C 4.9 kg each, at Larsen's 370 mm. Used for: `presets::viola::STRINGS`.
+
+## Double bass (Phase 5)
+
+- **A. W. Brown, [Acoustical studies on the flat-backed and round-backed double bass](https://awbmusic.com/wp-content/uploads/2021/06/2004_Acoustical_Studies_on_the_Flat_backed_and_Round_backed_Double_Bass.pdf)** (dissertation, mdw Vienna, 2004), 6.2: on four basses, A0 near 65–67 Hz, the coupled T1/A1 at 115 Hz among the strongest radiators, A2 at 150–158 Hz, and radiation falling steeply above 1 kHz. Used for: the listed modes and the dense modes' rolloff of `presets::bass::BODY`. No damping values; no bridge resonance.
+- **Bass string tensions:** Thomastik Spirocore Orchestra, medium (Mittel), on a 3/4 bass at 106 cm: G 67.2, D 68.3, A 70.5, E 72.8 lb (as quoted on [TalkBass](https://www.talkbass.com/threads/string-tension-chart.227249/page-3) from Thomastik's chart; some shops list the same numbers as kg, which would be about twice a bass string's tension). Used for: `presets::bass::STRINGS`.

@@ -255,8 +255,8 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
             .unit(" β")
             .help(
                 "Distance from the bridge as a fraction of the vibrating length. Above about \
-                 0.12 the model's cello strings play flat (STATUS.md); the violin's don't, \
-                 but its attacks at pp start slowly above about 0.16.",
+                 0.12 the model's cello strings play flat (STATUS.md); the violin's and \
+                 viola's don't, but their attacks at pp start slowly above about 0.16.",
             ),
         Knob::new(Sustain, "Bow position at ff", field!(live.performer.beta.1))
             .range(0.03, 0.2)
@@ -785,7 +785,7 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
             .help("Each player's body mode damping, up to this fraction either way."),
     ]);
     // The strings' own physics, where the instrument's strings have it (the
-    // violin's have a one-pole loss and neither stiffness nor torsion).
+    // violin's and viola's have a one-pole loss and neither stiffness nor torsion).
     let string = &spec.strings[0];
     if matches!(string.loss, Loss::Measured(_)) {
         k.extend([
@@ -818,9 +818,12 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
                 "Bending stiffness",
                 field!(strings.bending_stiffness),
             )
-            .log(1e-6, 2e-3)
+            .log(1e-6, 2e-2)
             .unit(" N·m²")
-            .help("EI of the string: its inharmonicity. Measured on the G string: 3.03e-4."),
+            .help(
+                "EI of the string: its inharmonicity. Measured on the cello's G string: \
+                 3.03e-4; the bass's 5e-3 is an estimate.",
+            ),
         );
     }
     if string.torsion.is_some() {

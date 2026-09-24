@@ -178,6 +178,23 @@ impl Placement {
         depth: 3.0,
     };
 
+    /// The violas at the centre, between the violins and the cellos (the
+    /// "American" seating, as for [`Self::CELLOS`]).
+    pub const VIOLAS: Self = Self {
+        x: 0.5,
+        y: 2.5,
+        width: 3.5,
+        depth: 3.0,
+    };
+
+    /// The basses behind the cellos, on the audience's right.
+    pub const BASSES: Self = Self {
+        x: 4.5,
+        y: 5.5,
+        width: 3.0,
+        depth: 2.0,
+    };
+
     /// Where a section of `spec` sits.
     pub fn for_instrument(spec: &crate::InstrumentSpec) -> Self {
         spec.seat

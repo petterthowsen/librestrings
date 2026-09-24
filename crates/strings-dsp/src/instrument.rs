@@ -61,6 +61,15 @@ pub struct InstrumentSpec {
     ///
     /// [`PerformerSettings::beta`]: crate::PerformerSettings::beta
     pub beta: (f32, f32),
+    /// Bow speed (m/s) at dynamics 0 and 1 ([`PerformerSettings::speed`]).
+    ///
+    /// [`PerformerSettings::speed`]: crate::PerformerSettings::speed
+    pub speed: (f32, f32),
+    /// The bow's closest distance to the bridge per unit of string impedance
+    /// (m per kg/s; [`PerformerSettings::bow_distance`]).
+    ///
+    /// [`PerformerSettings::bow_distance`]: crate::PerformerSettings::bow_distance
+    pub bow_distance: f32,
     /// The flautando end of the pressure control: the bow position it moves
     /// toward (sul tasto; 0 keeps the dynamics' position) and the band
     /// position ([`PerformerSettings::tasto`] and `pressure_range`).

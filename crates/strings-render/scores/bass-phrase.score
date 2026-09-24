@@ -1,0 +1,19 @@
+# Bass: a short mixed phrase: legato opening, détaché, staccato close (bow on the string).
+tempo 72
+0 dyn 0.45
+0 vib 0.6
+0 note A1 1.05 60
+1 note E2 1.05 60
+2 note C#3 1.55 75
+2 dyn 0.65
+3.5 note B2 0.55 75
+4 note A2 2 70
+4 dyn 0.45
+6 note F#2 0.9 80
+7 note D2 0.9 80
+8 note E2 0.9 80
+9 bow on
+9 note A1 0.15 100
+9.5 note C#2 0.15 90
+10 note E2 0.15 90
+10.5 note A2 0.15 110

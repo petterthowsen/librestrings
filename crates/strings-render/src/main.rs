@@ -12,7 +12,7 @@ mod compare;
 mod measured;
 mod score;
 use strings_dsp::analysis::{Regime, bow_steady, classify, classify_bridge_force};
-use strings_dsp::presets::{cello, reference, violin};
+use strings_dsp::presets::{bass, cello, reference, viola, violin};
 use strings_dsp::{
     Absorption, BowHair, BowInput, BowedString, DampingCurve, Fingering, FrictionParams,
     Humanization, InstrumentSpec, Loss, MAX_PLAYERS, Performer, PerformerSettings, Placement,
@@ -68,7 +68,7 @@ enum Command {
     Schelleng {
         #[arg(long, default_value = "violin")]
         instrument: Family,
-        /// Open string to bow (violin: G D A E; cello: C G D A).
+        /// Open string to bow (violin: G D A E; viola and cello: C G D A; bass: E A D G).
         #[arg(long, default_value = "A")]
         string: String,
         #[arg(long, default_value_t = 48_000.0)]
@@ -85,9 +85,8 @@ enum Command {
     },
     /// Play a score through the performer and body. SCORE is a file (format in
     /// score.rs) or a built-in: scale, legato, staccato, phrase, doublestops,
-    /// ostinato, sul (cello), or violin-scale, violin-legato, violin-staccato,
-    /// violin-phrase, violin-doublestops, violin-ostinato, violin-sul,
-    /// violin-tasto.
+    /// ostinato, sul (cello), and the same prefixed violin-, viola- or bass-
+    /// for the others (violin-tasto and viola-tasto too).
     Play {
         score: String,
         #[arg(long, default_value = "cello")]
@@ -251,7 +250,7 @@ enum Command {
 struct Common {
     #[arg(long, default_value = "violin")]
     instrument: Family,
-    /// Open string (violin: G D A E; cello: C G D A).
+    /// Open string (violin: G D A E; viola and cello: C G D A; bass: E A D G).
     #[arg(long, default_value = "A")]
     string: String,
     /// Semitones above the open string (stopped note).
@@ -266,17 +265,60 @@ struct Common {
     out: PathBuf,
 }
 
+/// The built-in scores, by name (`play SCORE`).
+macro_rules! score {
+    ($name:literal) => {
+        ($name, include_str!(concat!("../scores/", $name, ".score")))
+    };
+}
+const SCORES: [(&str, &str); 30] = [
+    score!("scale"),
+    score!("legato"),
+    score!("staccato"),
+    score!("phrase"),
+    score!("doublestops"),
+    score!("ostinato"),
+    score!("sul"),
+    score!("violin-scale"),
+    score!("violin-legato"),
+    score!("violin-staccato"),
+    score!("violin-phrase"),
+    score!("violin-doublestops"),
+    score!("violin-ostinato"),
+    score!("violin-sul"),
+    score!("violin-tasto"),
+    score!("viola-scale"),
+    score!("viola-legato"),
+    score!("viola-staccato"),
+    score!("viola-phrase"),
+    score!("viola-doublestops"),
+    score!("viola-ostinato"),
+    score!("viola-sul"),
+    score!("viola-tasto"),
+    score!("bass-scale"),
+    score!("bass-legato"),
+    score!("bass-staccato"),
+    score!("bass-phrase"),
+    score!("bass-doublestops"),
+    score!("bass-ostinato"),
+    score!("bass-sul"),
+];
+
 #[derive(Clone, Copy, clap::ValueEnum)]
 enum Family {
     Violin,
+    Viola,
     Cello,
+    Bass,
 }
 
 impl Family {
     fn instrument(self) -> &'static InstrumentSpec {
         match self {
             Family::Violin => &violin::INSTRUMENT,
+            Family::Viola => &viola::INSTRUMENT,
             Family::Cello => &cello::INSTRUMENT,
+            Family::Bass => &bass::INSTRUMENT,
         }
     }
 }
@@ -286,7 +328,9 @@ fn open_string(family: Family, name: &str) -> Result<(StringSpec, Option<BowHair
     let found = match family {
         // The Phase 1 reference map: a rigid bow (the instrument has hair).
         Family::Violin => violin::string(name).map(|s| (*s, None)),
+        Family::Viola => viola::string_named(name).map(|s| (*s, viola::INSTRUMENT.hair)),
         Family::Cello => cello::string_named(name).map(|s| (*s, cello::INSTRUMENT.hair)),
+        Family::Bass => bass::string_named(name).map(|s| (*s, bass::INSTRUMENT.hair)),
     };
     found.ok_or_else(|| format!("unknown string {name}"))
 }
@@ -381,25 +425,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             out,
             bridge_out,
         } => {
-            let text = match score.as_str() {
-                "scale" => include_str!("../scores/scale.score").to_string(),
-                "legato" => include_str!("../scores/legato.score").to_string(),
-                "staccato" => include_str!("../scores/staccato.score").to_string(),
-                "phrase" => include_str!("../scores/phrase.score").to_string(),
-                "doublestops" => include_str!("../scores/doublestops.score").to_string(),
-                "ostinato" => include_str!("../scores/ostinato.score").to_string(),
-                "sul" => include_str!("../scores/sul.score").to_string(),
-                "violin-scale" => include_str!("../scores/violin-scale.score").to_string(),
-                "violin-legato" => include_str!("../scores/violin-legato.score").to_string(),
-                "violin-staccato" => include_str!("../scores/violin-staccato.score").to_string(),
-                "violin-phrase" => include_str!("../scores/violin-phrase.score").to_string(),
-                "violin-doublestops" => {
-                    include_str!("../scores/violin-doublestops.score").to_string()
-                }
-                "violin-ostinato" => include_str!("../scores/violin-ostinato.score").to_string(),
-                "violin-sul" => include_str!("../scores/violin-sul.score").to_string(),
-                "violin-tasto" => include_str!("../scores/violin-tasto.score").to_string(),
-                path => std::fs::read_to_string(path)?,
+            let text = match SCORES.iter().find(|(name, _)| *name == score) {
+                Some((_, text)) => text.to_string(),
+                None => std::fs::read_to_string(&score)?,
             };
             let spec = instrument.instrument();
             let mut events = score::parse(&text, spec.strings.map(|s| s.name))?;

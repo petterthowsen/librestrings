@@ -1,4 +1,4 @@
-//! The cello or violin, solo or as a section, as a CLAP plugin (PLAN.md
+//! The violin, viola, cello or double bass, solo or as a section, as a CLAP plugin (PLAN.md
 //! Phase 3, docs/SECTIONS.md A5).
 //!
 //! The plugin is a thin layer over a [`Section`] of players on a [`Stage`]:
@@ -56,12 +56,13 @@ pub fn midi_note(frequency: f32) -> u8 {
     (69.0 + 12.0 * (frequency / 440.0).log2()).round() as u8
 }
 
-/// The first keyswitch: the first C below the instrument's lowest note
-/// (cello: C1, violin: C3). The white keys from there set the bow lift (C
-/// and D) and the bow direction (E and F).
+/// The first keyswitch: the highest C that keeps all four keyswitches below
+/// the instrument's lowest note (violin: C3, viola: C2, cello: C1, bass: C0,
+/// below its open E1). The white keys from there set the bow lift (C and D)
+/// and the bow direction (E and F).
 pub fn keyswitch_base(spec: &InstrumentSpec) -> u8 {
     let lowest = midi_note(spec.strings[0].frequency);
-    (lowest - 1) / 12 * 12
+    (lowest - 6) / 12 * 12
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -488,7 +489,7 @@ impl Engine {
 
         t.ready.store(true, Relaxed);
         t.engine.store(self.id, Relaxed);
-        t.instrument.store(self.instrument as u32, Relaxed);
+        t.instrument.store(self.instrument.index() as u32, Relaxed);
         t.strings_generation.store(self.strings_generation, Relaxed);
         t.sample_rate.store(self.sample_rate, Relaxed);
         t.string_rate
@@ -729,7 +730,7 @@ impl ClapPlugin for Strings {
     // whole plugin; the instrument is a choice inside it, not part of the ID.
     const CLAP_ID: &'static str = "io.github.petterthowsen.librestrings";
     const CLAP_DESCRIPTION: Option<&'static str> =
-        Some("Physically modeled bowed strings: cello and violin");
+        Some("Physically modeled bowed strings: violin, viola, cello and double bass");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> =
         Some("https://github.com/petterthowsen/librestrings/issues");
@@ -822,6 +823,21 @@ mod tests {
         );
         assert_eq!(keyswitch(violin, 52), Some(Keyswitch::Bow(1.0)));
         assert_eq!(keyswitch(violin, 55), None);
+    }
+
+    /// Every instrument's keyswitches sit below its lowest note: the bass's
+    /// E and F keyswitches would otherwise be its open E1 and F1.
+    #[test]
+    fn keyswitches_stay_below_every_instrument() {
+        let bases = InstrumentParam::ALL.map(|i| keyswitch_base(i.spec()));
+        assert_eq!(bases, [48, 36, 24, 12]);
+        for instrument in InstrumentParam::ALL {
+            let spec = instrument.spec();
+            let lowest = midi_note(spec.strings[0].frequency);
+            for note in lowest..=lowest + 36 {
+                assert_eq!(keyswitch(spec, note), None, "{}", instrument.name());
+            }
+        }
     }
 
     #[test]

@@ -1,0 +1,23 @@
+# Bass: notes held together are bowed together on adjacent strings.
+# A line on the G string over a held open D, then sustained and short chords.
+tempo 60
+0 poly on
+0 dyn 0.5
+0 vib 0.5
+0 on D2 70              # open D, held under the line on the G string
+0 note G2 1.05 70
+1 note A2 1.05 70
+2 note B2 1.05 70
+3 note A2 1.9 80
+3 off D2
+5 note A1 1.9 70        # a sixth: open A, F#2 on the D string
+5 note F#2 1.9 70
+7 note E1 1.9 70        # a fifth: open E, B1 on the A string
+7 note B1 1.9 70
+9 bow on
+9 note A1 0.2 90        # short chords on the string: both notes in one stroke
+9 note E2 0.2 90
+9.5 note A1 0.2 90
+9.5 note E2 0.2 90
+10 note E1 0.2 90
+10 note B1 0.2 90

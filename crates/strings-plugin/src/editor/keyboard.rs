@@ -45,8 +45,8 @@ const RELEASE_DEBOUNCE: f64 = 0.02;
 
 /// Transpose range in octaves around C3.
 const TRANSPOSE: (i32, i32) = (-2, 3);
-/// Range of the on-screen keyboard: five octaves from the keyswitches (cello
-/// C1–C6, violin C3–C8).
+/// Range of the on-screen keyboard: five octaves from the keyswitches (violin
+/// C3–C8, viola C2–C7, cello C1–C6, bass C0–C5).
 fn range(spec: &InstrumentSpec) -> (u8, u8) {
     let lowest = keyswitch_base(spec);
     (lowest, lowest + 60)

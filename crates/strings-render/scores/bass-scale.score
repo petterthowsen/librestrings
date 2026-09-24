@@ -1,0 +1,33 @@
+# Bass: two-octave E major scale, détaché, up and down, then a long open E.
+tempo 72
+0 dyn 0.5
+0 vib 0.5
+0 note E1 0.95 70
+1 note F#1 0.95 70
+2 note G#1 0.95 70
+3 note A1 0.95 70
+4 note B1 0.95 70
+5 note C#2 0.95 70
+6 note D#2 0.95 70
+7 note E2 0.95 70
+8 note F#2 0.95 70
+9 note G#2 0.95 70
+10 note A2 0.95 70
+11 note B2 0.95 70
+12 note C#3 0.95 70
+13 note D#3 0.95 70
+14 note E3 1.95 80
+16 note D#3 0.95 70
+17 note C#3 0.95 70
+18 note B2 0.95 70
+19 note A2 0.95 70
+20 note G#2 0.95 70
+21 note F#2 0.95 70
+22 note E2 0.95 70
+23 note D#2 0.95 70
+24 note C#2 0.95 70
+25 note B1 0.95 70
+26 note A1 0.95 70
+27 note G#1 0.95 70
+28 note F#1 0.95 70
+29 note E1 3 70

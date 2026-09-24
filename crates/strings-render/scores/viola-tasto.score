@@ -1,0 +1,21 @@
+# Viola: a quiet line played twice, first with normal pressure, then at
+# flautando (pressure 0), where the bow moves toward the fingerboard (sul tasto)
+# and lightens. Legato opening, then détaché.
+tempo 66
+0 dyn 0.3
+0 vib 0.5
+0 note G4 1.05 50
+1 note B4 1.05 50
+2 note D5 2 55
+4 note C5 0.95 60
+5 note A4 0.95 60
+6 note F#4 0.95 60
+7 note G4 2 50
+10 pressure 0
+10 note G4 1.05 50
+11 note B4 1.05 50
+12 note D5 2 55
+14 note C5 0.95 60
+15 note A4 0.95 60
+16 note F#4 0.95 60
+17 note G4 2 50

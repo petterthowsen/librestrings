@@ -75,17 +75,17 @@ impl Default for Humanization {
     /// Tuned by ear in Bitwig (September 2026), from first guesses.
     fn default() -> Self {
         Self {
-            detune: 7.0,
-            detune_drift: 4.0,
+            detune: 0.0,
+            detune_drift: 7.0,
             detune_time: 2.0,
-            delay: 0.025,
+            delay: 0.01,
             jitter: 0.008,
             vibrato_rate: 0.17,
             vibrato_depth: 0.25,
-            dynamics: 0.1,
-            beta: 0.12,
-            pressure: 0.12,
-            timing: 0.29,
+            dynamics: 0.2,
+            beta: 0.3,
+            pressure: 0.3,
+            timing: 0.1,
             body_frequency: 0.03,
             body_damping: 0.15,
         }

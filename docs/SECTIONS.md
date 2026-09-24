@@ -48,7 +48,7 @@ At 4.8% of real time per cello, 12 players would cost about 58% of a core, and P
   - [x] bow wander seed (`Performer::reseed`)
 - [x] Solo stays a section of 1 with no humanization: player 0 has none, and `one_player_is_the_solo_performer` checks it sample for sample. The solo `play phrase` render and the Schelleng map are bit-identical to before.
 - [x] Real-time test: `a_section_never_allocates` (size changes, retuning, "all notes off" with notes waiting).
-- [x] Tune the `Humanization` defaults by ear: its spreads are in the plugin's tuning window ("Section"), and "Copy changes" gives the values for `Humanization::default`. Tuned in Bitwig (September 2026): detune ±7 cents with ±4 cents of drift over about 2 s, vibrato rate ±17%, dynamics ±0.1, pressure ±0.12, timing ±29%.
+- [x] Tune the `Humanization` defaults by ear: its spreads are in the plugin's tuning window ("Section"), and "Copy changes" gives the values for `Humanization::default`. Tuned in Bitwig (September 2026): detune ±7 cents with ±4 cents of drift over about 2 s, vibrato rate ±17%, dynamics ±0.1, pressure ±0.12, timing ±29%. Retuned later that month: no fixed detune, only ±7 cents of drift; entries up to 10 ms late (25); dynamics ±0.2, bow position +30% (12%), pressure ±0.3 (0.12), timing ±10% (29%).
 
 Renders (`strings-render play <score> --players N`, mono, no placement yet): `phrase-{1,4,8,12}.wav`, `legato-{1,4,8,12}.wav`, and 8 players at 1× and 2× on `phrase` and `scale` (`phrase-8-1x.wav` …) for the oversampling decision (A1). Rendering cost: 12 players at 33% of real time on `phrase` and 43% on `legato`, where more strings ring on.
 
@@ -124,4 +124,4 @@ Renders (`out/ab-stage/`, stereo): `phrase-solo-front` (a solo at the centre fro
 
 - Divisi (a section split across the notes of a chord), after mono sections work (PLAN.md §5). Until then, a double stop in a section is played by every player.
 - Bow changes at different times on long held notes (free bowing) need automatic bow changes (PLAN.md 4.5).
-- Violin, viola and bass sections come with those instruments (Phase 5). The violin is in: its sections play through the same engine (`play violin-phrase --instrument violin --players 8`), seated by default on the audience's left (`Placement::VIOLINS`, renderer only; the plugin's stage position is a parameter). Its humanization is the cello's.
+- Violin, viola and bass sections come with those instruments (Phase 5). All four are in; the viola and bass are seated by default at the centre (`Placement::VIOLAS`) and behind the cellos (`Placement::BASSES`), renderer only, with the cello's humanization. The violin was first: its sections play through the same engine (`play violin-phrase --instrument violin --players 8`), seated by default on the audience's left (`Placement::VIOLINS`, renderer only; the plugin's stage position is a parameter). Its humanization is the cello's.

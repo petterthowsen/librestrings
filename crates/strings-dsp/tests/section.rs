@@ -97,8 +97,14 @@ fn players_come_in_late_and_in_tune() {
         .iter()
         .map(|r| cents(measure_frequency(&r[tail.clone()], FS, f0), f0))
         .collect();
-    let limit = h.detune + h.detune_drift + 12.0;
-    assert!(pitches.iter().all(|c| c.abs() < limit), "{pitches:?}");
+    // Player 0 is the solo cello (the open D plays about 12 cents flat); the
+    // others stay within their detune of it, plus a little for the pressure
+    // and bow position they play at.
+    let limit = h.detune + h.detune_drift + 4.0;
+    assert!(
+        pitches.iter().all(|c| (c - pitches[0]).abs() < limit),
+        "{pitches:?}"
+    );
     // Not all the same pitch: the detune is heard.
     let spread = pitches.iter().cloned().fold(f32::MIN, f32::max)
         - pitches.iter().cloned().fold(f32::MAX, f32::min);

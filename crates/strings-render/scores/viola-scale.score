@@ -1,0 +1,33 @@
+# Viola: two-octave C major scale, détaché, up and down, then a long open C.
+tempo 80
+0 dyn 0.5
+0 vib 0.6
+0 note C3 0.95 70
+1 note D3 0.95 70
+2 note E3 0.95 70
+3 note F3 0.95 70
+4 note G3 0.95 70
+5 note A3 0.95 70
+6 note B3 0.95 70
+7 note C4 0.95 70
+8 note D4 0.95 70
+9 note E4 0.95 70
+10 note F4 0.95 70
+11 note G4 0.95 70
+12 note A4 0.95 70
+13 note B4 0.95 70
+14 note C5 1.95 80
+16 note B4 0.95 70
+17 note A4 0.95 70
+18 note G4 0.95 70
+19 note F4 0.95 70
+20 note E4 0.95 70
+21 note D4 0.95 70
+22 note C4 0.95 70
+23 note B3 0.95 70
+24 note A3 0.95 70
+25 note G3 0.95 70
+26 note F3 0.95 70
+27 note E3 0.95 70
+28 note D3 0.95 70
+29 note C3 3 70

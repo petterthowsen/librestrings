@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32};
 
 use nih_plug::prelude::*;
 use nih_plug_egui::EguiState;
-use strings_dsp::presets::{cello, violin};
+use strings_dsp::presets::{bass, cello, viola, violin};
 use strings_dsp::{
     Absorption, BowLift, Fingering, InstrumentSpec, MAX_PLAYERS, Polyphony, RoomPreset,
 };
@@ -24,15 +24,28 @@ pub enum InstrumentParam {
     Cello,
     #[id = "violin"]
     Violin,
+    #[id = "viola"]
+    Viola,
+    #[id = "bass"]
+    #[name = "Double bass"]
+    Bass,
 }
 
 impl InstrumentParam {
-    pub const ALL: [Self; 2] = [Self::Cello, Self::Violin];
+    /// Highest first, as in a score.
+    pub const ALL: [Self; 4] = [Self::Violin, Self::Viola, Self::Cello, Self::Bass];
+
+    /// Where it is in [`Self::ALL`] (the telemetry's index).
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|&i| i == self).unwrap_or(0)
+    }
 
     pub fn name(self) -> &'static str {
         match self {
             Self::Cello => "Cello",
             Self::Violin => "Violin",
+            Self::Viola => "Viola",
+            Self::Bass => "Double bass",
         }
     }
 
@@ -40,6 +53,8 @@ impl InstrumentParam {
         match self {
             Self::Cello => &cello::INSTRUMENT,
             Self::Violin => &violin::INSTRUMENT,
+            Self::Viola => &viola::INSTRUMENT,
+            Self::Bass => &bass::INSTRUMENT,
         }
     }
 }

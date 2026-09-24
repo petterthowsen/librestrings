@@ -50,7 +50,7 @@ cargo xtask install
 
 `cargo xtask bundle strings-plugin --release` only builds it, into `target/bundled/`.
 
-The **Instrument** parameter picks the cello or the violin. Changing it builds the new instrument in the background and cuts off what was sounding.
+The **Instrument** parameter picks the violin, viola, cello or double bass. Changing it builds the new instrument in the background and cuts off what was sounding.
 
 It is a stereo instrument that takes MIDI:
 
@@ -59,7 +59,7 @@ It is a stereo instrument that takes MIDI:
 | Notes | Detached notes are new bow strokes; velocity sets the attack. Overlapping notes play legato; the landing note's velocity sets how fast it moves there (soft is a slow portamento) |
 | CC11 | Dynamics: bow speed, force and position, and with them loudness |
 | CC1 | Vibrato depth |
-| C1, D1 | Keyswitches: bow lift off the string, on the string |
+| C1, D1 | Keyswitches: bow lift off the string, on the string. They sit below the instrument: C1 and D1 on the cello, C0 and D0 on the bass, C2 and D2 on the viola, C3 and D3 on the violin |
 | CC123, CC120 | All notes off (the bow ends gracefully), all sound off |
 
 The bow lift decides how a note ends. Off the string, the bow lifts and the string rings on; short notes are thrown off, spiccato-like. On the string, the bow stops and rests there, so short notes are staccato (martelé when pressed hard).
@@ -96,7 +96,7 @@ Run with `--help` for all options.
 
 ## Offline renderer
 
-`strings-render` drives the model offline and writes 32-bit float WAV files. `play` renders a whole instrument (or a section) through its body. The single-string commands below (`bow`, `pluck`, `schelleng`) write the raw force on the bridge in mono, peak-normalized to −1 dBFS; with no body, they sound thinner and buzzier than the real instrument. They use the violin strings unless you pass `--instrument cello`.
+`strings-render` drives the model offline and writes 32-bit float WAV files. `play` renders a whole instrument (or a section) through its body. The single-string commands below (`bow`, `pluck`, `schelleng`) write the raw force on the bridge in mono, peak-normalized to −1 dBFS; with no body, they sound thinner and buzzier than the real instrument. They use the violin strings unless you pass `--instrument viola`, `cello` or `bass`.
 
 ```sh
 cargo run --release -p strings-render -- <command> [options]
@@ -111,6 +111,8 @@ Add `--help` to any command for all options.
 ```sh
 strings-render play phrase -o out/phrase.wav     # cello; also: scale, legato, staccato, doublestops, ostinato, sul
 strings-render play violin-phrase --instrument violin -o out/violin.wav   # also violin-scale, -legato, -staccato, -doublestops, -ostinato, -sul, -tasto
+strings-render play viola-phrase --instrument viola -o out/viola.wav      # the same set, viola-*
+strings-render play bass-phrase --instrument bass -o out/bass.wav         # the same set, bass-* (no tasto)
 strings-render play phrase --players 8 -o out/section.wav                 # a section of 8 on the stage, stereo
 strings-render play my.score -o out/my.wav       # a score file
 ```
@@ -139,8 +141,8 @@ strings-render bow --string G --csv out/g.csv -o out/g.wav
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--instrument` | `violin` | `violin` or `cello` |
-| `--string` | `A` | Open string: `G`, `D`, `A` or `E` on the violin, `C`, `G`, `D` or `A` on the cello |
+| `--instrument` | `violin` | `violin`, `viola`, `cello` or `bass` |
+| `--string` | `A` | Open string: `G`, `D`, `A` or `E` on the violin, `C`, `G`, `D` or `A` on the viola and cello, `E`, `A`, `D` or `G` on the bass |
 | `--semitones` | `0` | Stopped note, in semitones above the open string |
 | `--force` | 0.3 × F_max | Bow force in newtons. The default sits inside the playable range |
 | `--speed` | `0.1` | Bow speed in m/s |

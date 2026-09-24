@@ -1,0 +1,25 @@
+# Bass: high on the lower strings: a phrase up the D string, then the A string
+# ("sul D", "sul A"), 12 to 24 semitones above the open string (thumb position).
+tempo 66
+0 vib 0.6
+0 string D
+0 dyn 0.5
+0 note D3 1.05 70
+1 note F#3 1.05 70
+2 note A3 1.55 80
+2 dyn 0.75
+3.5 note C#4 0.55 80
+4 note D4 2 85
+4 dyn 0.9
+6 dyn 0.5
+6 note B3 0.9 70
+7 note A3 1.9 70
+9 string A
+9 dyn 0.6
+9 note A2 1.05 70
+10 note E3 1.05 75
+11 note G3 1.55 80
+11 dyn 0.85
+12.5 note F#3 0.55 80
+13 note A3 2.5 90
+13 dyn 0.9

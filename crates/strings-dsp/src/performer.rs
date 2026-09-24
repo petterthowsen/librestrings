@@ -120,14 +120,13 @@ impl Default for PerformerSettings {
 }
 
 impl PerformerSettings {
-    /// The settings for playing `spec`: its bow positions and output gain,
-    /// and everything else as for any instrument.
+    /// The settings for playing `spec`: its bow speeds and positions, output
+    /// gain and quiet attacks, and everything else as for any instrument.
     pub fn for_instrument(spec: &InstrumentSpec) -> Self {
         Self {
-            speed: (0.04, 0.5),
+            speed: spec.speed,
             beta: spec.beta,
-            // Cello: 3.5 cm on the C string, 1.4 cm on the A.
-            bow_distance: 0.024,
+            bow_distance: spec.bow_distance,
             tasto: spec.tasto,
             pressure: 0.65,
             pressure_range: (spec.flautando, PRESSURE_SCRATCH),
@@ -286,7 +285,7 @@ impl Default for PerformerTuning {
             mid_bias: 7.5,
             bridge_bias: 12.5,
             grip: 0.01,
-            grip_attack: (0.3, 0.065),
+            grip_attack: (0.1, 0.01),
             bite: 0.38,
             bite_time: 0.07,
             stop: 0.075,
@@ -299,7 +298,7 @@ impl Default for PerformerTuning {
             wander_speed: 0.08,
             wander_beta: 0.03,
             wander_time: 0.8,
-            ear_time: 0.15,
+            ear_time: 0.1,
             ear_window: 1.0,
             ear_range: 1.0,
         }

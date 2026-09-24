@@ -11,7 +11,7 @@ Open issues as of September 2026, end of Phase 2 (built, not yet judged by ear).
 | 1b. Measured string physics | Stiffness, torsion and measured damping built and verified. The acceptance target is **not met** (see below) |
 | 2. Solo cello | Built: cello presets, bow hair, body, instrument, performer (legato, détaché, the bow lift, double stops), calibrated force band, `play` renderer with example scores. Objective checks pass (`tests/performer.rs`). **First listening done** (Phase 3 notes); the "sounds like a cello" criterion is open |
 | 3. CLAP plugin | Built: nih-plug CLAP plugin with MIDI, CCs, keyswitches, parameters and an egui editor (status, instrument view, keyboard, faders, tuning window); standalone app. Tests pass and the engine runs at 4.8% of real time (strings at 2×). **Plays in Bitwig** (September 2026); not yet tried in Reaper |
-| 5. More instruments | **Violin built** (PLAN.md "Phase 5: the violin"): Phase 1 strings with the cello's bow hair, a body from published mode frequencies, a calibrated force band; in the renderer and the plugin. Objective checks pass; not yet heard. Viola and double bass to come |
+| 5. More instruments | **All four built:** violin (PLAN.md "Phase 5: the violin"; its bow positions heard), viola and double bass (PLAN.md "Phase 5: viola and double bass"), each with a body from published mode frequencies and a calibrated force band, in the renderer and the plugin. Objective checks pass; the viola and bass are not yet heard |
 
 ## Next steps
 
@@ -128,6 +128,16 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 51. **The violin's bow hair is the cello's,** fitted to a cello string. There is no measured violin string or Schelleng diagram to fit it to.
 52. **The violin's wider bow positions have limits** (PLAN.md "Phase 5: the violin"): β 0.16–0.065 with the dynamics, and flautando moving to β 0.2 (sul tasto) at band position 0.3. The A/B renders (`out/ab-violin-beta/`) were listened to (September 2026): they sound pretty good. Quiet attacks are no longer slowed (`pp_attack` 0), so pp attacks are faster than the cello's. Above β ≈ 0.16 at pp the performer's attacks hold multiple slips, so real sul tasto at pp (β up to 0.2 with normal pressure) isn't reachable; the seed sweep has 5 failed checks, all quiet attacks. Halfway to flautando (pressure 0.25), the open G at pp holds multiple slips on a few seeds.
 54. **Changing the instrument in the plugin cuts off what is sounding.** The old engine is swapped out at once, with no fade. Not tried in a host yet.
+
+## Viola and double bass
+
+55. **The viola and the double bass are not yet heard.** Renders of every `viola-*` and `bass-*` score and 8-player sections are in `out/viola/` and `out/bass/`. As on the violin, everything that shapes the sound is a first guess: the bodies' damping, signs and levels (only the mode frequencies are from data; the viola's CBR, both bridge hills and the bass's 90 Hz rise are estimates), the viola strings' decay times, the output gains (matched to the cello's level, not by ear) and the performer's timings, which are the cello's.
+56. **The bass strings are not measured.** The bending stiffness (EI 5e-3, B ≈ 1.4e-4) is an estimate from core size; the damping curve and the torsion are the cello's. Real bass strings (steel rope cores) may be less stiff. Dispersion is accurate only to about 2.5 kHz (item 18), about partial 60 of the open E, which the body's rolloff above 1.5 kHz mostly hides.
+57. **The bass E string's Helmholtz band is narrow** (PLAN.md "Phase 5: viola and double bass"): found in 22 of 48 calibration columns, one or two force rows deep; prompt Helmholtz motion at band positions 0.5–0.8 in 79–88% of cells. No string or bow parameter tried widens it. The performer's range checks pass on it, but a bass-specific bow (more hair, heavier), fitted to a measured bass string, is open.
+58. **The bass plays slower and farther from the bridge:** at most 0.3 m/s at ff (the others 0.5) and 0.032 m per kg/s from the bridge (the others 0.024), fitted to where high positions fail, not to players. Notes 18–23 semitones up the E string hold multiple slips at pp (the bow sits near the middle of the string there) and are left out of the checks; the seed sweep fails 4 of 1152 checks, ff thumb-position notes 33–72 cents flat.
+59. **The bass's open E plays 20–25 cents flat at mf–ff** (the other instruments' open strings 6–14); the range checks allow it 30.
+60. **The bass's left hand is the cello's:** it spans 4 semitones (`hand_span`), where a bassist covers about 2 in the lower positions, so legato lines shift less often than on a real bass. Its fingering modes assume nothing about tuning, and work in fourths.
+61. **No recorded viola or bass notes to compare with.** `strings-render compare` only knows the Iowa cello notes; the Iowa library has viola and double bass notes recorded the same way.
 
 ## Open decisions
 
