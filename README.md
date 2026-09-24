@@ -2,6 +2,8 @@
 
 A free bowed-string synthesizer in Rust, built on physical modeling rather than samples. The sound comes from simulating a string and the stick-slip friction of a bow on it, sample by sample.
 
+![The LibreStrings plugin editor](screenshot_plugin_01.png)
+
 **Status: early development.** A solo cello (four strings, body, and a performer that turns notes and controllers into bowing) plays as a CLAP plugin with its own editor, as a standalone app, and offline from the command line. It hasn't been tested in a DAW yet. The goal is a CLAP instrument covering violin, viola, cello and double bass, played either solo or as sections of up to about 12 players. See [PLAN.md](PLAN.md) for the roadmap and [STATUS.md](STATUS.md) for open issues.
 
 ## How it works
