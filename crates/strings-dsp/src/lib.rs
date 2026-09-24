@@ -23,7 +23,8 @@ pub use bow::{BowJunction, ContactState, FrictionParams, schelleng_limits};
 pub use instrument::{ForceLimits, Instrument, InstrumentFrame, InstrumentSpec};
 pub use loss::{DampingCurve, Loss};
 pub use performer::{
-    BowLift, Fingering, Performer, PerformerFrame, PerformerSettings, PerformerTuning, Polyphony,
+    ARTICULATIONS, Articulation, BowLift, Fingering, Performer, PerformerFrame, PerformerSettings,
+    PerformerTuning, Polyphony,
 };
 pub use section::{Humanization, MAX_PLAYERS, Section};
 pub use stage::{Absorption, Placement, Room, RoomPreset, Stage, StageSettings};

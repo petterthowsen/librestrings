@@ -20,6 +20,7 @@ use crate::shared::{GuiEvent, Shared, Telemetry};
 mod fader;
 mod instrument_view;
 mod keyboard;
+mod performer_status;
 mod tuning_window;
 
 /// Editor-only state, kept while the window is open.
@@ -63,7 +64,9 @@ pub fn create(params: Arc<StringsParams>, shared: Arc<Shared>) -> Option<Box<dyn
                 .resizable(false)
                 .show(ctx, |ui| readout(ui, &params, t));
             egui::CentralPanel::default().show(ctx, |ui| {
-                instrument_view::show(ui, t, &mut state.view);
+                let size = ui.available_size() - egui::vec2(0.0, performer_status::HEIGHT);
+                ui.allocate_ui(size, |ui| instrument_view::show(ui, t, &mut state.view));
+                performer_status::show(ui, t, &shared);
             });
             if state.tuning.open {
                 state.tuning.window(ctx, t);

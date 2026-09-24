@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering::Relaxed};
 
 use crossbeam_queue::ArrayQueue;
 use nih_plug::prelude::AtomicF32;
+use strings_dsp::ARTICULATIONS;
 
 use crate::params::{BowLiftParam, InstrumentParam};
 use crate::tuning::{LiveTuning, StringsUpdate};
@@ -26,6 +27,8 @@ pub enum GuiEvent {
     /// Clicked in the editor. It also sets the parameter, but that only acts
     /// when it changes, and a keyswitch may have changed the bow lift since.
     BowLift(BowLiftParam),
+    /// The pedal button: the sustain pedal down or up, as CC64.
+    Sustain(bool),
 }
 
 #[derive(Default)]
@@ -33,6 +36,9 @@ pub struct StringTelemetry {
     /// The pitch the string is tuned to right now: finger, vibrato and
     /// intonation included (Hz).
     pub frequency: AtomicF32,
+    /// A finger stops the string (it stays down after the note until the
+    /// next note goes to another string).
+    pub finger: AtomicBool,
     /// Bow position, as a fraction of the vibrating length from the bridge.
     pub beta: AtomicF32,
     /// How firmly the bow is on the string, 0–1.
@@ -81,6 +87,14 @@ pub struct Telemetry {
     /// Bow velocity (m/s) and force on the bowed string (N).
     pub bow_velocity: AtomicF32,
     pub bow_force: AtomicF32,
+    /// Player 0's last few articulations, newest first: indices into
+    /// `Articulation::ALL`, or -1. The count changes with every new one.
+    pub articulations: [AtomicI32; ARTICULATIONS],
+    pub articulation_count: AtomicU32,
+    /// The current (or last) stroke: 1 down-bow, -1 up-bow.
+    pub bow_direction: AtomicF32,
+    /// The sustain pedal is down.
+    pub sustain: AtomicBool,
     /// Slip onsets per period of the bowed string, smoothed: 1 is Helmholtz
     /// motion, more is multiple slipping or raucous, 0 is not sounding.
     pub slips_per_period: AtomicF32,

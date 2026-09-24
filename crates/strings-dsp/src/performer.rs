@@ -183,6 +183,9 @@ pub struct PerformerTuning {
     pub release: f32,
     /// A stroke lasts at least this long, however short the key press.
     pub min_stroke: f32,
+    /// The dynamics resting at zero this long in a stroke changes the bow,
+    /// at that quiet moment (once, until the dynamics rises again).
+    pub auto_bow_change: f32,
     /// Keys of a double stop let go within this long of each other end the
     /// stroke together; otherwise the first leaves its string.
     pub chord: f32,
@@ -192,6 +195,11 @@ pub struct PerformerTuning {
     /// While it gets going, the force is that of the full speed from the
     /// start: it leads the speed, as in a player's attack.
     pub speed_floor: f32,
+    /// The bow keeps its place on the string while the finger moves (β of the
+    /// new length changes instead), and drifts to the new note's bow position
+    /// over about this long. A trill or a fast passage is bowed at a place in
+    /// between; a slide keeps the bow where it was.
+    pub bow_follow: f32,
 
     /// A finger dropping onto or lifting off the string: legato notes within
     /// the hand's span, and fingers placed while the bow changes or crosses.
@@ -257,29 +265,31 @@ impl Default for PerformerTuning {
         Self {
             land: 0.012,
             crossing: 0.03,
-            attack: (0.12, 0.035),
-            bow_change: 0.012,
+            attack: (0.15, 0.035),
+            bow_change: 0.01,
             pp_attack: 1.6,
             pressure_tilt: 0.15,
             attack_bite: 0.2,
             attack_bite_time: 0.08,
             release: 0.15,
-            min_stroke: 0.04,
-            chord: 0.03,
+            min_stroke: 0.06,
+            auto_bow_change: 0.15,
+            chord: 0.04,
             speed_floor: 0.15,
+            bow_follow: 0.15,
             place: 0.006,
             shift: 0.02,
             portamento: 0.25,
-            portamento_velocity: 0.6,
+            portamento_velocity: 0.8,
             hand_span: 4.0,
             legato_stick: 5.0,
             mid_bias: 7.5,
             bridge_bias: 12.5,
-            grip: 0.015,
-            grip_attack: (0.1, 0.008),
-            bite: 0.25,
-            bite_time: 0.03,
-            stop: 0.04,
+            grip: 0.01,
+            grip_attack: (0.3, 0.065),
+            bite: 0.38,
+            bite_time: 0.07,
+            stop: 0.075,
             finger_loss: 0.015,
             mute_loss: 0.08,
             mute_time: 0.05,
@@ -455,6 +465,64 @@ enum Phase {
     Resting,
 }
 
+/// What the performer does with a note, for display: SWAM shows the same.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Articulation {
+    /// A new stroke off the string, landing softly, normally or accented
+    /// (by velocity).
+    SoftAttack,
+    Detache,
+    AccentedAttack,
+    /// A new stroke from the string: gripped, then pressed hard (martelé).
+    StaccatoAttack,
+    Martele,
+    /// Legato within the hand: a finger drops or lifts.
+    Legato,
+    /// Legato with a quick shift of the hand.
+    Shift,
+    /// Legato, the finger sliding slowly.
+    Portamento,
+    /// Legato to another string.
+    StringCrossing,
+    /// A note joining another on the adjacent string.
+    DoubleStop,
+    /// The end of a note: the bow lifts off the string as it slows, or a short
+    /// stroke is thrown off still moving.
+    BowLift,
+    Spiccato,
+    /// The end of a note on the string: the bow stops there.
+    BowStop,
+    /// A bow change within a note: a bow keyswitch, or the dynamics resting
+    /// at zero.
+    BowChange,
+}
+
+impl Articulation {
+    pub const ALL: [Articulation; 14] = [
+        Articulation::SoftAttack,
+        Articulation::Detache,
+        Articulation::AccentedAttack,
+        Articulation::StaccatoAttack,
+        Articulation::Martele,
+        Articulation::Legato,
+        Articulation::Shift,
+        Articulation::Portamento,
+        Articulation::StringCrossing,
+        Articulation::DoubleStop,
+        Articulation::BowLift,
+        Articulation::Spiccato,
+        Articulation::BowStop,
+        Articulation::BowChange,
+    ];
+}
+
+/// Velocities (0–1) below which an attack is soft, and above which it is
+/// accented (off the string) or a martelé (on it).
+const SOFT_ATTACK: f32 = 0.35;
+/// Dynamics below this count as zero (for the automatic bow change).
+const QUIET: f32 = 0.01;
+const ACCENT: f32 = 0.75;
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PerformerFrame {
     pub output: f32,
@@ -501,6 +569,15 @@ pub struct Performer {
     phase_length: f32,
     /// The key is up, but the stroke ends only once it is `min_stroke` long.
     ending: bool,
+    /// The sustain pedal: a key let go leaves the stroke going, and the next
+    /// separate note changes bow (détaché).
+    sustain: bool,
+    /// The direction a bow keyswitch chose for the next stroke.
+    next_direction: Option<f32>,
+    /// How long the dynamics has rested at zero in this stroke (s), and
+    /// whether that has changed the bow already.
+    quiet_time: f32,
+    quiet_bow_change: bool,
     /// A double stop's note let go, and the time left for the other to follow
     /// (`chord`) before its string is left alone.
     letting_go: Option<(u8, f32)>,
@@ -530,6 +607,11 @@ pub struct Performer {
     wander: [Wander; 3],
     /// How far the finger has eased off each string, 0–1.
     mute: [f32; 4],
+    /// The bow's distance from the bridge (m), which follows the bowed note's
+    /// position (`bow_follow`), and whether the next update places it there
+    /// at once (the bow lands for a new stroke).
+    bow_point: f32,
+    place_bow: bool,
     termination_loss: [f32; 4],
 
     control_countdown: usize,
@@ -548,7 +630,13 @@ pub struct Performer {
     intended: f32,
     samples_since_slip: usize,
     was_slipping: bool,
+    /// The last few articulations, newest first, and how many there have been.
+    articulations: [Option<Articulation>; ARTICULATIONS],
+    articulation_count: u32,
 }
+
+/// Articulations the performer remembers for display.
+pub const ARTICULATIONS: usize = 3;
 
 impl Performer {
     /// Slow (builds the instrument); don't call it on the audio thread.
@@ -576,6 +664,10 @@ impl Performer {
             phase_time: 0.0,
             phase_length: 0.0,
             ending: false,
+            sustain: false,
+            next_direction: None,
+            quiet_time: 0.0,
+            quiet_bow_change: false,
             letting_go: None,
             stroke_velocity: 0.0,
             stroke_bite: 0.0,
@@ -593,6 +685,8 @@ impl Performer {
             drift_timer: 0.0,
             wander: [Wander::new(1.0), Wander::new(1.37), Wander::new(1.73)],
             mute: [0.0; 4],
+            bow_point: 0.0,
+            place_bow: true,
             termination_loss: [0.0; 4],
             control_countdown: 0,
             control_interval,
@@ -604,6 +698,8 @@ impl Performer {
             intended: 0.0,
             samples_since_slip: 0,
             was_slipping: false,
+            articulations: [None; ARTICULATIONS],
+            articulation_count: 0,
         };
         p.update_controls();
         p
@@ -660,6 +756,92 @@ impl Performer {
     /// How firmly the bow is on string `i`, 0 (off) to 1.
     pub fn contact(&self, i: usize) -> f32 {
         self.contact[i].value()
+    }
+
+    /// The last few articulations, newest first, and a count that changes
+    /// with every new one (a repeat included).
+    pub fn articulations(&self) -> ([Option<Articulation>; ARTICULATIONS], u32) {
+        (self.articulations, self.articulation_count)
+    }
+
+    /// The direction of the current (or last) stroke: 1 down-bow, -1 up-bow.
+    /// The first stroke is a down-bow.
+    pub fn bow_direction(&self) -> f32 {
+        self.direction
+    }
+
+    /// A stroke is going, and not yet ending.
+    fn stroke(&self) -> bool {
+        matches!(self.phase, Phase::Grip | Phase::Sustain) && !self.ending
+    }
+
+    /// The key of the sounding note (or of a double stop's second) is down.
+    fn key_down(&self) -> bool {
+        let held = &self.held[..self.held_len];
+        self.sounding.is_some_and(|n| held.contains(&n))
+            || self.second.is_some_and(|(n, _)| held.contains(&n))
+    }
+
+    /// How long the bow takes to reach its speed from a standstill.
+    fn attack_time(&self, velocity: f32) -> f32 {
+        let t = &self.settings.tuning;
+        let quiet = 1.0 - self.dynamics.target;
+        lerp(t.attack.0, t.attack.1, velocity) * (1.0 + t.pp_attack * quiet)
+    }
+
+    /// Reverses the bow within a note: it slows to a stop and sets off the
+    /// other way, with an attack and a bite as a new stroke's.
+    fn change_bow(&mut self, velocity: f32) {
+        let t = self.settings.tuning;
+        self.direction = -self.direction;
+        self.next_direction = None;
+        self.stroke_velocity = velocity;
+        self.pending_attack = Some(self.attack_time(velocity));
+        self.velocity.go(0.0, t.bow_change, self.fs);
+        self.phase_time = 0.0;
+        self.stroke_bite = t.attack_bite * velocity;
+        self.stroke_bite_time = t.attack_bite_time;
+        self.articulate(Articulation::BowChange);
+    }
+
+    fn articulate(&mut self, articulation: Articulation) {
+        self.articulations.copy_within(..ARTICULATIONS - 1, 1);
+        self.articulations[0] = Some(articulation);
+        self.articulation_count = self.articulation_count.wrapping_add(1);
+    }
+
+    /// The sustain pedal (MIDI CC64). While it is down, letting a key go
+    /// doesn't end the stroke: the bow goes on until the next note, which
+    /// changes bow (détaché), or until the pedal comes up. Overlapping notes
+    /// still play legato.
+    pub fn set_sustain(&mut self, on: bool) {
+        self.sustain = on;
+        if !on && self.stroke() && self.held_len == 0 {
+            self.end_note();
+        }
+    }
+
+    pub fn sustain(&self) -> bool {
+        self.sustain
+    }
+
+    /// A bow keyswitch: `direction` 1 down-bow, -1 up-bow. A stroke going the
+    /// other way changes bow now, `velocity` (0–1) setting its attack as a
+    /// note's does; otherwise the next stroke starts this way.
+    pub fn set_bow_direction(&mut self, direction: f32, velocity: f32) {
+        let direction = if direction < 0.0 { -1.0 } else { 1.0 };
+        match self.phase {
+            // The bow hasn't moved yet.
+            Phase::Grip if !self.ending => self.direction = direction,
+            Phase::Sustain if !self.ending && self.pending_attack.is_none() => {
+                if direction != self.direction {
+                    self.change_bow(velocity.clamp(0.0, 1.0));
+                } else {
+                    self.next_direction = Some(direction);
+                }
+            }
+            _ => self.next_direction = Some(direction),
+        }
     }
 
     pub fn bow_lift(&self) -> BowLift {
@@ -752,11 +934,14 @@ impl Performer {
         self.velocity.set(0.0);
         self.contact = [Ramp::at(0.0); 4];
         self.intonation = [0.0; 4];
+        self.place_bow = true;
     }
 
     /// Releases every held note as if the last one were let go (MIDI "all
     /// notes off"): the bow finishes its stroke instead of stopping dead.
+    /// The sustain pedal is let up too.
     pub fn release_all(&mut self) {
+        self.sustain = false;
         self.held_len = 0;
         self.letting_go = None;
         if let Some((_, string)) = self.second.take() {
@@ -777,9 +962,9 @@ impl Performer {
         if self.polyphony == Polyphony::DoubleStops && self.join(note, velocity) {
             return;
         }
-        let legato = matches!(self.phase, Phase::Grip | Phase::Sustain)
-            && !self.ending
-            && self.sounding.is_some();
+        // Only over a key still down: under the sustain pedal a note after
+        // one let go is a new stroke.
+        let legato = self.stroke() && self.key_down();
         if legato {
             // A double stop that can't take the note goes on from its nearer one.
             self.keep_nearest(note);
@@ -792,18 +977,30 @@ impl Performer {
         self.stroke_velocity = velocity;
         self.ending = false;
         let t = self.settings.tuning;
-        let (string, semitones) = self.choose_string(note, None);
+        let (string, semitones) = self.choose_string(note, None, false);
+        // A bow off the string lands where the note wants it; one on the
+        // string moves there along it.
+        self.place_bow |= self.contact[string].value() < 0.5;
         self.move_to_string(string, semitones, t.place);
         self.reach(&[semitones]);
-        self.direction = -self.direction;
+        self.direction = self.next_direction.take().unwrap_or(-self.direction);
+        // Dynamics already at zero don't change the bow; brought there, they do.
+        self.quiet_time = 0.0;
+        self.quiet_bow_change = self.dynamics.target < QUIET;
         self.vibrato_age = 0.0;
         self.phase_time = 0.0;
         let fs = self.fs;
         match self.bow_lift {
             BowLift::OffString => {
+                self.articulate(if velocity < SOFT_ATTACK {
+                    Articulation::SoftAttack
+                } else if velocity > ACCENT {
+                    Articulation::AccentedAttack
+                } else {
+                    Articulation::Detache
+                });
                 self.phase = Phase::Sustain;
-                let quiet = 1.0 - self.dynamics.target;
-                let attack = lerp(t.attack.0, t.attack.1, velocity) * (1.0 + t.pp_attack * quiet);
+                let attack = self.attack_time(velocity);
                 if self.velocity.value().abs() > 0.05 {
                     // The bow still moves: a bow change first.
                     self.velocity.go(0.0, t.bow_change, fs);
@@ -818,6 +1015,11 @@ impl Performer {
             }
             BowLift::OnString => {
                 // The force is on before the bow moves.
+                self.articulate(if velocity > ACCENT {
+                    Articulation::Martele
+                } else {
+                    Articulation::StaccatoAttack
+                });
                 self.phase = Phase::Grip;
                 self.pending_attack = None;
                 self.velocity.go(0.0, t.place, fs);
@@ -830,7 +1032,7 @@ impl Performer {
 
     pub fn note_off(&mut self, note: u8) {
         self.release_held(note);
-        let stroke = matches!(self.phase, Phase::Grip | Phase::Sustain) && !self.ending;
+        let stroke = self.stroke();
         // A double stop in a held stroke goes on with the other note, unless
         // that is let go too, within `chord`.
         if stroke && let Some((second, _)) = self.second {
@@ -859,6 +1061,8 @@ impl Performer {
             // Back to a note still held, legato.
             self.keep_nearest(previous);
             self.legato_to(previous, self.stroke_velocity);
+        } else if self.sustain {
+            // The pedal holds the stroke.
         } else if self.phase == Phase::Sustain && self.phase_time >= self.settings.tuning.min_stroke
         {
             self.end_stroke();
@@ -1003,6 +1207,7 @@ impl Performer {
         self.phase_time = 0.0;
         match self.bow_lift {
             BowLift::OnString => {
+                self.articulate(Articulation::BowStop);
                 self.phase = Phase::Stop;
                 self.velocity.go(0.0, t.stop, fs);
             }
@@ -1011,6 +1216,11 @@ impl Performer {
                 // A short stroke is thrown off the string still moving; a
                 // long one slows as it lifts.
                 self.phase_length = t.release.min(stroke.max(t.min_stroke));
+                self.articulate(if stroke >= t.release {
+                    Articulation::BowLift
+                } else {
+                    Articulation::Spiccato
+                });
                 if stroke >= t.release {
                     self.velocity
                         .go(0.4 * self.direction, self.phase_length, fs);
@@ -1023,13 +1233,18 @@ impl Performer {
     fn legato_to(&mut self, note: u8, velocity: f32) {
         self.sounding = Some(note);
         let t = self.settings.tuning;
-        let (string, semitones) = self.choose_string(note, Some(self.string));
+        // A slide (portamento) stays on the string where it can: a finger
+        // can't slide across to another one.
+        let slide = velocity < t.portamento_velocity;
+        let (string, semitones) = self.choose_string(note, Some(self.string), slide);
         let shift = self.reach(&[semitones]);
-        if string == self.string {
-            self.finger_to(string, semitones, shift, velocity);
+        let articulation = if string == self.string {
+            self.finger_to(string, semitones, shift, velocity)
         } else {
             self.move_to_string(string, semitones, t.place);
-        }
+            Articulation::StringCrossing
+        };
+        self.articulate(articulation);
         // Vibrato carries on through a legato change, at no less than half depth.
         self.vibrato_age = self.vibrato_age.max(t.vibrato_delay + 0.5 * t.vibrato_fade);
     }
@@ -1043,7 +1258,7 @@ impl Performer {
     /// with the nearer one.
     fn join(&mut self, note: u8, velocity: f32) -> bool {
         let t = self.settings.tuning;
-        let joinable = matches!(self.phase, Phase::Grip | Phase::Sustain) && !self.ending;
+        let joinable = self.stroke() && self.key_down();
         let Some(older) = self.sounding.filter(|_| joinable) else {
             return false;
         };
@@ -1075,6 +1290,7 @@ impl Performer {
             self.finger[ps].go(pp, t.place, fs);
             self.contact[ps].go(1.0, t.crossing, fs);
         }
+        self.articulate(Articulation::DoubleStop);
         if bowed.contains(&Some(ns)) {
             self.finger_to(ns, np, shift, velocity);
         } else {
@@ -1128,7 +1344,14 @@ impl Performer {
         }
     }
 
+    /// Whether a finger stops string `i`: the last note's (or double stop's)
+    /// string, until the next note goes to another one.
+    pub fn finger_down(&self, i: usize) -> bool {
+        self.finger[i].value() >= OPEN && self.bows(i)
+    }
+
     /// Whether the bow plays string `i` (the note's, or a double stop's second).
+    /// After the note it is the string the bow left, where the finger stays.
     fn bows(&self, i: usize) -> bool {
         i == self.string || self.second.is_some_and(|(_, s)| s == i)
     }
@@ -1137,18 +1360,28 @@ impl Performer {
     /// note's velocity says. Pressed hard, the note changes at once: a finger
     /// drops or lifts within the hand, or a `shift` of the hand slides
     /// quickly. Pressed softly, the finger slides (portamento), slower the
-    /// softer. Only between stopped notes: to or from an open string the
-    /// finger is placed.
-    fn finger_to(&mut self, string: usize, position: f32, shift: bool, velocity: f32) {
+    /// softer: from an open string it lands at the nut and slides up, and to
+    /// one it slides down to the nut and lifts. Returns which it was.
+    fn finger_to(
+        &mut self,
+        string: usize,
+        position: f32,
+        shift: bool,
+        velocity: f32,
+    ) -> Articulation {
         let t = self.settings.tuning;
-        let time = if position >= OPEN && self.finger[string].to >= OPEN {
-            let quick = if shift { t.shift } else { t.place };
-            let pv = t.portamento_velocity.max(1e-3);
-            quick.max(t.portamento * ((pv - velocity) / pv).max(0.0))
+        let stopped = position >= OPEN && self.finger[string].to >= OPEN;
+        let quick = if stopped && shift { t.shift } else { t.place };
+        let pv = t.portamento_velocity.max(1e-3);
+        let slide = t.portamento * ((pv - velocity) / pv).max(0.0);
+        self.finger[string].go(position, quick.max(slide), self.fs);
+        if slide > quick {
+            Articulation::Portamento
+        } else if stopped && shift {
+            Articulation::Shift
         } else {
-            t.place
-        };
-        self.finger[string].go(position, time, self.fs);
+            Articulation::Legato
+        }
     }
 
     /// Moves the hand so it covers the stopped `positions` (semitones; open
@@ -1213,8 +1446,9 @@ impl Performer {
 
     /// The string that plays `note` in the lowest position the fingering
     /// allows, and that position. In a legato line, `current` is kept unless
-    /// another string plays the note `legato_stick` semitones lower.
-    fn choose_string(&self, note: u8, current: Option<usize>) -> (usize, f32) {
+    /// another string plays the note `legato_stick` semitones lower, or, in a
+    /// `slide`, wherever it can play the note.
+    fn choose_string(&self, note: u8, current: Option<usize>, slide: bool) -> (usize, f32) {
         let position = |i: usize| self.position(note, i);
         let playable = |i: usize| self.playable(position(i));
         // Ties (within the bias) go to the lowest string: `min_by` keeps the first.
@@ -1226,7 +1460,7 @@ impl Performer {
         let sul = self.sul.filter(|&s| playable(s));
         let string = match (sul, best, current) {
             (Some(s), _, _) => s,
-            (None, Some(b), Some(c)) if playable(c) && cost(c) - stick <= cost(b) => c,
+            (None, Some(b), Some(c)) if playable(c) && (slide || cost(c) - stick <= cost(b)) => c,
             (None, Some(b), _) => b,
             // Below the lowest string: play it open. Above the range: top string.
             (None, None, _) if position(0) < 0.0 => 0,
@@ -1311,6 +1545,19 @@ impl Performer {
         let beta =
             (played * (1.0 + t.wander_beta * wander_beta)).min(s.beta.0.max(s.beta.1).max(s.tasto));
 
+        // The dynamics brought to zero and resting there changes the bow,
+        // once, at that quiet moment.
+        if self.dynamics.target >= QUIET {
+            self.quiet_time = 0.0;
+            self.quiet_bow_change = false;
+        } else if self.phase == Phase::Sustain && !self.ending && self.pending_attack.is_none() {
+            self.quiet_time += dt;
+            if self.quiet_time >= t.auto_bow_change && !self.quiet_bow_change {
+                self.quiet_bow_change = true;
+                self.change_bow(SOFT_ATTACK);
+            }
+        }
+
         // New drift targets every 0.3 s; the smoothers glide between them.
         self.drift_timer -= dt;
         if self.drift_timer <= 0.0 {
@@ -1352,16 +1599,31 @@ impl Performer {
             + bite)
             .clamp(flautando.min(0.0), scratch.max(1.0));
 
-        // The finger stays on a bowed string while the note plays, and eases
-        // off once it is over or the bow has moved to another string.
-        let held = self
-            .sounding
-            .is_some_and(|n| self.held[..self.held_len].contains(&n));
-        let playing = held || !matches!(self.phase, Phase::Idle | Phase::Resting);
+        // The finger stays down on the last note's string, which rings on once
+        // the note is over as an open string does, and eases off when the
+        // next note goes to another string.
         let mute_in = 1.0 - (-dt / t.mute_time.max(1e-4)).exp();
         let mute_out = 1.0 - (-dt / t.place.max(1e-4)).exp();
 
         let spec = *self.instrument.spec();
+        // The bow position each string's note wants: the dynamics' β, but no
+        // closer to the bridge than `bow_distance` (high on a string), and the
+        // vibrating length (m).
+        let wanted = |i: usize, finger: f32| {
+            let length = spec.strings[i].length * 2f32.powf(-finger.max(0.0) / 12.0);
+            let z = spec.strings[i].impedance();
+            (beta.max(s.bow_distance * z / length).min(0.5), length)
+        };
+        // Where the note the finger is going to wants it.
+        let (b, length) = wanted(self.string, self.finger[self.string].to);
+        if self.place_bow {
+            self.place_bow = false;
+            self.bow_point = b * length;
+        } else {
+            let follow = 1.0 - (-dt / t.bow_follow.max(1e-3)).exp();
+            self.bow_point += follow * (b * length - self.bow_point);
+        }
+
         for i in 0..4 {
             let finger = self.finger[i].value();
             let stopped = finger >= OPEN;
@@ -1379,7 +1641,7 @@ impl Performer {
             }
             let frequency = open * 2f32.powf((aim + correction) / 12.0);
 
-            let easing = stopped && !(playing && self.bows(i));
+            let easing = stopped && !self.bows(i);
             let m = &mut self.mute[i];
             *m += if easing {
                 mute_in * (1.0 - *m)
@@ -1392,10 +1654,16 @@ impl Performer {
                 0.0
             };
 
-            // The bow keeps its distance from the bridge on a short string.
-            let length = spec.strings[i].length * 2f32.powf(-finger.max(0.0) / 12.0);
+            // The bow stays where it is on the strings it touches, within a
+            // quarter of the position the note wants (a long slide doesn't
+            // take it far). Other strings wait at their note's position.
+            let (b, length) = wanted(i, finger);
+            let beta = if self.contact[i].value() > 0.0 {
+                (self.bow_point / length).clamp(b / 1.25, (b * 1.25).min(0.5))
+            } else {
+                b
+            };
             let z = spec.strings[i].impedance();
-            let beta = beta.max(s.bow_distance * z / length).min(0.5);
 
             let string = self.instrument.string_mut(i);
             if frequency != string.frequency() {

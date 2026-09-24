@@ -10,6 +10,8 @@
 //! 0    string G            # play on this string where it can ("sul G"): a string's name
 //!                          # (cello: C G D A; violin: G D A E) or any
 //! 0    poly on             # on: overlapping notes are double stops where they can be
+//! 0    pedal on            # sustain pedal: separate notes are détaché (a bow change)
+//! 0    stroke up           # the next stroke's direction (down | up); in a note, a bow change
 //! 0    note C3 1.0 80      # note, length in beats, velocity 1–127 (default 64)
 //! 1    on D3 90            # note on (velocity optional) ...
 //! 2.1  off D3              # ... and off; overlapping notes play legato
@@ -31,6 +33,10 @@ pub enum Event {
     /// A named string (0 is the lowest), or `None` to let the fingering choose.
     String(Option<usize>),
     Polyphony(Polyphony),
+    /// The sustain pedal: separate notes under it are détaché.
+    Sustain(bool),
+    /// A bow keyswitch: 1 down-bow, -1 up-bow.
+    Stroke(f32),
 }
 
 /// A fingering mode by name: nut, mid or bridge.
@@ -118,6 +124,22 @@ pub fn parse(text: &str, strings: [&str; 4]) -> Result<Vec<(f32, Event)>, String
                     _ => return Err(err("expected on or off")),
                 };
                 events.push((time, Event::Polyphony(p)));
+            }
+            Some("pedal") => {
+                let on = match arg(2) {
+                    Some("on") => true,
+                    Some("off") => false,
+                    _ => return Err(err("expected on or off")),
+                };
+                events.push((time, Event::Sustain(on)));
+            }
+            Some("stroke") => {
+                let direction = match arg(2) {
+                    Some("down") => 1.0,
+                    Some("up") => -1.0,
+                    _ => return Err(err("expected down or up")),
+                };
+                events.push((time, Event::Stroke(direction)));
             }
             _ => return Err(err("unknown event")),
         }

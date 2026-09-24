@@ -7,7 +7,7 @@
 //!
 //! The piano plays with the mouse: the lower on a key, the louder; dragging
 //! across keys plays legato. Keyswitches (the white keys from C1) set the
-//! bow lift.
+//! bow lift (C, D) and the bow direction (E down, F up).
 
 use std::sync::atomic::Ordering::Relaxed;
 
@@ -15,7 +15,7 @@ use nih_plug_egui::egui::{self, Color32, FontId, Key, RichText, Sense, Stroke, p
 
 use crate::params::StringsParams;
 use crate::shared::{GuiEvent, Shared};
-use crate::{keyswitch, keyswitch_base, midi_note};
+use crate::{Keyswitch, keyswitch, keyswitch_base, midi_note};
 use strings_dsp::InstrumentSpec;
 
 const KEYS: [(Key, &str); 17] = [
@@ -248,6 +248,7 @@ pub fn piano(
 
     let sounding = t.note();
     let bow_lift = t.bow_lift();
+    let direction = t.bow_direction.load(Relaxed);
     let first = first_mapped(params);
     let computer = params.computer_keys.load(Relaxed);
     let held = |note: u8| state.mouse_note == Some(note) || state.computer.contains(&Some(note));
@@ -273,8 +274,11 @@ pub fn piano(
             sounding_color
         } else if held(note) {
             held_color
-        } else if let Some(a) = keyswitch(spec, note) {
-            switch_color(a == bow_lift)
+        } else if let Some(k) = keyswitch(spec, note) {
+            switch_color(match k {
+                Keyswitch::BowLift(b) => b == bow_lift,
+                Keyswitch::Bow(d) => d == direction,
+            })
         } else if playable(spec, note) {
             Color32::from_gray(235)
         } else {

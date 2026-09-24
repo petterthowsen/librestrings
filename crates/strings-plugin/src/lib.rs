@@ -27,8 +27,8 @@ use nih_plug::prelude::*;
 #[cfg(test)]
 use strings_dsp::BowLift;
 use strings_dsp::{
-    Humanization, InstrumentSpec, MAX_PLAYERS, PerformerSettings, Placement, Section, Stage,
-    StageSettings,
+    Articulation, Humanization, InstrumentSpec, MAX_PLAYERS, PerformerSettings, Placement, Section,
+    Stage, StageSettings,
 };
 
 mod editor;
@@ -47,6 +47,7 @@ static ENGINES: AtomicU32 = AtomicU32::new(0);
 /// pedal plays the dynamics and the mod wheel the vibrato.
 const CC_VIBRATO: u8 = 1;
 const CC_DYNAMICS: u8 = 11;
+const CC_SUSTAIN: u8 = 64;
 const CC_ALL_SOUND_OFF: u8 = 120;
 const CC_ALL_NOTES_OFF: u8 = 123;
 
@@ -56,18 +57,28 @@ pub fn midi_note(frequency: f32) -> u8 {
 }
 
 /// The first keyswitch: the first C below the instrument's lowest note
-/// (cello: C1, violin: C3). The white keys from there set the bow lift.
+/// (cello: C1, violin: C3). The white keys from there set the bow lift (C
+/// and D) and the bow direction (E and F).
 pub fn keyswitch_base(spec: &InstrumentSpec) -> u8 {
     let lowest = midi_note(spec.strings[0].frequency);
     (lowest - 1) / 12 * 12
 }
 
-/// The bow lift a keyswitch note selects, if it is one.
-pub fn keyswitch(spec: &InstrumentSpec, note: u8) -> Option<BowLiftParam> {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Keyswitch {
+    BowLift(BowLiftParam),
+    /// Down-bow (1) or up-bow (-1): a bow change now, or the next stroke.
+    Bow(f32),
+}
+
+/// What a keyswitch note does, if it is one.
+pub fn keyswitch(spec: &InstrumentSpec, note: u8) -> Option<Keyswitch> {
     let base = keyswitch_base(spec);
     match note.checked_sub(base)? {
-        0 => Some(BowLiftParam::OffString),
-        2 => Some(BowLiftParam::OnString),
+        0 => Some(Keyswitch::BowLift(BowLiftParam::OffString)),
+        2 => Some(Keyswitch::BowLift(BowLiftParam::OnString)),
+        4 => Some(Keyswitch::Bow(1.0)),
+        5 => Some(Keyswitch::Bow(-1.0)),
         _ => None,
     }
 }
@@ -384,7 +395,8 @@ impl Engine {
 
     fn note_on(&mut self, note: u8, velocity: f32) {
         match keyswitch(self.spec(), note) {
-            Some(bow_lift) => self.section.set_bow_lift(bow_lift.into()),
+            Some(Keyswitch::BowLift(bow_lift)) => self.section.set_bow_lift(bow_lift.into()),
+            Some(Keyswitch::Bow(direction)) => self.section.set_bow_direction(direction, velocity),
             None => self.section.note_on(note, velocity),
         }
     }
@@ -400,6 +412,7 @@ impl Engine {
             GuiEvent::NoteOn { note, velocity } => self.note_on(note, velocity),
             GuiEvent::NoteOff { note } => self.note_off(note),
             GuiEvent::BowLift(b) => self.section.set_bow_lift(b.into()),
+            GuiEvent::Sustain(on) => self.section.set_sustain(on),
         }
     }
 
@@ -410,6 +423,7 @@ impl Engine {
             NoteEvent::MidiCC { cc, value, .. } => match cc {
                 CC_DYNAMICS => self.set_control(0, value),
                 CC_VIBRATO => self.set_control(1, value),
+                CC_SUSTAIN => self.section.set_sustain(value >= 0.5),
                 CC_ALL_NOTES_OFF => self.section.release_all(),
                 CC_ALL_SOUND_OFF => self.reset(),
                 _ => {}
@@ -495,6 +509,7 @@ impl Engine {
         for (i, s) in t.strings.iter().enumerate() {
             let string = instrument.string(i);
             s.frequency.store(string.frequency(), Relaxed);
+            s.finger.store(p.finger_down(i), Relaxed);
             s.beta.store(string.beta(), Relaxed);
             s.contact.store(p.contact(i), Relaxed);
             s.level
@@ -502,6 +517,14 @@ impl Engine {
         }
         t.bow_velocity.store(self.bow.0, Relaxed);
         t.bow_force.store(self.bow.1, Relaxed);
+        let (articulations, count) = p.articulations();
+        for (slot, a) in t.articulations.iter().zip(articulations) {
+            let index = a.and_then(|a| Articulation::ALL.iter().position(|&b| b == a));
+            slot.store(index.map_or(-1, |i| i as i32), Relaxed);
+        }
+        t.articulation_count.store(count, Relaxed);
+        t.bow_direction.store(p.bow_direction(), Relaxed);
+        t.sustain.store(p.sustain(), Relaxed);
         t.slips_per_period.store(self.slips_per_period, Relaxed);
         let controls = [&t.dynamics, &t.vibrato, &t.pressure];
         for (atomic, value) in controls.into_iter().zip(self.controls) {
@@ -746,6 +769,16 @@ mod tests {
     }
 
     /// Runs `seconds` in blocks of 256, publishing after each.
+    fn note_off(note: u8) -> NoteEvent<()> {
+        NoteEvent::NoteOff {
+            timing: 0,
+            voice_id: None,
+            channel: 0,
+            note,
+            velocity: 0.0,
+        }
+    }
+
     fn run(engine: &mut Engine, t: &Telemetry, seconds: f32) {
         for _ in 0..(seconds * FS / 256.0) as usize {
             for _ in 0..256 {
@@ -759,9 +792,17 @@ mod tests {
     fn keyswitches_are_the_white_keys_from_c1() {
         let cello = InstrumentParam::Cello.spec();
         assert_eq!(keyswitch_base(cello), 24);
-        assert_eq!(keyswitch(cello, 24), Some(BowLiftParam::OffString));
-        assert_eq!(keyswitch(cello, 26), Some(BowLiftParam::OnString));
-        assert_eq!(keyswitch(cello, 28), None);
+        assert_eq!(
+            keyswitch(cello, 24),
+            Some(Keyswitch::BowLift(BowLiftParam::OffString))
+        );
+        assert_eq!(
+            keyswitch(cello, 26),
+            Some(Keyswitch::BowLift(BowLiftParam::OnString))
+        );
+        assert_eq!(keyswitch(cello, 28), Some(Keyswitch::Bow(1.0)));
+        assert_eq!(keyswitch(cello, 29), Some(Keyswitch::Bow(-1.0)));
+        assert_eq!(keyswitch(cello, 31), None);
         assert_eq!(keyswitch(cello, 25), None);
         assert_eq!(keyswitch(cello, 36), None);
     }
@@ -771,8 +812,15 @@ mod tests {
     fn violin_keyswitches_are_the_white_keys_from_c3() {
         let violin = InstrumentParam::Violin.spec();
         assert_eq!(keyswitch_base(violin), 48);
-        assert_eq!(keyswitch(violin, 48), Some(BowLiftParam::OffString));
-        assert_eq!(keyswitch(violin, 50), Some(BowLiftParam::OnString));
+        assert_eq!(
+            keyswitch(violin, 48),
+            Some(Keyswitch::BowLift(BowLiftParam::OffString))
+        );
+        assert_eq!(
+            keyswitch(violin, 50),
+            Some(Keyswitch::BowLift(BowLiftParam::OnString))
+        );
+        assert_eq!(keyswitch(violin, 52), Some(Keyswitch::Bow(1.0)));
         assert_eq!(keyswitch(violin, 55), None);
     }
 
@@ -906,6 +954,36 @@ mod tests {
         // The unchanged parameter doesn't take it back.
         engine.apply_params(&params);
         assert_eq!(engine.section.player(0).bow_lift(), BowLift::OnString);
+    }
+
+    /// CC64 holds the stroke after the key is up, and the E1 keyswitch sets
+    /// the bow direction without playing.
+    #[test]
+    fn sustain_pedal_and_bow_keyswitch() {
+        let params = StringsParams::default();
+        let t = Telemetry::default();
+        let mut engine = Engine::new(FS, InstrumentParam::Cello);
+        engine.apply_params(&params);
+        engine.midi_event(cc(CC_SUSTAIN, 1.0));
+        engine.midi_event(note_on(50));
+        run(&mut engine, &t, 0.3);
+        engine.midi_event(note_off(50));
+        run(&mut engine, &t, 0.3);
+        assert_eq!(t.note(), Some(50));
+        assert!(t.sustain.load(Relaxed));
+        let direction = t.bow_direction.load(Relaxed);
+        engine.midi_event(note_on(28));
+        engine.midi_event(note_off(28));
+        run(&mut engine, &t, 0.05);
+        assert_eq!(t.note(), Some(50));
+        assert_eq!(t.bow_direction.load(Relaxed), 1.0);
+        assert_eq!(direction, 1.0);
+        engine.midi_event(note_on(29));
+        run(&mut engine, &t, 0.05);
+        assert_eq!(t.bow_direction.load(Relaxed), -1.0, "a bow change");
+        engine.midi_event(cc(CC_SUSTAIN, 0.0));
+        run(&mut engine, &t, 0.5);
+        assert_eq!(t.note(), None);
     }
 
     /// The tuning window's changes reach the performer; refitted strings are

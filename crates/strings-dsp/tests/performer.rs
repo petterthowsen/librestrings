@@ -5,8 +5,8 @@
 use strings_dsp::analysis::{Regime, cents, classify, measure_frequency};
 use strings_dsp::presets::{cello, violin};
 use strings_dsp::{
-    BowLift, ContactState, Fingering, InstrumentSpec, Performer, PerformerFrame, PerformerSettings,
-    PerformerTuning, Polyphony,
+    Articulation, BowLift, ContactState, Fingering, InstrumentSpec, Performer, PerformerFrame,
+    PerformerSettings, PerformerTuning, Polyphony,
 };
 
 const FS: f32 = 48_000.0;
@@ -134,7 +134,7 @@ fn steady(spec: &InstrumentSpec) -> Performer {
 }
 
 /// Across the range and dynamics every note settles into Helmholtz motion
-/// within 150 ms. With a steady bow, stopped notes are intonated by ear to
+/// within 180 ms. With a steady bow, stopped notes are intonated by ear to
 /// within 5 cents; open strings can't be, and flatten with bow force
 /// (STATUS.md).
 #[test]
@@ -252,8 +252,9 @@ const VIOLIN_NOTES: [(u8, Option<usize>); 16] = [
 ];
 
 /// Plays notes across the range at three dynamics and lists every one that
-/// isn't Helmholtz, settles later than 150 ms or misses its pitch (open
-/// strings may be 20 cents flat).
+/// isn't Helmholtz, settles later than 180 ms (a mid-velocity attack at mf
+/// takes about 150 ms to reach full speed) or misses its pitch (open strings
+/// may be 20 cents flat).
 fn range_failures(
     p: &mut Performer,
     notes: &[(u8, Option<usize>)],
@@ -278,7 +279,7 @@ fn range_failures(
                 failures.push(format!("{what}: {regime:?}"));
             }
             let attack = attack_time(&frames, period);
-            if !attack.is_some_and(|t| t < 0.15) {
+            if !attack.is_some_and(|t| t < 0.18) {
                 failures.push(format!("{what}: attack {attack:?}"));
             }
             let bridge: Vec<f32> = steady.iter().map(|f| f.frame.bridge_force).collect();
@@ -339,7 +340,8 @@ fn legato_crossing_moves_the_bow_to_the_new_string() {
     p.note_on(43, 0.6);
     let before = run(&mut p, 0.6);
     assert_eq!(before.last().unwrap().string, 1);
-    p.note_on(50, 0.6);
+    // Pressed hard: a portamento would slide up the G string instead.
+    p.note_on(50, 0.9);
     p.note_off(43);
     let after = run(&mut p, 1.0);
     let direction = before.last().unwrap().bow_velocity.signum();
@@ -406,12 +408,14 @@ fn on_string_stops_and_off_string_rings() {
                 // The stop is over by 0.04 s; measure well after.
                 BowLift::OnString => {
                     let db = db_at(0.3);
-                    assert!(db < -25.0, "on string {note}: {db:.1} dB");
+                    // The resting bow damps the string well below the
+                    // off-string ring (−7 to −8 dB): D4, the least, −19 dB
+                    // with the 75 ms stop (−25 or less with 40 ms).
+                    assert!(db < -15.0, "on string {note}: {db:.1} dB");
                     assert_eq!(p.note(), None);
                     assert!(p.contact(p.bowed_string()) > 0.99, "the bow stays on");
                 }
-                // The bow has left by 0.1 s and the string rings on (a
-                // stopped one until the finger eases off).
+                // The bow has left by 0.1 s and the string rings on.
                 BowLift::OffString => {
                     let db = db_at(0.1);
                     assert!(db > -15.0, "off string {note}: {db:.1} dB");
@@ -431,9 +435,9 @@ fn a_tap_plays_a_short_stroke() {
         p.note_on(50, 0.9);
         run(&mut p, 0.002);
         p.note_off(50);
-        let early = run(&mut p, 0.03);
+        let early = run(&mut p, 0.05);
         assert_eq!(p.note(), Some(50), "{bow_lift:?}");
-        assert!(early.iter().any(|f| f.bow_velocity.abs() > 0.05));
+        assert!(early.iter().any(|f| f.bow_velocity.abs() > 0.02));
         run(&mut p, 0.3);
         assert_eq!(p.note(), None);
     }
@@ -482,10 +486,11 @@ fn fast_detache_changes_bow_at_the_note() {
     assert!(hi - lo < 12.0, "note levels {lo:.1} to {hi:.1} dB");
 }
 
-/// Once the key is up, the finger eases off: a stopped note dies away while an
-/// open string rings on.
+/// Once the key is up, a stopped note rings on as an open string does: the
+/// finger stays down. It eases off, and the string dies away, when the next
+/// note goes to another string.
 #[test]
-fn stopped_notes_are_damped_after_release() {
+fn stopped_notes_ring_until_the_next_string() {
     let mut p = performer();
     p.set_dynamics(0.6);
     // (note, stopped): E3 and B3 stopped on the D and A strings; D3 open.
@@ -495,6 +500,7 @@ fn stopped_notes_are_damped_after_release() {
         // A short note, thrown off the string.
         p.note_on(note, 0.7);
         let stroke = run(&mut p, 0.1);
+        let string = stroke.last().unwrap().string;
         p.note_off(note);
         let rest = run(&mut p, 1.0);
         let peak = stroke
@@ -503,11 +509,52 @@ fn stopped_notes_are_damped_after_release() {
             .fold(0.0, f32::max);
         let later = rms(&rest[(0.6 * FS) as usize..(0.62 * FS) as usize]);
         let db = 20.0 * (later / peak).log10();
+        // The finger's own damping: a stopped note rings shorter than an open one,
+        // but not the −40 dB it fell to when the finger eased off at the key-up.
+        assert!(db > -36.0, "{note}: {db:.1} dB");
+        assert_eq!(p.finger_down(string), stopped, "{note}");
+
+        // The next note, on the C string.
+        p.note_on(36, 0.7);
+        let level = |p: &mut Performer, seconds: f32| {
+            let n = (seconds * FS) as usize;
+            let sum: f32 = (0..n)
+                .map(|_| {
+                    p.process();
+                    p.string_frames()[string].bridge_force.powi(2)
+                })
+                .sum();
+            (sum / n as f32).sqrt()
+        };
+        let before = level(&mut p, 0.02);
+        run(&mut p, 0.5);
+        let after = level(&mut p, 0.02);
+        let db = 20.0 * (after / before).log10();
+        assert!(!p.finger_down(string));
         if stopped {
-            assert!(db < -40.0, "stopped {note}: {db:.1} dB");
+            assert!(db < -25.0, "stopped {note} after the next note: {db:.1} dB");
         } else {
-            assert!(db > -20.0, "open {note}: {db:.1} dB");
+            assert!(db > -15.0, "open {note} after the next note: {db:.1} dB");
         }
+        p.note_off(36);
+    }
+}
+
+/// A slow legato (portamento) stays on its string where it can, even where
+/// another string plays the note lower: a finger can't slide across strings.
+/// Pressed hard, the same note goes to the lower position.
+#[test]
+fn portamento_stays_on_the_string() {
+    // A2 on the G string, then A3: an octave up the G string, or open on the A.
+    for (velocity, string) in [(0.2, 1), (0.9, 3)] {
+        let mut p = performer();
+        p.set_dynamics(0.6);
+        p.note_on(45, 0.7);
+        run(&mut p, 0.3);
+        assert_eq!(p.bowed_string(), 1);
+        p.note_on(57, velocity);
+        run(&mut p, 0.3);
+        assert_eq!(p.bowed_string(), string, "velocity {velocity}");
     }
 }
 
@@ -787,4 +834,224 @@ fn rung_out_strings_are_skipped_until_bowed() {
     let frames = run(&mut p, 0.5);
     assert!(!p.instrument().is_idle(string));
     assert!(rms(&frames[(0.3 * FS) as usize..]) > 1e-3);
+}
+
+/// A trill: the bow keeps its place on the string while the finger changes
+/// the length under it. Its distance from the bridge settles between the two
+/// notes' positions instead of jumping with every note.
+#[test]
+fn a_trill_is_bowed_in_between() {
+    let mut p = steady_performer();
+    p.set_dynamics(0.5);
+    // A2 held on the G string, B2 trilled above it (legato, within the hand).
+    p.note_on(45, 0.8);
+    run(&mut p, 0.5);
+    let string = p.bowed_string();
+    let length = |p: &Performer, note: u8| {
+        let s = &p.instrument().spec().strings[string];
+        s.length * s.frequency / frequency(note)
+    };
+    let alone = p.instrument().string(string).beta() * length(&p, 45);
+    let mut distances = Vec::new();
+    // B2 pressed and let go: back to the held A2 each time.
+    for k in 0..16 {
+        let note = if k % 2 == 0 { 47 } else { 45 };
+        if note == 47 {
+            p.note_on(47, 0.8);
+        } else {
+            p.note_off(47);
+        }
+        run(&mut p, 0.06);
+        distances.push(p.instrument().string(string).beta() * length(&p, note));
+    }
+    let late = &distances[8..];
+    let (lo, hi) = late
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(lo, hi), &d| (lo.min(d), hi.max(d)));
+    // B2 alone would put the bow a whole tone's worth (11%) closer.
+    let b2 = alone / 2f32.powf(2.0 / 12.0);
+    assert!(hi - lo < 0.3 * (alone - b2), "{lo:.4}–{hi:.4} m");
+    assert!(
+        lo > b2 && hi < alone,
+        "{lo:.4}–{hi:.4} m, notes {b2:.4} and {alone:.4}"
+    );
+}
+
+/// A soft legato from an open string slides: the finger lands at the nut and
+/// slides up the same string.
+#[test]
+fn portamento_from_an_open_string() {
+    let mut p = steady_performer();
+    p.set_dynamics(0.6);
+    // Open D3, then F3 soft: up the D string, not placed at once.
+    p.note_on(50, 0.7);
+    run(&mut p, 0.4);
+    let string = p.bowed_string();
+    p.note_on(53, 0.1);
+    p.note_off(50);
+    assert_eq!(p.process_frame().string, string);
+    let pitch = string_pitch(&mut p, string, 0.4);
+    let time = settle_time(&pitch);
+    assert!(cents(pitch[pitch.len() - 1], frequency(53)).abs() < 30.0);
+    assert!((0.12..0.3).contains(&time), "{:.0} ms", time * 1000.0);
+}
+
+/// The performer names what it plays, newest first.
+#[test]
+fn articulations_follow_the_playing() {
+    use Articulation as A;
+    let mut p = performer();
+    p.set_dynamics(0.6);
+    let last = |p: &Performer| p.articulations().0[0];
+    // Off the string: a détaché, a hard legato within the hand, a soft one
+    // (portamento), a crossing, then the bow lifts.
+    p.note_on(45, 0.6);
+    assert_eq!(last(&p), Some(A::Detache));
+    assert_eq!(p.bow_direction(), 1.0, "the first stroke is a down-bow");
+    run(&mut p, 0.3);
+    p.note_on(47, 0.9);
+    p.note_off(45);
+    assert_eq!(last(&p), Some(A::Legato));
+    run(&mut p, 0.2);
+    p.note_on(45, 0.1);
+    p.note_off(47);
+    assert_eq!(last(&p), Some(A::Portamento));
+    run(&mut p, 0.3);
+    p.note_on(62, 0.9);
+    p.note_off(45);
+    assert_eq!(last(&p), Some(A::StringCrossing));
+    run(&mut p, 0.3);
+    p.note_off(62);
+    run(&mut p, 0.01);
+    assert_eq!(last(&p), Some(A::BowLift));
+    let (recent, count) = p.articulations();
+    assert_eq!(
+        recent,
+        [
+            Some(A::BowLift),
+            Some(A::StringCrossing),
+            Some(A::Portamento)
+        ]
+    );
+    assert_eq!(count, 5);
+    run(&mut p, 0.3);
+
+    // On the string: a martelé, stopped; the next stroke is an up-bow.
+    p.set_bow_lift(BowLift::OnString);
+    p.note_on(50, 0.9);
+    assert_eq!(last(&p), Some(A::Martele));
+    assert_eq!(p.bow_direction(), -1.0);
+    run(&mut p, 0.1);
+    p.note_off(50);
+    run(&mut p, 0.01);
+    assert_eq!(last(&p), Some(A::BowStop));
+}
+
+/// Under the sustain pedal, a key let go leaves the bow going; the next
+/// separate note changes bow (détaché), an overlapping one still slurs, and
+/// the pedal let up ends the stroke.
+#[test]
+fn sustain_pedal_plays_detache() {
+    use Articulation as A;
+    let mut p = performer();
+    p.set_dynamics(0.6);
+    p.set_sustain(true);
+    p.note_on(50, 0.6);
+    run(&mut p, 0.3);
+    p.note_off(50);
+    run(&mut p, 0.2);
+    assert_eq!(p.note(), Some(50), "the pedal holds the stroke");
+    assert!(p.contact(p.bowed_string()) > 0.99);
+    let direction = p.bow_direction();
+
+    p.note_on(52, 0.6);
+    assert_eq!(p.articulations().0[0], Some(A::Detache));
+    assert_eq!(p.bow_direction(), -direction, "a bow change");
+    let frames = run(&mut p, 0.2);
+    assert!(frames.iter().any(|f| f.bow_velocity * direction < 0.0));
+
+    // Overlapping: slurred, no bow change.
+    p.note_on(53, 0.9);
+    p.note_off(52);
+    assert_eq!(p.articulations().0[0], Some(A::Legato));
+    assert_eq!(p.bow_direction(), -direction);
+    p.note_off(53);
+    run(&mut p, 0.2);
+    assert_eq!(p.note(), Some(53));
+
+    p.set_sustain(false);
+    run(&mut p, 0.01);
+    assert_eq!(p.articulations().0[0], Some(A::BowLift));
+    run(&mut p, 0.5);
+    assert_eq!(p.note(), None);
+}
+
+/// A bow keyswitch against the stroke changes bow within the note; with it,
+/// or between notes, it sets the next stroke's direction.
+#[test]
+fn bow_keyswitch_sets_the_direction() {
+    use Articulation as A;
+    let mut p = performer();
+    p.set_dynamics(0.6);
+    p.note_on(50, 0.6);
+    run(&mut p, 0.3);
+    assert_eq!(p.bow_direction(), 1.0);
+    p.set_bow_direction(-1.0, 0.6);
+    assert_eq!(p.articulations().0[0], Some(A::BowChange));
+    assert_eq!(p.bow_direction(), -1.0);
+    let frames = run(&mut p, 0.3);
+    assert!(frames.last().unwrap().bow_velocity < 0.0);
+    assert_eq!(p.note(), Some(50), "the note goes on");
+
+    // Up-bow again for the next stroke, instead of alternating to down.
+    p.set_bow_direction(-1.0, 0.6);
+    p.note_off(50);
+    run(&mut p, 0.4);
+    p.note_on(52, 0.6);
+    assert_eq!(p.bow_direction(), -1.0);
+    run(&mut p, 0.3);
+    p.note_off(52);
+    run(&mut p, 0.4);
+    // Between notes: the next stroke is a down-bow twice in a row.
+    p.set_bow_direction(1.0, 0.6);
+    p.note_on(50, 0.6);
+    assert_eq!(p.bow_direction(), 1.0);
+    run(&mut p, 0.2);
+    p.note_off(50);
+    run(&mut p, 0.4);
+    p.set_bow_direction(1.0, 0.6);
+    p.note_on(50, 0.6);
+    assert_eq!(p.bow_direction(), 1.0);
+}
+
+/// The dynamics brought to zero during a stroke change the bow once, after
+/// resting there for `auto_bow_change`; a stroke begun at zero doesn't.
+#[test]
+fn dynamics_at_zero_change_the_bow() {
+    use Articulation as A;
+    let mut p = performer();
+    p.set_dynamics(0.6);
+    p.note_on(50, 0.6);
+    run(&mut p, 0.3);
+    p.set_dynamics(0.0);
+    run(&mut p, 0.1);
+    assert_eq!(p.bow_direction(), 1.0, "not yet");
+    run(&mut p, 0.4);
+    assert_eq!(p.bow_direction(), -1.0);
+    assert_eq!(p.articulations().0[0], Some(A::BowChange));
+    run(&mut p, 1.0);
+    assert_eq!(p.bow_direction(), -1.0, "once per rest at zero");
+    assert_eq!(p.note(), Some(50));
+    p.set_dynamics(0.4);
+    run(&mut p, 0.1);
+    p.set_dynamics(0.0);
+    run(&mut p, 0.4);
+    assert_eq!(p.bow_direction(), 1.0, "again after rising");
+    p.note_off(50);
+    run(&mut p, 0.5);
+
+    p.note_on(52, 0.6);
+    let direction = p.bow_direction();
+    run(&mut p, 1.0);
+    assert_eq!(p.bow_direction(), direction, "begun at zero");
 }

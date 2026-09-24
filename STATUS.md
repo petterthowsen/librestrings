@@ -26,7 +26,7 @@ Re-run `strings-render compare` after each and A/B the listening files.
 ## Listening
 
 1. **First listening only.** Pitch and releases sound right; attacks lacked bite, held notes were static, low notes lacked weight and spiccato sounded plucked (PLAN.md "Phase 3 notes: tuning and first listening"). The fixes for those (attack bite, bow wander, a heavier body, finger damping) are in. A second, informal listening in the standalone app (September 2026) found nothing that stood out, and the A/B renders of the force band, the torsional loss and 2× oversampling all favored the change. The first comparison against recorded notes (items 40–44) has been measured and listened to.
-2. **Short notes off the string may sound plucked on low notes.** The scripted spiccato touch is gone (PLAN.md 4.3): a short note is now a real stroke of at least 40 ms, thrown off the string. That is still only a few periods of C2–G2, shorter than the 35–100 ms an attack needs to settle. A bouncing bow is Phase 4.
+2. **Short notes off the string may sound plucked on low notes.** The scripted spiccato touch is gone (PLAN.md 4.3): a short note is now a real stroke of at least 60 ms, thrown off the string. That is still only a few periods of C2–G2, shorter than the 35–100 ms an attack needs to settle. A bouncing bow is Phase 4.
 
 ## Playability vs the measured cello string
 
@@ -104,7 +104,7 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 
 ## Playing controls
 
-35. **The SWAM-style controls are built but not heard** (PLAN.md "Phase 3 notes: playing like SWAM"): CC11 dynamics and CC1 vibrato, the pressure range from flautando to scratch, one way of playing with a bow lift (off or on the string) in place of the articulations, legato transitions set by velocity, fingering modes and double stops. Only tests and renders of the example scores so far. The numbers (portamento 250 ms below velocity 0.6, grip attack 8–100 ms, minimum stroke 40 ms) are guesses.
+35. **The SWAM-style controls are built but not heard** (PLAN.md "Phase 3 notes: playing like SWAM"): CC11 dynamics and CC1 vibrato, the pressure range from flautando to scratch, one way of playing with a bow lift (off or on the string) in place of the articulations, legato transitions set by velocity, fingering modes and double stops. Only tests and renders of the example scores so far. The numbers (portamento 250 ms below velocity 0.8, grip attack 65–300 ms, minimum stroke 60 ms, bow change after 0.15 s at zero dynamics) are guesses. The sustain pedal (détaché) and the bow keyswitches are tested, not yet played in a DAW.
 36. **The cello's flautando is only a lighter bow.** Real flautando also moves toward the fingerboard, but the model's cello strings play flat above β ≈ 0.115 (item 8), so the pressure control can't move the bow there. The violin's does (`PerformerSettings::tasto`, item 52).
 37. **MIDI pitch bend is ignored.** It could move the finger on the bowed string(s); open strings can't bend.
 38. **Double stops are limited:** two notes, a fixed hand span (4 semitones at every position, where high positions allow more), and intonation by ear only on the older note. Chords of three or four strings (broken or with high force) aren't played.

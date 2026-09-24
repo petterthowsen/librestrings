@@ -87,7 +87,12 @@ pub fn show(ui: &mut egui::Ui, t: &Telemetry, state: &mut ViewState) {
     let mut bow_x = g.bridge_x - 0.1 * (g.bridge_x - g.nut_x);
     for i in 0..4 {
         let s = &t.strings[i];
-        let ratio = s.frequency.load(Relaxed) / spec.strings[i].frequency;
+        // A finger that has eased off isn't drawn, nor the length it stopped.
+        let ratio = if s.finger.load(Relaxed) {
+            s.frequency.load(Relaxed) / spec.strings[i].frequency
+        } else {
+            1.0
+        };
         let finger_x = g.finger_x(ratio);
         if i == bowed {
             bow_x = g.bridge_x - s.beta.load(Relaxed) * (g.bridge_x - finger_x);

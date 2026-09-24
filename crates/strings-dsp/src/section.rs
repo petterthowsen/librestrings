@@ -128,6 +128,9 @@ struct Draws {
 enum Event {
     NoteOn(u8, f32),
     NoteOff(u8),
+    Sustain(bool),
+    /// A bow keyswitch: direction and velocity.
+    Bow(f32, f32),
 }
 
 /// Notes waiting for their time (in samples), oldest first.
@@ -420,6 +423,18 @@ impl Section {
         self.schedule(Event::NoteOff(note));
     }
 
+    /// The sustain pedal ([`Performer::set_sustain`]), in order with the
+    /// notes around it.
+    pub fn set_sustain(&mut self, on: bool) {
+        self.schedule(Event::Sustain(on));
+    }
+
+    /// A bow keyswitch ([`Performer::set_bow_direction`]), in order with the
+    /// notes around it.
+    pub fn set_bow_direction(&mut self, direction: f32, velocity: f32) {
+        self.schedule(Event::Bow(direction, velocity));
+    }
+
     fn schedule(&mut self, event: Event) {
         let h = self.humanization;
         let fs = self.fs;
@@ -532,6 +547,8 @@ fn play(performer: &mut Performer, event: Event) {
     match event {
         Event::NoteOn(note, velocity) => performer.note_on(note, velocity),
         Event::NoteOff(note) => performer.note_off(note),
+        Event::Sustain(on) => performer.set_sustain(on),
+        Event::Bow(direction, velocity) => performer.set_bow_direction(direction, velocity),
     }
 }
 

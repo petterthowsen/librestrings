@@ -569,6 +569,8 @@ fn play(
                 Event::Fingering(f) => performer.set_fingering(f),
                 Event::String(s) => performer.set_string(s),
                 Event::Polyphony(p) => performer.set_polyphony(p),
+                Event::Sustain(on) => performer.set_sustain(on),
+                Event::Stroke(d) => performer.set_bow_direction(d, 0.6),
             }
             next += 1;
         }
@@ -629,6 +631,8 @@ fn play_section(
                 Event::Fingering(f) => section.set_fingering(f),
                 Event::String(s) => section.set_string(s),
                 Event::Polyphony(p) => section.set_polyphony(p),
+                Event::Sustain(on) => section.set_sustain(on),
+                Event::Stroke(d) => section.set_bow_direction(d, 0.6),
             }
             next += 1;
         }

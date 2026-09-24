@@ -275,6 +275,18 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
         ),
         Knob::new(
             Sustain,
+            "Bow follows",
+            field!(live.performer.tuning.bow_follow),
+        )
+        .log(0.01, 1.0)
+        .unit(" s")
+        .help(
+            "The bow keeps its place on the string while the finger moves, and drifts \
+                 to the new note's position over about this long: a trill is bowed in \
+                 between its notes.",
+        ),
+        Knob::new(
+            Sustain,
             "Wander: pressure",
             field!(live.performer.tuning.wander_pressure),
         )
@@ -305,10 +317,18 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
         .log(0.1, 5.0)
         .unit(" s")
         .help("Mean time between the wander's turning points."),
-        Knob::new(Release, "Release", field!(live.performer.tuning.release))
-            .log(0.02, 0.6)
-            .unit(" s")
-            .help("A sustained note's end: the bow slows and lifts off."),
+        Knob::new(
+            Release,
+            "Lift (off string)",
+            field!(live.performer.tuning.release),
+        )
+        .log(0.02, 0.6)
+        .unit(" s")
+        .help(
+            "Off the string, a note's end: the bow slows and lifts off over this long. \
+                 A shorter stroke lifts over its own length, still moving (thrown off). On \
+                 the string the bow stops instead (Stop).",
+        ),
         Knob::new(
             Release,
             "Force follows speed to",
@@ -357,6 +377,17 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
         .log(0.01, 0.2)
         .unit(" s")
         .help("However short the key press, the bow plays a stroke this long."),
+        Knob::new(
+            Release,
+            "Bow change at zero",
+            field!(live.performer.tuning.auto_bow_change),
+        )
+        .log(0.02, 1.0)
+        .unit(" s")
+        .help(
+            "The dynamics brought to zero and resting there this long changes the bow, \
+             once, at that quiet moment.",
+        ),
         Knob::new(
             Legato,
             "Portamento",
