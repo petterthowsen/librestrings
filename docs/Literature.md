@@ -58,6 +58,11 @@ Papers the model takes numbers or methods from, and what was used from each. Dat
 - A. Lampis, V. Chatziioannou, G. Scavone, "Experimental analysis of cello string types", Proc. Mtgs. Acoust. 58, 035013 (2025), [doi:10.1121/2.0002111](https://doi.org/10.1121/2.0002111). CC BY 4.0, kept in [papers/](papers/).
   - Table 1 gives T, μ, Z, d and EI for the reference string.
   - Fig. 1 gives the damping per mode. The A T1 values digitized from it are in `presets::reference`.
+- A. Lampis, A. Mayer, V. Chatziioannou, "An experimental approach for comparing the influence of cello string type on bowed attack response", JASA Express Lett. 4, 113201 (2024), [doi:10.1121/10.0034330](https://doi.org/10.1121/10.0034330) ([PDF](https://pub.mdw.ac.at/media/content_files/113201_1_10.0034330.pdf)). CC BY 4.0. Data: [Zenodo 13374477](https://zenodo.org/records/13374477).
+  - Guettler diagrams of four G2 strings (Table 1: T, μ, Z, EI) bowed from rest at β = 5.5/70 with constant force and acceleration. Table 2 fits the playable region's edges; the right edge F = c_R·a + k_R has c_R 1.0–1.4.
+  - Used for: `strings-render guettler`, and the cello's μs of 0.9 (PLAN.md "Attacks against measured data").
+- A. Lampis, A. Mayer, V. Chatziioannou, "Assessing playability limits of bowed-string transients using experimental measurements", Acta Acustica 8, 44 (2024), [doi:10.1051/aacus/2024034](https://doi.org/10.1051/aacus/2024034). Data and MATLAB code: [Zenodo 10946413](https://zenodo.org/records/10946413) (CC BY 4.0).
+  - The transient classifier (Galluzzo & Woodhouse's histogram method, `HM_yn_gall.m`, and `transient_analysis.m`), ported in `guettler.rs`. Its `guettler_limits.m` has Guettler's analytic limits: the acceleration limits scale with β(1−β)·F_b / (T0·Z) times a term in μs and μd.
 
 ## Cello body and strings (Phase 2)
 

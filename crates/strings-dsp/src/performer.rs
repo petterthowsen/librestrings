@@ -163,9 +163,10 @@ pub struct PerformerTuning {
     pub bow_change: f32,
     /// At low dynamics attacks are slower, by up to this factor minus one at
     /// dynamics 0. At low force the bow must accelerate gently or the string
-    /// starts in multiple slips (Guettler's attack diagram): below 1.6 quiet
-    /// attacks on C2 and G2 can hold a double slip for up to a second. Per
-    /// instrument ([`InstrumentSpec::pp_attack`]); the default is the cello's.
+    /// starts in multiple slips (Guettler's attack diagram): on the cello,
+    /// below 0.6 quiet attacks on C2 and G2 can hold a double slip for up to a
+    /// second, above it quiet D3 and A3 attacks start raucous. Per instrument
+    /// ([`InstrumentSpec::pp_attack`]); the default is the cello's.
     /// The violin, bowed farther from the bridge at pp, needs faster attacks.
     pub pp_attack: f32,
     /// The pressure (band position) tilts with dynamics: this much above the
@@ -278,7 +279,7 @@ impl Default for PerformerTuning {
             crossing: 0.03,
             attack: (0.15, 0.035),
             bow_change: 0.01,
-            pp_attack: 1.6,
+            pp_attack: 0.6,
             pressure_tilt: 0.15,
             quiet_ease: 0.5,
             ease_time: 0.3,

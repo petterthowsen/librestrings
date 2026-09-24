@@ -1018,7 +1018,7 @@ mod tests {
         let mut tuning = tuning::Tuning::new(cello);
         tuning.live.performer.tuning.attack_bite = 0.33;
         tuning.live.performer.pressure = 0.7;
-        tuning.live.friction.mu_s = 0.9;
+        tuning.live.friction.mu_s = 1.0;
         tuning.live.humanization.detune = 1.5;
         assert!(
             shared
@@ -1054,7 +1054,7 @@ mod tests {
             // The control stays the parameter's.
             assert_eq!(player.pressure(), 0.4);
             let instrument = player.instrument();
-            assert_eq!(instrument.spec().friction.mu_s, 0.9);
+            assert_eq!(instrument.spec().friction.mu_s, 1.0);
             assert_eq!(instrument.spec().strings[2].loss, specs[2].loss);
         }
         assert_eq!(engine.section.humanization().detune, 1.5);

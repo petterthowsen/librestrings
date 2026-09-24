@@ -718,36 +718,39 @@ pub mod cello {
 
     const FORCE_LIMITS: [ForceLimits; 4] = [
         ForceLimits {
-            lower: 1.200,
-            lower_exponent: -1.033,
-            upper: 6.533,
-            upper_exponent: -0.621,
+            lower: 1.103,
+            lower_exponent: -0.994,
+            upper: 4.595,
+            upper_exponent: -0.692,
         },
         ForceLimits {
-            lower: 0.864,
-            lower_exponent: -1.106,
-            upper: 7.325,
-            upper_exponent: -0.605,
+            lower: 0.542,
+            lower_exponent: -1.220,
+            upper: 5.017,
+            upper_exponent: -0.666,
         },
         ForceLimits {
-            lower: 0.338,
-            lower_exponent: -1.389,
-            upper: 3.240,
-            upper_exponent: -0.963,
+            lower: 0.245,
+            lower_exponent: -1.447,
+            upper: 4.152,
+            upper_exponent: -0.785,
         },
         ForceLimits {
-            lower: 0.161,
-            lower_exponent: -1.552,
-            upper: 7.409,
-            upper_exponent: -0.638,
+            lower: 0.151,
+            lower_exponent: -1.505,
+            upper: 5.632,
+            upper_exponent: -0.680,
         },
     ];
 
     pub const INSTRUMENT: InstrumentSpec = InstrumentSpec {
         name: "cello",
         strings: STRINGS,
+        // μs from the measured attacks (`guettler`, PLAN.md "Attacks against
+        // measured data"): at 0.8 the model needed twice the measured bow force
+        // for a given bow acceleration.
         friction: FrictionParams {
-            mu_s: 0.8,
+            mu_s: 0.9,
             mu_d: 0.3,
             v0: 0.1,
         },
@@ -767,7 +770,8 @@ pub mod cello {
         bow_distance: 0.024,
         tasto: 0.0,
         flautando: crate::performer::PRESSURE_FLAUTANDO,
-        pp_attack: 1.6,
+        // With μs 0.9 quiet attacks can be faster (it was 1.6 at μs 0.8).
+        pp_attack: 0.6,
         // Quiet strokes ease down the band once going: a darker pp
         // (PLAN.md "Soft, dark pp").
         quiet_ease: 0.5,

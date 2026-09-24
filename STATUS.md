@@ -23,7 +23,11 @@ The bow noise (item 42) was listened to in `out/ab-bow-noise/` (September 2026):
 
 Thermal friction (Woodhouse) is built as an option (PLAN.md "Thermal friction"): closer to the measured string's playability map and darker at pp, but no audible difference in `compare` (September 2026), so it is off by default (item 63).
 
-1. **Attacks against measured data (item 44):** the Guettler attack waveforms (mdw), then attack length and bite by ear. Try thermal friction there too.
+The attacks were compared with the measured Guettler diagrams (item 44; PLAN.md "Attacks against measured data"): the model needed twice the measured bow force for a given acceleration, which the friction's μs sets. The cello's μs is now 0.9 (was 0.8) and its quiet attacks faster (`pp_attack` 0.6, was 1.6). Thermal friction fits the attacks worse than the curve.
+
+The A/B renders (`out/ab-attack-friction/`) were listened to (September 2026): the change sounds good.
+
+1. **The violin, viola and bass friction** (item 64): whether they follow the cello's μs.
 
 Re-run `strings-render compare` after each and A/B the listening files.
 
@@ -46,8 +50,8 @@ The target is a simulated Helmholtz region within ±30% of the measured one, wit
 
 The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q torsional loss"); before it they were 119 / 154 / 107 (127) and 304 / 317 / 181 (274).
 
-3. **The Helmholtz area is 83–86% of the measured one** with the bow hair and its width (PLAN.md "The bow's width"), within Phase 1b's ±30%. At β < 0.05 it is 62% (328 of 529 points). The width (12 mm) is an estimate of a cello bow's ribbon, not measured; wider gives more (16 mm: 684 / 643 / 371).
-4. **The prompt lower force limit is still high.** In the steady state the width brought the model's lower limit at β = 0.1 to 0.24 / 0.44 / 1.03 N at 0.05 / 0.1 / 0.2 m/s (measured 0.21 / 0.31 / 0.76; point contact 0.38 / 0.88 / 1.66). The performer's band counts only forces where notes settle within 0.15 s (PLAN.md "Force band from prompt settling"), and that one hardly moved: for the G string at β = 0.1, v_b = 0.1 m/s it is 1.17–3.12 N (measured 0.31–1.89 N).
+3. **The Helmholtz area is 83–86% of the measured one** with the bow hair and its width (PLAN.md "The bow's width"), within Phase 1b's ±30%; 86–94% with the cello's μs 0.9 (`measured --mu-s 0.9`, PLAN.md "Attacks against measured data"). At β < 0.05 it is 62% (328 of 529 points). The width (12 mm) is an estimate of a cello bow's ribbon, not measured; wider gives more (16 mm: 684 / 643 / 371).
+4. **The prompt lower force limit is still high.** In the steady state the width brought the model's lower limit at β = 0.1 to 0.24 / 0.44 / 1.03 N at 0.05 / 0.1 / 0.2 m/s (measured 0.21 / 0.31 / 0.76; point contact 0.38 / 0.88 / 1.66). The performer's band counts only forces where notes settle within 0.15 s (PLAN.md "Force band from prompt settling"), and that one hardly moved: for the G string at β = 0.1, v_b = 0.1 m/s it was 1.17–3.12 N (measured 0.31–1.89 N). With μs 0.9 the steady lower limit is 0.19 / 0.37 / 0.88 N and the band 0.95–2.46 N.
 5. **Small β, high force fails.** Measured Helmholtz motion reaches 2–4 N at β ≈ 0.02–0.05; the model shows it only in part of that region.
 6. **Stiffness and torsion still shrink the Helmholtz region a little** with the measured damping. With the constant-Q torsional loss, torsion alone costs about 10% of the flexible string's Helmholtz points (it was 37%) and adds some at small β; stiffness and torsion together have 509 against the flexible string's 779. Bow-hair compliance (Phase 2) and the bow's width more than make up for it. Next candidate: the friction model (thermal friction, Phase 4).
 
@@ -125,7 +129,7 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
    - the seed sweeps fail a few more quiet attacks (bass 0 → 9 of 1296, violin 4 → 6), within the 1% limit.
    The level is fitted to one recorded cello and used on all four instruments.
 43. **The low strings' fundamental is mostly fixed.** The body lost it, not the string (`compare --bridge`). Two fitted modes (118 and 144 Hz) fill the gap between A0 and the dense modes. On the C string A2–D3 went from −6 to −31 dB to −1 to −8 at mf–ff (recorded −1 to −5), and to −3 to −15 at pp, and the G string's median from −5 to −2.5 dB (recorded −2.2) at mf (PLAN.md "The body's low end"). Still weak: G2–Ab2 (−7 to −17 against −1 to −2) and, on the C string, Ab3–C4 around 220 Hz (−10 to −13 against 0 to −2). The A/B renders (`out/ab-body-low-end/`) were listened to (September 2026): the change sounds good.
-44. **One recorded player and one microphone.** The Iowa notes have no vibrato and one way of starting (a slow swell at pp–mf), and the player plays a median 15 cents sharp. Attack times and rings compare how the notes were played as much as the instrument; the Guettler attack data (mdw) is still the measured target for attacks.
+44. **One recorded player and one microphone.** The Iowa notes have no vibrato and one way of starting (a slow swell at pp–mf), and the player plays a median 15 cents sharp. Attack times and rings compare how the notes were played as much as the instrument. For what the string can do, `strings-render guettler` compares attacks from rest with the mdw Guettler diagrams (four G strings on a monochord at one β, constant force and acceleration; PLAN.md "Attacks against measured data"): with μs 0.9 the successful region's right edge is F = 1.28–1.65·a (measured 0.91–1.63), success and failure agree in 83–84% of strokes, and the model is too willing at low force and slow acceleration (0.5–1 N), where the real strings fail. The data has no other β, speeds above 0.7 m/s, or the grip and bite the performer adds.
 45. **Two high positions are still a little off:** ff sul D B4 plays 17 cents sharp and sul D C#5 5 cents flat, with clean Helmholtz motion, in `compare`. In the seed sweep sul G D4 at mf settles slowly (0.4–1 s) on 2 of 24 seeds. The bow's minimum distance (0.024 m per kg/s of impedance) is fitted to where the model fails, not to players; it works from 3.5 to 4.5 cm on the C string. The A/B renders (`out/ab-bow-distance/`: `play sul` and `play phrase --fingering bridge`, before and after) were listened to (September 2026): the change sounds better.
 
 ## Violin
@@ -154,7 +158,12 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
    - ff is 4–7 dB too dark above partial 8;
    - its speed dependence (`speed_exponent` 0.5) is a fit, not from the literature: Woodhouse's model alone fails above about 0.2 m/s;
    - it costs 30–50% more per string, which puts 12-player sections further over budget (item 47);
-   - the plugin's debug view shows the friction curve's band while it is on.
+   - the plugin's debug view shows the friction curve's band while it is on;
+   - it fits the measured attacks worse than the curve: its successful region is a narrow band (F ≈ 0.7·a) that fails at slow accelerations (`guettler --thermal`, strings B and C: 14–18% of strokes succeed against 40–43% measured; PLAN.md "Attacks against measured data").
+
+## Attacks
+
+64. **Only the cello has the new friction.** The cello's μs went from 0.8 to 0.9 and its `pp_attack` from 1.6 to 0.6 (PLAN.md "Attacks against measured data"); the A/B renders sound good (September 2026), with `attack`, `attack_bite`, `grip_attack` and `bite` unchanged. The violin, viola and bass keep μs 0.8: there is no attack data for them, and a change means recalibrating each band and running its seed sweep. The bass is built like the cello and plays with its bow hair, so it is the first candidate.
 
 ## Open decisions
 

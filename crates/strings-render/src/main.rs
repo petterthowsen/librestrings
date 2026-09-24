@@ -9,6 +9,7 @@ use clap::{Args, Parser, Subcommand};
 
 mod calibrate;
 mod compare;
+mod guettler;
 mod measured;
 mod score;
 use strings_dsp::analysis::{Regime, bow_steady, classify, classify_bridge_force};
@@ -281,6 +282,51 @@ enum Command {
         #[arg(long, requires = "hair_stiffness")]
         bow_width: Option<f32>,
         /// Write every point's parameters and both regimes to this CSV file.
+        #[arg(long)]
+        csv: Option<PathBuf>,
+        /// Thermal friction (Woodhouse) instead of the friction curve; the value
+        /// stretches μ(T)'s temperature axis (default 1).
+        #[arg(long, num_args = 0..=1, default_missing_value = "1")]
+        thermal: Option<f32>,
+    },
+    /// Compare the model's attacks with measured Guettler diagrams (mdw cello G
+    /// strings bowed from rest at constant force and acceleration), stroke by
+    /// stroke. Fetch the data with scripts/fetch-reference-data.sh guettler-waveforms.
+    Guettler {
+        #[arg(long, default_value = "data/reference/guettler-waveforms/waveforms")]
+        data: PathBuf,
+        /// String types to compare: A (Prelude), B (Helicore), C (Dominant),
+        /// D (Kaplan); all by default.
+        #[arg(long, value_delimiter = ',')]
+        string: Vec<char>,
+        /// Which sample of each type (the paper uses 2).
+        #[arg(long, default_value_t = 2)]
+        sample: u32,
+        /// Bow with a rigid bow instead of the cello's bow hair.
+        #[arg(long)]
+        rigid_bow: bool,
+        /// Override the width of the bow hair in contact with the string (m).
+        #[arg(long)]
+        bow_width: Option<f32>,
+        /// Override the bow noise's level (0 turns it off).
+        #[arg(long)]
+        bow_noise: Option<f32>,
+        /// The strings' rate as a multiple of the recordings' 50 kHz.
+        #[arg(long, default_value_t = 2)]
+        oversampling: u32,
+        /// Scale every simulated stroke's bow force.
+        #[arg(long, default_value_t = 1.0)]
+        force_scale: f32,
+        /// Override the static friction coefficient.
+        #[arg(long)]
+        mu_s: Option<f32>,
+        /// Override the dynamic friction coefficient.
+        #[arg(long)]
+        mu_d: Option<f32>,
+        /// Override the friction curve's slip-speed scale (m/s).
+        #[arg(long)]
+        v0: Option<f32>,
+        /// Write every stroke's parameters and both transients to this CSV file.
         #[arg(long)]
         csv: Option<PathBuf>,
         /// Thermal friction (Woodhouse) instead of the friction curve; the value
@@ -694,6 +740,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 thermal_friction(thermal),
                 csv.as_deref(),
             )?;
+        }
+        Command::Guettler {
+            data,
+            string,
+            sample,
+            rigid_bow,
+            bow_width,
+            bow_noise,
+            oversampling,
+            force_scale,
+            mu_s,
+            mu_d,
+            v0,
+            csv,
+            thermal,
+        } => {
+            let mut opts = guettler::Options::defaults(data);
+            opts.friction.mu_s = mu_s.unwrap_or(opts.friction.mu_s);
+            opts.friction.mu_d = mu_d.unwrap_or(opts.friction.mu_d);
+            opts.friction.v0 = v0.unwrap_or(opts.friction.v0);
+            opts.models = string.iter().map(|c| c.to_ascii_uppercase()).collect();
+            opts.sample = sample;
+            if rigid_bow {
+                opts.hair = None;
+            }
+            if let (Some(width), Some(hair)) = (bow_width, &mut opts.hair) {
+                hair.width = width;
+            }
+            if let Some(level) = bow_noise {
+                opts.bow_noise.level = level;
+            }
+            opts.oversampling = oversampling.max(1);
+            opts.force_scale = force_scale;
+            opts.csv = csv;
+            opts.thermal = thermal_friction(thermal);
+            guettler::run(&opts)?;
         }
     }
     Ok(())
