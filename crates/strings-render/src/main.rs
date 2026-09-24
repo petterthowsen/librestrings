@@ -189,16 +189,25 @@ enum Command {
         #[arg(long, num_args = 0..=1, default_missing_value = "1")]
         thermal: Option<f32>,
     },
-    /// Compare the solo cello with recorded notes (University of Iowa, arco):
+    /// Compare the model with recorded notes (University of Iowa, arco):
     /// each note played again on the same string at the same dynamic, both
-    /// measured the same way. Fetch with scripts/fetch-reference-data.sh iowa-cello.
+    /// measured the same way. Fetch with scripts/fetch-reference-data.sh
+    /// iowa-cello | iowa-viola | iowa-violin | iowa-bass.
     Compare {
-        #[arg(long, default_value = "data/reference/iowa-cello")]
-        data: PathBuf,
+        /// Which instrument's recorded set to compare.
+        #[arg(long, default_value = "cello")]
+        instrument: Family,
+        /// Where the recordings are (default: data/reference/iowa-<instrument>).
+        #[arg(long)]
+        data: Option<PathBuf>,
+        /// Read the recordings at this rate, if their headers disagree with
+        /// the audio (the Iowa viola set is 96 kHz audio in 44.1 kHz files).
+        #[arg(long)]
+        file_rate: Option<f32>,
         /// Only these dynamics (pp, mf, ff; repeat or separate by commas).
         #[arg(long, value_delimiter = ',')]
         dynamics: Vec<String>,
-        /// Only this string (C, G, D, A).
+        /// Only this string (the instrument's open strings, e.g. C, G, D, A).
         #[arg(long)]
         string: Option<String>,
         /// The model's vibrato control, 0–1 (default: matched to each recording).
@@ -399,7 +408,7 @@ const SCORES: [(&str, &str); 30] = [
 ];
 
 #[derive(Clone, Copy, clap::ValueEnum)]
-enum Family {
+pub(crate) enum Family {
     Violin,
     Viola,
     Cello,
@@ -407,7 +416,7 @@ enum Family {
 }
 
 impl Family {
-    fn instrument(self) -> &'static InstrumentSpec {
+    pub(crate) fn instrument(self) -> &'static InstrumentSpec {
         match self {
             Family::Violin => &violin::INSTRUMENT,
             Family::Viola => &viola::INSTRUMENT,
@@ -632,7 +641,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Command::Compare {
+            instrument,
             data,
+            file_rate,
             dynamics,
             string,
             vibrato,
@@ -645,7 +656,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             noise_cutoff,
             thermal,
         } => compare::run(&compare::Options {
+            instrument,
             data,
+            file_rate,
             out,
             dynamics,
             string,

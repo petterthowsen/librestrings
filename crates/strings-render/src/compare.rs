@@ -1,7 +1,9 @@
-//! Compare the model with recorded cello notes: the University of Iowa MIS
-//! arco set (anechoic, one mono file per string, dynamic and range, each a
-//! chromatic run of single long notes with the bow lifted at the end). Fetch
-//! it with `scripts/fetch-reference-data.sh iowa-cello`.
+//! Compare the model with recorded notes: the University of Iowa MIS arco
+//! sets, anechoic, one mono file per string, dynamic and range, each a
+//! chromatic run of single long notes with the bow lifted at the end. The
+//! violin, viola and cello sets are recorded the same way. Fetch one with
+//! `scripts/fetch-reference-data.sh iowa-cello` (or `iowa-viola`,
+//! `iowa-violin`, `iowa-bass`).
 //!
 //! Each recorded note is played again by the performer on the same string at
 //! the matching dynamic, as long as the recorded bow stroke, and both go
@@ -12,8 +14,9 @@
 use std::path::{Path, PathBuf};
 
 use strings_dsp::analysis::{cents, measure_frequency};
-use strings_dsp::presets::cello;
 use strings_dsp::{InstrumentSpec, Performer, PerformerSettings, ThermalFriction};
+
+use crate::Family;
 
 /// Envelope hop and window (s).
 const HOP: f32 = 0.005;
@@ -29,17 +32,68 @@ const NOISE_BANDS: [(f32, f32); 4] = [
 ];
 /// Highest partial frequency measured (Hz).
 const TOP: f32 = 10_000.0;
-/// Both signals are high-passed here (Hz) before measuring: the recordings
-/// carry rumble below 20 Hz, a few dB under a quiet note's fundamental. The
-/// cello's lowest note is 65 Hz.
-const HIGHPASS: f32 = 40.0;
+
+/// An instrument's recorded set: the file prefix, Iowa's "sul" string letters
+/// with the preset string each is played on, and the high-pass both signals
+/// get before measuring (the recordings carry rumble below 20 Hz, a few dB
+/// under a quiet note's fundamental, so it sits below the instrument's lowest
+/// note — the bass's open C1 is 32.7 Hz).
+struct Recorded {
+    /// The set's directory under `data/reference/`.
+    dir: &'static str,
+    /// Every file is named `Prefix.arco.<a>.<b>.<range>.mono.wav`, where
+    /// `<a>` and `<b>` are the dynamic and the string, in either order.
+    prefix: &'static str,
+    /// Iowa's letters and the preset string each is played on. The bass's set
+    /// has both the extended C string and the E string stopped at the gates
+    /// (a real extension's gates); both are the model's lowest string, which
+    /// plays E1 as a stopped note (PLAN.md "The bass's C extension").
+    strings: &'static [(&'static str, usize)],
+    highpass: f32,
+}
+
+fn recorded(family: Family) -> Recorded {
+    match family {
+        Family::Violin => Recorded {
+            dir: "iowa-violin",
+            prefix: "Violin",
+            strings: &[("G", 0), ("D", 1), ("A", 2), ("E", 3)],
+            highpass: 40.0,
+        },
+        Family::Viola => Recorded {
+            dir: "iowa-viola",
+            prefix: "Viola",
+            strings: &[("C", 0), ("G", 1), ("D", 2), ("A", 3)],
+            highpass: 40.0,
+        },
+        Family::Cello => Recorded {
+            dir: "iowa-cello",
+            prefix: "Cello",
+            strings: &[("C", 0), ("G", 1), ("D", 2), ("A", 3)],
+            highpass: 40.0,
+        },
+        Family::Bass => Recorded {
+            dir: "iowa-bass",
+            prefix: "Bass",
+            strings: &[("C", 0), ("E", 0), ("A", 1), ("D", 2), ("G", 3)],
+            highpass: 15.0,
+        },
+    }
+}
 
 pub struct Options {
-    pub data: PathBuf,
+    /// Which instrument's set to compare (Iowa, arco).
+    pub instrument: Family,
+    /// Where the recordings are; the set's default directory if `None`.
+    pub data: Option<PathBuf>,
+    /// Read the recordings at this rate, if their headers disagree with the
+    /// audio (the Iowa viola set is 96 kHz audio in 44.1 kHz files). Both the
+    /// model and the measurements then run at this rate.
+    pub file_rate: Option<f32>,
     pub out: PathBuf,
     /// Only these dynamics (pp, mf, ff); all if empty.
     pub dynamics: Vec<String>,
-    /// Only this string (C, G, D, A).
+    /// Only this string, by its recorded letter (C, G, D, A, E); all if empty.
     pub string: Option<String>,
     /// Vibrato control for the model, 0–1; by default matched to each
     /// recorded note's measured depth.
@@ -91,31 +145,44 @@ struct Features {
 
 struct Take {
     dynamic: &'static str,
+    /// The preset string it is played on.
     string: usize,
+    /// Iowa's letter for it, as in the file name.
+    letter: &'static str,
     /// The run's first note (MIDI), from the file name.
     first: u8,
     path: PathBuf,
 }
 
 const DYNAMICS: [(&str, f32); 3] = [("pp", 0.1), ("mf", 0.5), ("ff", 0.9)];
-const STRINGS: [&str; 4] = ["C", "G", "D", "A"];
 
 pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
-    let takes = find_takes(&opts.data, opts)?;
+    let set = recorded(opts.instrument);
+    let data = opts
+        .data
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("data/reference").join(set.dir));
+    let takes = find_takes(&data, &set, opts)?;
     if takes.is_empty() {
         return Err(format!(
-            "no Iowa cello files in {} (scripts/fetch-reference-data.sh iowa-cello)",
-            opts.data.display()
+            "no Iowa {} files in {} (scripts/fetch-reference-data.sh {})",
+            set.prefix.to_lowercase(),
+            data.display(),
+            set.dir
         )
         .into());
     }
     std::fs::create_dir_all(&opts.out)?;
-    let mut spec = cello::INSTRUMENT;
+    let mut spec = *opts.instrument.instrument();
     if let (Some(width), Some(hair)) = (opts.bow_width, &mut spec.hair) {
         hair.width = width;
     }
     let mut spec = crate::with_bow_noise(&spec, opts.bow_noise, opts.noise_cutoff);
     spec.thermal = opts.thermal;
+    // The instrument's own gesture values (the cello's are the default):
+    // without them a viola or bass note is bowed with the cello's positions,
+    // speed and band.
+    let settings = PerformerSettings::for_instrument(&spec);
     let mut csv = opts.csv.as_ref().map(|_| {
         String::from(
             "dynamic,string,note,source,level_db,attack_s,stroke_s,ring_s,cents,vib_cents,vib_hz,\
@@ -142,8 +209,9 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
         "hnr"
     );
     for take in &takes {
-        let (mut samples, fs) = read_mono(&take.path)?;
-        highpass(&mut samples, fs);
+        let (mut samples, header_rate) = read_mono(&take.path)?;
+        let fs = opts.file_rate.unwrap_or(header_rate);
+        highpass(&mut samples, fs, set.highpass);
         let dyn_value = DYNAMICS.iter().find(|d| d.0 == take.dynamic).unwrap().1;
         let mut listening = Vec::new();
         // The run is chromatic: each note is the one after the last. A
@@ -185,11 +253,12 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
             };
             let nominal = frequency(midi);
             let vibrato = opts.vibrato.unwrap_or_else(|| {
-                let full = 100.0 * PerformerSettings::default().vibrato_depth;
+                let full = 100.0 * settings.vibrato_depth;
                 (rec.vibrato_depth / full).clamp(0.0, 1.0)
             });
             let mut y = render(
                 &spec,
+                &settings,
                 midi,
                 take.string,
                 dyn_value,
@@ -200,7 +269,7 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
                 opts.bridge,
                 fs,
             );
-            highpass(&mut y, fs);
+            highpass(&mut y, fs, set.highpass);
             let Some(model) = analyze(&y, fs, nominal) else {
                 println!("{:<3} {:<4} model: no note found", take.dynamic, name(midi));
                 midi += 1;
@@ -233,7 +302,7 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
                     csv.push_str(&format!(
                         "{},{},{},{src},{:.2},{:.4},{:.3},{:.3},{:.1},{:.1},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2}\n",
                         take.dynamic,
-                        STRINGS[take.string],
+                        take.letter,
                         name(midi),
                         f.level,
                         f.attack,
@@ -260,7 +329,7 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
         }
         let path = opts
             .out
-            .join(format!("{}-sul{}.wav", take.dynamic, STRINGS[take.string]));
+            .join(format!("{}-sul{}.wav", take.dynamic, take.letter));
         write_wav(&path, &listening, fs)?;
     }
     summary(&pairs);
@@ -341,7 +410,11 @@ fn summary(pairs: &[(&str, Features, Features)]) {
     }
 }
 
-fn find_takes(dir: &Path, opts: &Options) -> Result<Vec<Take>, Box<dyn std::error::Error>> {
+fn find_takes(
+    dir: &Path,
+    set: &Recorded,
+    opts: &Options,
+) -> Result<Vec<Take>, Box<dyn std::error::Error>> {
     let mut takes = Vec::new();
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Ok(takes);
@@ -349,18 +422,22 @@ fn find_takes(dir: &Path, opts: &Options) -> Result<Vec<Take>, Box<dyn std::erro
     for entry in entries {
         let path = entry?.path();
         let file = path.file_name().unwrap_or_default().to_string_lossy();
-        // Cello.arco.mf.sulG.G2Gb3.mono.wav
+        // Cello.arco.mf.sulG.G2Gb3.mono.wav, Bass.arco.sulE.ff.E1B1.mono.wav:
+        // the dynamic and the string come in either order, set by set.
         let parts: Vec<&str> = file.split('.').collect();
-        if parts.len() != 7 || parts[0] != "Cello" || parts[1] != "arco" || parts[6] != "wav" {
+        if parts.len() != 7 || parts[0] != set.prefix || parts[1] != "arco" || parts[6] != "wav" {
             continue;
         }
-        let Some(&(dynamic, _)) = DYNAMICS.iter().find(|d| d.0 == parts[2]) else {
+        let dynamic = |f: &str| DYNAMICS.iter().find(|d| d.0 == f).map(|d| d.0);
+        let (dynamic, sound) = match (dynamic(parts[2]), dynamic(parts[3])) {
+            (Some(d), None) => (d, parts[3]),
+            (None, Some(d)) => (d, parts[2]),
+            _ => continue,
+        };
+        let Some(sound) = sound.strip_prefix("sul") else {
             continue;
         };
-        let Some(string) = STRINGS
-            .iter()
-            .position(|s| parts[3].strip_prefix("sul") == Some(*s))
-        else {
+        let Some(&(letter, string)) = set.strings.iter().find(|(s, _)| *s == sound) else {
             continue;
         };
         let Some(first) = first_note(parts[4]) else {
@@ -372,13 +449,14 @@ fn find_takes(dir: &Path, opts: &Options) -> Result<Vec<Take>, Box<dyn std::erro
         if opts
             .string
             .as_ref()
-            .is_some_and(|s| !s.eq_ignore_ascii_case(STRINGS[string]))
+            .is_some_and(|s| !s.eq_ignore_ascii_case(letter))
         {
             continue;
         }
         takes.push(Take {
             dynamic,
             string,
+            letter,
             first,
             path,
         });
@@ -387,11 +465,13 @@ fn find_takes(dir: &Path, opts: &Options) -> Result<Vec<Take>, Box<dyn std::erro
         (
             DYNAMICS.iter().position(|d| d.0 == a.dynamic),
             a.string,
+            a.letter,
             &a.path,
         )
             .cmp(&(
                 DYNAMICS.iter().position(|d| d.0 == b.dynamic),
                 b.string,
+                b.letter,
                 &b.path,
             ))
     });
@@ -404,6 +484,7 @@ fn find_takes(dir: &Path, opts: &Options) -> Result<Vec<Take>, Box<dyn std::erro
 #[allow(clippy::too_many_arguments)]
 fn render(
     spec: &InstrumentSpec,
+    settings: &PerformerSettings,
     note: u8,
     string: usize,
     dynamics: f32,
@@ -414,7 +495,7 @@ fn render(
     bridge: bool,
     fs: f32,
 ) -> Vec<f32> {
-    let mut p = Performer::new(spec, PerformerSettings::default(), fs);
+    let mut p = Performer::new(spec, *settings, fs);
     p.set_string(Some(string));
     p.set_dynamics(dynamics);
     p.set_vibrato(vibrato);
@@ -741,9 +822,9 @@ fn append_matched(out: &mut Vec<f32>, x: &[f32], f: &Features, fs: f32) {
     out.extend(std::iter::repeat_n(0.0, (0.3 * fs) as usize));
 }
 
-/// Fourth-order Butterworth high-pass at `HIGHPASS`, in place.
-fn highpass(x: &mut [f32], fs: f32) {
-    let w = std::f32::consts::TAU * HIGHPASS / fs;
+/// Fourth-order Butterworth high-pass at `frequency`, in place.
+fn highpass(x: &mut [f32], fs: f32, frequency: f32) {
+    let w = std::f32::consts::TAU * frequency / fs;
     // The two sections of a fourth-order Butterworth.
     for q in [0.541_196_1, 1.306_563] {
         let alpha = w.sin() / (2.0 * q);
@@ -839,4 +920,83 @@ fn write_wav(path: &Path, samples: &[f32], fs: f32) -> Result<(), Box<dyn std::e
     }
     w.finalize()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn options(instrument: Family) -> Options {
+        Options {
+            instrument,
+            data: None,
+            file_rate: None,
+            out: PathBuf::new(),
+            dynamics: Vec::new(),
+            string: None,
+            vibrato: None,
+            velocity: 0.5,
+            csv: None,
+            bridge: false,
+            bow_width: None,
+            bow_noise: None,
+            noise_cutoff: None,
+            thermal: None,
+        }
+    }
+
+    /// The Iowa sets' file names, in both field orders, and how they map onto
+    /// the preset's strings (the bass's C extension is the recorded C and E).
+    #[test]
+    fn takes_are_parsed_by_instrument() {
+        let dir = std::env::temp_dir().join(format!("compare-takes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let files: [(&str, Family); 8] = [
+            ("Cello.arco.ff.sulC.C2B2.mono.wav", Family::Cello),
+            ("Cello.arco.pp.sulA.A4A5.mono.wav", Family::Cello),
+            ("Violin.arco.mf.sulE.G6Ab6.mono.wav", Family::Violin),
+            ("Viola.arco.sulC.pp.C2B2.mono.wav", Family::Viola),
+            ("Viola.arco.sulA.ff.A4B4.mono.wav", Family::Viola),
+            ("Bass.arco.sulC.mf.C1Eb1.mono.wav", Family::Bass),
+            ("Bass.arco.sulE.pp.E1B1.mono.wav", Family::Bass),
+            ("Bass.arco.sulG.ff.C4G4.mono.wav", Family::Bass),
+        ];
+        for (name, _) in files {
+            std::fs::write(dir.join(name), b"").unwrap();
+        }
+        // A file that names no dynamic.
+        std::fs::write(dir.join("Cello.arco.cresc.sulC.C2B2.mono.wav"), b"").unwrap();
+
+        // The three cello takes, the violin's, the two violas and the three
+        // basses: each set's own files only.
+        for (family, expected) in [
+            (Family::Cello, vec!["pp A 69", "ff C 36"]),
+            (Family::Violin, vec!["mf E 91"]),
+            (Family::Viola, vec!["pp C 36", "ff A 69"]),
+            (Family::Bass, vec!["pp E 28", "mf C 24", "ff G 60"]),
+        ] {
+            let opts = options(family);
+            let takes = find_takes(&dir, &recorded(family), &opts).unwrap();
+            let got: Vec<String> = takes
+                .iter()
+                .map(|t| format!("{} {} {}", t.dynamic, t.letter, t.first))
+                .collect();
+            assert_eq!(got, expected, "{}", recorded(family).prefix);
+            // `--string` filters by the recorded letter, not the preset's name.
+            let wanted = expected.first().unwrap()[3..4].to_string();
+            let mut opts = options(family);
+            opts.string = Some(wanted.clone());
+            let filtered = find_takes(&dir, &recorded(family), &opts).unwrap();
+            assert_eq!(
+                filtered.len(),
+                expected.iter().filter(|e| e[3..4] == wanted).count(),
+                "{wanted}"
+            );
+            for take in filtered {
+                assert_eq!(take.letter, wanted);
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

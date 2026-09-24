@@ -10,7 +10,7 @@ Open issues as of September 2026, end of Phase 2 (built, not yet judged by ear).
 | 1. One bowed string | Done (violin presets) |
 | 1b. Measured string physics | Stiffness, torsion and measured damping built and verified. The acceptance target is **met with the bow hair and its width** (83–86% of the measured Helmholtz area; see below) |
 | 2. Solo cello | Built: cello presets, bow hair, body, instrument, performer (legato, détaché, the bow lift, double stops), calibrated force band, `play` renderer with example scores. Objective checks pass (`tests/performer.rs`). **First listening done** (Phase 3 notes); the "sounds like a cello" criterion is open |
-| 3. CLAP plugin | Built: nih-plug CLAP plugin with MIDI, CCs, keyswitches, parameters and an egui editor (status, instrument view, keyboard, faders, tuning window); standalone app. Tests pass and the engine runs at 4.8% of real time (strings at 2×). **Plays in Bitwig** (September 2026); not yet tried in Reaper |
+| 3. CLAP plugin | Built: nih-plug CLAP plugin with MIDI, CCs, keyswitches, parameters and an egui editor (status, instrument view, keyboard, faders, tuning window); standalone app. Tests pass and the engine runs at 3.5% of real time dry and 4.2% on the stage (strings at 2×). **Plays in Bitwig** (September 2026); not yet tried in Reaper |
 | 5. More instruments | **All four built:** violin (PLAN.md "Phase 5: the violin"; its bow positions heard), viola and double bass (PLAN.md "Phase 5: viola and double bass"), each with a body from published mode frequencies and a calibrated force band, in the renderer and the plugin. Objective checks pass; the viola and bass renders sound good (first listening, September 2026) |
 
 ## Next steps
@@ -29,7 +29,7 @@ The A/B renders (`out/ab-attack-friction/`) were listened to (September 2026): t
 
 1. **The violin, viola and bass friction** (item 64): whether they follow the cello's μs.
 
-Re-run `strings-render compare` after each and A/B the listening files.
+Each now has its own recorded set to re-run `compare --instrument <name>` against (item 61; the viola needs `--file-rate 96000`), and the model is compared with each instrument's own bow positions, speed and band. The recordings' attacks are slow swells, so they can't set μs the way the Guettler diagrams set the cello's: the change has to be judged by ear, plus a band recalibration and a seed sweep per instrument.
 
 ## Listening
 
@@ -147,7 +147,11 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 58. **The bass plays slower and farther from the bridge:** at most 0.3 m/s at ff (the others 0.5) and 0.032 m per kg/s from the bridge (the others 0.024), fitted to where high positions fail, not to players. Notes 18–23 semitones up the E string hold multiple slips at pp (the bow sits near the middle of the string there) and are left out of the checks; the seed sweep failed 4 of 1152 checks, ff thumb-position notes 33–72 cents flat; with the bow's width it fails none of 1296.
 59. **The bass's open strings may play up to 30 cents flat:** the open E played 20–25 cents flat at mf–ff before the C extension (the other instruments' open strings 6–14); the range checks still allow the bass 30. E1 is now a stopped note and intonated; the open C1 plays 15.6 cents flat at mf.
 60. **The bass's left hand is the cello's:** it spans 4 semitones (`hand_span`), where a bassist covers about 2 in the lower positions, so legato lines shift less often than on a real bass. Its fingering modes assume nothing about tuning, and work in fourths.
-61. **No recorded viola or bass notes to compare with.** `strings-render compare` only knows the Iowa cello notes; the Iowa library has viola and double bass notes recorded the same way.
+61. **The violin, viola and bass now compare against their own recorded notes** (`compare --instrument`, PLAN.md "The other instruments' recorded notes"): the model's ring-off, pitch and HNR sit within a few dB of the recordings, 89–101 pairs per dynamic. Still open:
+   - **the viola set's 16/44.1 kHz files hold 96 kHz audio** (the take named `A4B4` reads 202 Hz at 44.1 kHz, 440.4 Hz read at 96 kHz), so it must be run with `--file-rate 96000`; the rate is wrong in Iowa's published files, not in the download (docs/Violin Reference Recordings.md §1);
+   - the pairs in `out/compare-violin/`, `out/compare-viola/` and `out/compare-bass/` haven't been listened to;
+   - the model's partials 4–7 at pp are still brighter than the recordings' on all three (the cello's item 40 pattern);
+   - the recorded attacks are 4–30× the model's at every dynamic (these players swell into the note, as the cello's do), so they can't set the model's attack times or μs.
 62. **The bass's C extension has no gates.** E1 is a stopped note on the extended string (finger damping, intonated by ear) where a real extension stops it with a metal gate or a machine, closer to an open string. The extended string's force band blends between two fits (PLAN.md "The bass's C extension"); C1 and D1 have been checked, not heard.
 
 ## Thermal friction
@@ -163,7 +167,7 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 
 ## Attacks
 
-64. **Only the cello has the new friction.** The cello's μs went from 0.8 to 0.9 and its `pp_attack` from 1.6 to 0.6 (PLAN.md "Attacks against measured data"); the A/B renders sound good (September 2026), with `attack`, `attack_bite`, `grip_attack` and `bite` unchanged. The violin, viola and bass keep μs 0.8: there is no attack data for them, and a change means recalibrating each band and running its seed sweep. The bass is built like the cello and plays with its bow hair, so it is the first candidate.
+64. **Only the cello has the new friction.** The cello's μs went from 0.8 to 0.9 and its `pp_attack` from 1.6 to 0.6 (PLAN.md "Attacks against measured data"); the A/B renders sound good (September 2026), with `attack`, `attack_bite`, `grip_attack` and `bite` unchanged. The violin, viola and bass keep μs 0.8: there is no attack data for them (the Iowa notes item 61 now compares are slow swells, which can't set μs), and a change means recalibrating each band and running its seed sweep. The bass is built like the cello and plays with its bow hair, so it is the first candidate.
 
 ## Open decisions
 
