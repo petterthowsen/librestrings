@@ -111,6 +111,7 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 
 47. **12 cello players are over PLAN.md's 25% budget:** 27.7% in the plugin engine's test with the bow's width (24.5% before; at most 2 contact points still cost 25.5%, so it is the contact loop more than the solves). A legato line cost 29% in the renderer before the width: more strings ring on in legato. SIMD across players (Phase 6) is the planned way down.
 48. **The solo cello costs 4.2% on the stage** (3.5% dry, with Stage off), within the 5% solo budget; 3.7% before the bow's width.
+49. **Divisi has not been heard**, and its rules are choices: the front (lower-numbered) players take the first note of the chord and the back of a note's desk moves to a new one; a player never joins a note already sounding (a note let go takes its players off, and they come back in with the next chord). Notes that arrive together (a MIDI chord, one sample) are divided once, before anyone starts; a live-played chord (notes a few ms apart) divides across those samples, so its players may have started the first note and sound it for those few ms. With more notes than players every player still plays one note, and a note that comes in with no player free takes the one whose note is closest to it in pitch (the note it leaves and the note a free player does not take are dropped); with one player the whole chord plays as it does without divisi. The renders are in `out/divisi/` (docs/SECTIONS.md A2).
 
 ## Playing controls
 

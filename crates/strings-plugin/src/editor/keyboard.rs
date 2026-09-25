@@ -246,7 +246,7 @@ pub fn piano(
         _ => {}
     }
 
-    let sounding = t.note();
+    let sounding = |note: u8| t.is_sounding(note);
     let bow_lift = t.bow_lift();
     let direction = t.bow_direction.load(Relaxed);
     let first = first_mapped(params);
@@ -270,7 +270,7 @@ pub fn piano(
     let small = FontId::proportional(9.0);
     for note in (lowest..=highest).filter(|&n| !is_black(n)) {
         let r = white_rect(note).shrink2(vec2(0.5, 0.0));
-        let fill = if sounding == Some(note) {
+        let fill = if sounding(note) {
             sounding_color
         } else if held(note) {
             held_color
@@ -306,7 +306,7 @@ pub fn piano(
     }
     for note in (lowest..=highest).filter(|&n| is_black(n)) {
         let r = black_rect(note);
-        let fill = if sounding == Some(note) {
+        let fill = if sounding(note) {
             sounding_color
         } else if held(note) {
             held_color

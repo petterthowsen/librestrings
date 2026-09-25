@@ -64,11 +64,12 @@ It is a stereo instrument that takes MIDI:
 
 The bow lift decides how a note ends. Off the string, the bow lifts and the string rings on; short notes are thrown off, spiccato-like. On the string, the bow stops and rests there, so short notes are staccato (martelé when pressed hard).
 
-Dynamics, vibrato, pressure (flautando to scratch), bow lift, polyphony (mono or double stops), fingering (near the nut, mid position, near the bridge) and volume are also plugin parameters that the host can automate. When a CC and a parameter both set a control, the one that changed last wins.
+Dynamics, vibrato, pressure (flautando to scratch), bow lift, polyphony (mono, double stops or divisi), fingering (near the nut, mid position, near the bridge) and volume are also plugin parameters that the host can automate. When a CC and a parameter both set a control, the one that changed last wins.
 
 **Sections and the stage:**
 
 - **Players** (1–12) sets the section size; 1 is a soloist. Each player has its own small differences in tuning, timing, vibrato, dynamics and bowing.
+- With **Divisi** polyphony the players divide the notes of a chord among themselves, one note each, as desks of a section do; the notes already sounding stay where they are, so a note that comes in takes its players from the ones that have more than their share, and a note let go takes its players off. A soloist plays the chord as double stops, as without divisi; with more notes than players every player still plays one note, and a note that comes in with no player free takes the one whose note is closest to it in pitch.
 - The section sits on a stage, heard through a pair of mics in front of it. **Stage x** and **Stage y** place its centre (metres: x to the audience's right, y back from the front of the stage), and **Section width** and **Section depth** set the area its players fill.
 - **Room** (studio, chamber hall, concert hall, scoring stage), **Absorption**, **Mic distance** and **Reflections** shape the early reflections. There is no reverb tail; add your own. To place several instances in the same room, give them the same room settings.
 - Turn **Stage** off for the players' dry, mono sum.
@@ -109,7 +110,7 @@ Add `--help` to any command for all options.
 ### `play`: an instrument or section from a score
 
 ```sh
-strings-render play phrase -o out/phrase.wav     # cello; also: scale, legato, staccato, doublestops, ostinato, sul
+strings-render play phrase -o out/phrase.wav     # cello; also: scale, legato, staccato, doublestops, divisi, ostinato, sul
 strings-render play violin-phrase --instrument violin -o out/violin.wav   # also violin-scale, -legato, -staccato, -doublestops, -ostinato, -sul, -tasto
 strings-render play viola-phrase --instrument viola -o out/viola.wav      # the same set, viola-*
 strings-render play bass-phrase --instrument bass -o out/bass.wav         # the same set, bass-* (no tasto)
@@ -119,7 +120,7 @@ strings-render play my.score -o out/my.wav       # a score file
 
 A solo instrument renders dry, in mono; `--players N` (up to 12) or `--stage` renders in stereo from the stage. `--x`, `--y`, `--width`, `--depth`, `--room`, `--absorption`, `--mic-distance` and `--reflections` match the plugin's stage parameters.
 
-The score format is described in `crates/strings-render/src/score.rs`; `crates/strings-render/scores/` has examples. `--bridge-out <file>` also writes the bridge force before the body; `--pressure`, `--fingering` and `--double-stops` change how it is played. The strings run at twice the sample rate, which keeps high notes in tune; `--oversampling 1` runs them at the sample rate, for comparison.
+The score format is described in `crates/strings-render/src/score.rs`; `crates/strings-render/scores/` has examples. `--bridge-out <file>` also writes the bridge force before the body; `--pressure`, `--fingering`, `--double-stops` and `--divisi` change how it is played. The strings run at twice the sample rate, which keeps high notes in tune; `--oversampling 1` runs them at the sample rate, for comparison.
 
 ### `bow`: bow a single note
 

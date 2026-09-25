@@ -92,8 +92,8 @@ enum Command {
     },
     /// Play a score through the performer and body. SCORE is a file (format in
     /// score.rs) or a built-in: scale, legato, staccato, phrase, doublestops,
-    /// ostinato, sul (cello), and the same prefixed violin-, viola- or bass-
-    /// for the others (violin-tasto and viola-tasto too).
+    /// divisi, ostinato, sul (cello), and the same prefixed violin-, viola- or
+    /// bass- for the others (violin-tasto and viola-tasto too).
     Play {
         score: String,
         #[arg(long, default_value = "cello")]
@@ -115,6 +115,12 @@ enum Command {
         /// score's `poly` changes it).
         #[arg(long)]
         double_stops: bool,
+        /// Divide the notes of a chord among the players of a section (divisi;
+        /// the score's `poly` changes it). With more notes than players each
+        /// player still plays one, the new notes taking the closest-playing
+        /// player; a solo plays it as double stops.
+        #[arg(long)]
+        divisi: bool,
         /// String samples per output sample: 1, or 2 to run the strings at
         /// twice the sample rate (default: the performer's).
         #[arg(long, value_parser = clap::value_parser!(u8).range(1..=2))]
@@ -406,12 +412,13 @@ macro_rules! score {
         ($name, include_str!(concat!("../scores/", $name, ".score")))
     };
 }
-const SCORES: [(&str, &str); 30] = [
+const SCORES: [(&str, &str); 31] = [
     score!("scale"),
     score!("legato"),
     score!("staccato"),
     score!("phrase"),
     score!("doublestops"),
+    score!("divisi"),
     score!("ostinato"),
     score!("sul"),
     score!("violin-scale"),
@@ -589,6 +596,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pressure,
             fingering,
             double_stops,
+            divisi,
             oversampling,
             players,
             stage,
@@ -627,10 +635,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(o) = oversampling {
                 settings.oversampling = o as usize;
             }
-            let polyphony = if double_stops {
-                Polyphony::DoubleStops
-            } else {
-                Polyphony::Mono
+            let polyphony = match (divisi, double_stops) {
+                (true, _) => Polyphony::Divisi,
+                (false, true) => Polyphony::DoubleStops,
+                (false, false) => Polyphony::Mono,
             };
             // The options come first; the score may change them.
             let modes = [

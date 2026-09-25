@@ -1,9 +1,11 @@
 //! Sections: players cloned from one performer, each with its own seeded
 //! humanization, switched on and off by the section's size.
 
-use strings_dsp::analysis::{cents, measure_frequency};
+use strings_dsp::analysis::{cents, measure_frequency, partial_amplitude};
 use strings_dsp::presets::cello;
-use strings_dsp::{Humanization, MAX_PLAYERS, Performer, PerformerSettings, Section};
+use strings_dsp::{
+    BowLift, Humanization, MAX_PLAYERS, Performer, PerformerSettings, Polyphony, Section,
+};
 
 const FS: f32 = 48_000.0;
 
@@ -187,4 +189,221 @@ fn release_all_drops_waiting_notes() {
     let rows = run(&mut s, 0.3);
     assert!(rms(&rows[0]) > 1e-3);
     assert!(rows[1..].iter().all(|r| r.iter().all(|&y| y == 0.0)));
+}
+
+/// The amplitude of `note` in a player's output once the note has settled.
+fn level(row: &[f32], note: u8) -> f32 {
+    partial_amplitude(&row[(0.8 * FS) as usize..], FS, frequency(note))
+}
+
+/// Which of two notes a player plays: `Some(0)` or `Some(1)` if one is 20 dB
+/// above the other, `None` if it plays both (or neither).
+fn played(row: &[f32], notes: [u8; 2]) -> Option<usize> {
+    let a = level(row, notes[0]);
+    let b = level(row, notes[1]);
+    if a > 10.0 * b {
+        Some(0)
+    } else if b > 10.0 * a {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+/// Divisi: the notes of a chord are divided among the players, one note each,
+/// as evenly as the desks (PLAN.md §5).
+#[test]
+fn divisi_divides_a_chord_among_the_players() {
+    let mut s = section(8, Humanization::NONE);
+    s.set_polyphony(Polyphony::Divisi);
+    s.set_dynamics(0.6);
+    s.note_on(50, 0.7); // D3
+    s.note_on(57, 0.7); // A3
+    let rows = run(&mut s, 1.5);
+    let notes = [50, 57];
+    let mut count = [0, 0];
+    for row in &rows[..8] {
+        match played(row, notes) {
+            Some(i) => count[i] += 1,
+            None => panic!(
+                "a player plays both (D3 {:.4}, A3 {:.4})",
+                level(row, 50),
+                level(row, 57)
+            ),
+        }
+    }
+    assert_eq!(count, [4, 4], "the chord was not divided evenly");
+}
+
+/// Without divisi every player plays the whole chord: both notes as double
+/// stops where one hand can, and as a legato line under mono, as before
+/// divisi existed.
+#[test]
+fn a_chord_is_played_by_every_player_without_divisi() {
+    let play = |polyphony| {
+        let mut s = section(4, Humanization::NONE);
+        s.set_polyphony(polyphony);
+        s.set_dynamics(0.6);
+        s.note_on(50, 0.7);
+        s.note_on(57, 0.7);
+        run(&mut s, 1.5)
+    };
+    for row in &play(Polyphony::DoubleStops)[..4] {
+        let (d, a) = (level(row, 50), level(row, 57));
+        assert!(d.min(a) > 0.1 * d.max(a), "D3 {d:.4}, A3 {a:.4}");
+    }
+    for row in &play(Polyphony::Mono)[..4] {
+        assert_eq!(played(row, [50, 57]), Some(1), "mono plays legato to A3");
+    }
+}
+
+/// A chord played one note at a time divides too, where the notes are close
+/// enough together: a note that comes while the players of the first are
+/// still waiting for their delay takes them before they start, so a player
+/// that leaves a note never sounds it (the note still waiting is dropped,
+/// not played for the few samples before the change).
+#[test]
+fn divisi_takes_the_players_a_new_note_needs() {
+    let mut s = section(8, Humanization::NONE);
+    s.set_humanization(Humanization {
+        delay: 0.02,
+        ..Humanization::NONE
+    });
+    s.set_polyphony(Polyphony::Divisi);
+    s.set_dynamics(0.6);
+    s.note_on(50, 0.7);
+    // One sample: the first note is divided, and the players it has not
+    // reached yet have their stroke waiting for their delay.
+    run(&mut s, 1.0 / FS);
+    let waiting: Vec<bool> = (0..8).map(|i| s.player(i).articulations().1 == 0).collect();
+    assert!(waiting[4..8].iter().any(|&w| w), "{waiting:?}");
+    s.note_on(57, 0.7);
+    let rows = run(&mut s, 1.5);
+    let level =
+        |row: &[f32], note: u8| partial_amplitude(&row[(0.8 * FS) as usize..], FS, frequency(note));
+    let mut count = [0, 0];
+    for row in &rows[..8] {
+        let (d, a) = (level(row, 50), level(row, 57));
+        if d > 10.0 * a {
+            count[0] += 1;
+        } else if a > 10.0 * d {
+            count[1] += 1;
+        } else {
+            panic!("a player plays both notes (D3 {d:.4}, A3 {a:.4})");
+        }
+    }
+    assert_eq!(count, [4, 4], "the second note did not take its players");
+    // A player the first note had not reached never starts it: the stroke
+    // waiting for its delay is dropped, not played for the few samples before
+    // the change, so its history holds the one stroke it plays now.
+    for (i, &waiting) in waiting.iter().enumerate() {
+        if !waiting || level(&rows[i], 57) < level(&rows[i], 50) {
+            continue;
+        }
+        assert_eq!(
+            s.player(i).articulations().1,
+            1,
+            "player {i} has another stroke behind it"
+        );
+    }
+}
+
+/// A note let go takes its players with it: they stop (the bow stops on the
+/// string), and the players of the other notes play on.
+#[test]
+fn divisi_lets_the_players_of_a_released_note_go() {
+    let mut s = section(8, Humanization::NONE);
+    s.set_polyphony(Polyphony::Divisi);
+    s.set_bow_lift(BowLift::OnString);
+    s.set_dynamics(0.6);
+    s.note_on(50, 0.7);
+    s.note_on(57, 0.7);
+    run(&mut s, 0.8);
+    s.note_off(57);
+    let rows = run(&mut s, 0.5);
+    let tail = (0.4 * FS) as usize..;
+    assert!(rms(&rows[0][tail.clone()]) > 1e-3);
+    for row in &rows[4..8] {
+        assert!(
+            rms(&row[tail.clone()]) < 0.05 * rms(&rows[0][tail.clone()]),
+            "a player of the released note plays on"
+        );
+    }
+}
+
+/// A section of one has nobody to divide: it plays the chord as double stops.
+#[test]
+fn a_section_of_one_plays_its_chord_as_double_stops() {
+    let mut s = section(1, Humanization::NONE);
+    s.set_polyphony(Polyphony::Divisi);
+    s.set_dynamics(0.6);
+    s.note_on(50, 0.7);
+    s.note_on(57, 0.7);
+    let rows = run(&mut s, 1.5);
+    let (d, a) = (level(&rows[0], 50), level(&rows[0], 57));
+    assert!(d > 0.1 * a && a > 0.1 * d, "D3 {d:.4}, A3 {a:.4}");
+}
+
+/// More notes than players: every player plays one note, and a note that
+/// comes in with no player free takes the one whose note is closest to it in
+/// pitch, which ends that note. C3 here takes the player on G2 (5 semitones
+/// away), not those on E2 (8) or C2 (12).
+#[test]
+fn divisi_with_more_notes_than_players_steals_the_closest() {
+    let mut s = section(3, Humanization::NONE);
+    s.set_polyphony(Polyphony::Divisi);
+    s.set_dynamics(0.6);
+    for note in [36, 40, 43] {
+        // C2, E2, G2, one player each.
+        s.note_on(note, 0.7);
+    }
+    run(&mut s, 0.6);
+    s.note_on(48, 0.7); // C3
+    let rows = run(&mut s, 1.0);
+    assert_eq!(played(&rows[0], [36, 40]), Some(0), "the C2 player stayed");
+    assert_eq!(played(&rows[1], [40, 48]), Some(0), "the E2 player stayed");
+    assert_eq!(played(&rows[2], [43, 48]), Some(1), "the G2 player moved");
+    // Nothing sounds the note the stolen player left.
+    for (row, note) in rows[..3].iter().zip([36, 40, 48]) {
+        let (left, played_note) = (level(row, 43), level(row, note));
+        assert!(left < 0.1 * played_note, "G2 still sounds ({left})");
+    }
+}
+
+/// Same seed, same chord division.
+#[test]
+fn a_divided_chord_is_reproducible() {
+    let play = || {
+        let mut s = section(6, Humanization::default());
+        s.set_polyphony(Polyphony::Divisi);
+        s.note_on(50, 0.7);
+        s.note_on(57, 0.7);
+        run(&mut s, 0.4)
+    };
+    assert_eq!(play(), play());
+}
+
+/// A player switched off while the section is divided over a chord leaves its
+/// note; one switched on comes in with the next chord.
+#[test]
+fn divisi_survives_a_size_change() {
+    let mut s = section(8, Humanization::NONE);
+    s.set_polyphony(Polyphony::Divisi);
+    s.set_dynamics(0.6);
+    s.note_on(50, 0.7);
+    s.note_on(57, 0.7);
+    run(&mut s, 0.5);
+    s.set_players(6); // players 6 and 7 are on A3
+    let rows = run(&mut s, 0.4);
+    assert!(rows[6][(0.3 * FS) as usize..].iter().all(|&y| y == 0.0));
+    assert!(rms(&rows[0][(0.3 * FS) as usize..]) > 1e-3);
+    s.set_players(8);
+    s.note_off(50);
+    s.note_off(57);
+    s.note_on(52, 0.7); // E3
+    s.note_on(59, 0.7); // B3
+    let rows = run(&mut s, 1.0);
+    for row in &rows[6..8] {
+        assert!(rms(&row[(0.5 * FS) as usize..]) > 1e-3);
+    }
 }

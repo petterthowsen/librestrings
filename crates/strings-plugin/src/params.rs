@@ -102,15 +102,18 @@ pub enum PolyphonyParam {
     Mono,
     #[name = "Double stops"]
     DoubleStops,
+    /// A section divides a chord's notes among its players.
+    Divisi,
 }
 
 impl PolyphonyParam {
-    pub const ALL: [Self; 2] = [Self::Mono, Self::DoubleStops];
+    pub const ALL: [Self; 3] = [Self::Mono, Self::DoubleStops, Self::Divisi];
 
     pub fn name(self) -> &'static str {
         match self {
             Self::Mono => "Mono",
             Self::DoubleStops => "Double stops",
+            Self::Divisi => "Divisi",
         }
     }
 }
@@ -120,6 +123,7 @@ impl From<PolyphonyParam> for Polyphony {
         match p {
             PolyphonyParam::Mono => Polyphony::Mono,
             PolyphonyParam::DoubleStops => Polyphony::DoubleStops,
+            PolyphonyParam::Divisi => Polyphony::Divisi,
         }
     }
 }

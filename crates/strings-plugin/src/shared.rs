@@ -6,7 +6,7 @@
 //! the tuning window's changes (see `tuning`). Neither side ever waits for
 //! the other.
 
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering::Relaxed};
 
 use crossbeam_queue::ArrayQueue;
 use nih_plug::prelude::AtomicF32;
@@ -83,6 +83,10 @@ pub struct Telemetry {
     pub string: AtomicU32,
     /// A double stop's second note, or -1.
     pub second_note: AtomicI32,
+    /// Every note the section is sounding, one bit per MIDI note: the notes
+    /// of a divisi chord (each on its own player), not only player 0's, so
+    /// the on-screen keyboard lights the whole chord.
+    pub sounding: [AtomicU64; 2],
     pub strings: [StringTelemetry; 4],
     /// Bow velocity (m/s) and force on the bowed string (N).
     pub bow_velocity: AtomicF32,
@@ -122,6 +126,12 @@ impl Telemetry {
 
     pub fn second_note(&self) -> Option<u8> {
         u8::try_from(self.second_note.load(Relaxed)).ok()
+    }
+
+    /// The section is sounding `note` (any player's note, not only player 0's).
+    pub fn is_sounding(&self, note: u8) -> bool {
+        let i = note as usize;
+        self.sounding[i / 64].load(Relaxed) & (1 << (i % 64)) != 0
     }
 }
 

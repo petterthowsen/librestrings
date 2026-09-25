@@ -9,7 +9,8 @@
 //! 0    fingering mid       # nut | mid | bridge
 //! 0    string G            # play on this string where it can ("sul G"): a string's name
 //!                          # (violin: G D A E; viola, cello: C G D A; bass: E A D G) or any
-//! 0    poly on             # on: overlapping notes are double stops where they can be
+//! 0    poly on             # on: overlapping notes are double stops where they can
+//!                          # off: legato | divisi: a section divides the chord among its players
 //! 0    pedal on            # sustain pedal: separate notes are détaché (a bow change)
 //! 0    stroke up           # the next stroke's direction (down | up); in a note, a bow change
 //! 0    note C3 1.0 80      # note, length in beats, velocity 1–127 (default 64)
@@ -121,7 +122,8 @@ pub fn parse(text: &str, strings: [&str; 4]) -> Result<Vec<(f32, Event)>, String
                 let p = match arg(2) {
                     Some("on") => Polyphony::DoubleStops,
                     Some("off") => Polyphony::Mono,
-                    _ => return Err(err("expected on or off")),
+                    Some("divisi") => Polyphony::Divisi,
+                    _ => return Err(err("expected on, off or divisi")),
                 };
                 events.push((time, Event::Polyphony(p)));
             }
@@ -221,6 +223,15 @@ mod tests {
             parse("0 string g").unwrap()[0].1,
             Event::String(Some(1))
         ));
+        assert!(matches!(
+            parse("0 poly on").unwrap()[0].1,
+            Event::Polyphony(Polyphony::DoubleStops)
+        ));
+        assert!(matches!(
+            parse("0 poly divisi").unwrap()[0].1,
+            Event::Polyphony(Polyphony::Divisi)
+        ));
+        assert!(parse("0 poly maybe").is_err());
         assert!(matches!(
             parse("0 string any").unwrap()[0].1,
             Event::String(None)

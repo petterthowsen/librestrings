@@ -509,6 +509,11 @@ impl Engine {
         t.string.store(bowed as u32, Relaxed);
         t.second_note
             .store(p.second().map_or(-1, |(n, _)| i32::from(n)), Relaxed);
+        let mut sounding = [0u64; 2];
+        self.section.sounding_notes(&mut sounding);
+        for (atomic, mask) in t.sounding.iter().zip(sounding) {
+            atomic.store(mask, Relaxed);
+        }
         for (i, s) in t.strings.iter().enumerate() {
             let string = instrument.string(i);
             s.frequency.store(string.frequency(), Relaxed);
@@ -1097,8 +1102,36 @@ mod tests {
         engine.midi_event(note_on(57));
         run(&mut engine, &t, 0.3);
         assert_eq!((t.note(), t.second_note()), (Some(50), Some(57)));
+        assert!(t.is_sounding(50) && t.is_sounding(57));
+        assert!(!t.is_sounding(51), "only the two notes");
         assert!(t.strings[2].contact.load(Relaxed) > 0.99);
         assert!(t.strings[3].contact.load(Relaxed) > 0.99);
+    }
+
+    /// With divisi, a section divides the notes of a chord among its players:
+    /// player 0's telemetry shows one of them, and the keyboard's mask
+    /// (`sounding`) shows them all.
+    #[test]
+    fn divisi_divides_a_chord_in_the_engine() {
+        let params = StringsParams {
+            players: IntParam::new("Players", 8, IntRange::Linear { min: 1, max: 12 }),
+            polyphony: EnumParam::new("Polyphony", PolyphonyParam::Divisi),
+            ..StringsParams::default()
+        };
+        let t = Telemetry::default();
+        let mut engine = Engine::new(FS, InstrumentParam::Cello);
+        engine.apply_params(&params);
+        engine.midi_event(note_on(50));
+        engine.midi_event(note_on(57));
+        run(&mut engine, &t, 0.3);
+        assert_eq!(
+            (t.note(), t.second_note()),
+            (Some(50), None),
+            "a player of a divided section plays one note"
+        );
+        // The keyboard lights the whole chord, not only player 0's note.
+        assert!(t.is_sounding(50) && t.is_sounding(57));
+        assert!(t.strings[2].contact.load(Relaxed) > 0.99);
     }
 
     /// A section plays in stereo: every player sounds, and a section on the

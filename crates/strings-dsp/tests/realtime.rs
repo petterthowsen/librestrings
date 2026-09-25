@@ -201,6 +201,18 @@ fn a_section_never_allocates() {
         block(&mut s, &mut stage, 0.1);
         s.set_players(8);
         s.note_on(57, 0.7);
+        // Divisi: a chord divided among the players, a note of it let go, and
+        // more notes than players left, where a new note takes the closest
+        // player.
+        s.set_polyphony(Polyphony::Divisi);
+        s.note_on(52, 0.7);
+        s.note_on(59, 0.7);
+        block(&mut s, &mut stage, 0.05);
+        s.note_off(52);
+        s.set_players(2);
+        block(&mut s, &mut stage, 0.02);
+        s.note_on(62, 0.7);
+        block(&mut s, &mut stage, 0.05);
         s.release_all();
         block(&mut s, &mut stage, 0.1);
         s.reset();

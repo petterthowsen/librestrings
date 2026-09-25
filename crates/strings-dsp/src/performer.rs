@@ -45,7 +45,7 @@ pub enum BowLift {
     OnString,
 }
 
-/// One note at a time, or two.
+/// One note at a time, or more where the notes overlap.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Polyphony {
     /// Overlapping notes play legato.
@@ -54,6 +54,10 @@ pub enum Polyphony {
     /// A note that comes while another sounds joins it on an adjacent string
     /// (a double stop) if one hand can play both; otherwise it plays legato.
     DoubleStops,
+    /// A section divides the notes of a chord among its players
+    /// ([`Section`](crate::Section), PLAN.md §5), one note each; a lone
+    /// performer plays the double stops it can instead.
+    Divisi,
 }
 
 /// Where the left hand prefers to play, which chooses the strings (as in
@@ -980,7 +984,9 @@ impl Performer {
         let velocity = velocity.clamp(0.0, 1.0);
         self.hold(note);
         self.let_go();
-        if self.polyphony == Polyphony::DoubleStops && self.join(note, velocity) {
+        if matches!(self.polyphony, Polyphony::DoubleStops | Polyphony::Divisi)
+            && self.join(note, velocity)
+        {
             return;
         }
         // Only over a key still down: under the sustain pedal a note after

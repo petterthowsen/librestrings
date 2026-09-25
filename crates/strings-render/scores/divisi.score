@@ -1,0 +1,17 @@
+# Divisi: the notes of a chord are divided among the section's players, one
+# note each (a solo plays the double stops it can). Render with --players N.
+tempo 60
+0 poly divisi
+0 dyn 0.55
+0 vib 0.5
+0 note C3 7 70          # three lines: C3 (C string), G3 (D string), C4 (A string)
+0 note G3 7 70
+0 note C4 3 70
+3 note E3 4 75          # the top line moves down to E3, under G3
+8 bow on
+8 note G2 2 85          # two lines, short and stopped on the string (staccato)
+8 note D3 2 85
+10 note G2 2 85
+10 note B2 2 85
+13 note C3 4 70         # one line again: the whole section plays it
+13 note G3 4 70
