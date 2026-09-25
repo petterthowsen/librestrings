@@ -69,52 +69,75 @@ pub mod violin {
     /// The violin's signature modes, from Woodhouse's measurements of one
     /// violin (euphonics.org, 5.3, Fig. 5): A0 at 272 Hz (the air resonance),
     /// CBR at 407 Hz, and the two "baseball" modes B1− at 462 Hz and B1+ at
-    /// 551 Hz, the strongest radiators. Damping (1.5–2.5%), signs and levels
-    /// are estimates, to be refined by ear or measurement.
+    /// 551 Hz, the strongest radiators. Damping (1.5–2.5%) and signs are
+    /// estimates; the levels are fitted to the recorded notes (`compare`,
+    /// then `fit-body`; PLAN.md "The body fitted to recordings").
     const SIGNATURE_MODES: [BodyMode; 4] = [
         BodyMode {
             frequency: 272.0,
             damping: 0.02,
-            gain: 0.8,
+            gain: 1.8,
         },
         BodyMode {
             frequency: 407.0,
             damping: 0.02,
-            gain: 0.3,
+            gain: 0.1,
         },
         BodyMode {
             frequency: 462.0,
             damping: 0.015,
-            gain: 1.0,
+            gain: 0.25,
         },
         BodyMode {
             frequency: 551.0,
             damping: 0.015,
-            gain: -1.2,
+            gain: -1.01,
         },
     ];
 
-    /// The bridge hill, peaking around 2.3 kHz (euphonics.org, 5.3). Width
-    /// and level are estimates.
-    const HILLS: [Hill; 1] = [Hill {
-        frequency: 2300.0,
-        width: 0.6,
-        gain: 2.0,
-    }];
+    /// The dense modes' envelope, fitted to the recorded notes (`fit-body`):
+    /// a dip at 1.3 kHz, a rise at 3.5 kHz and air around 6 kHz. The estimate
+    /// it replaced, a bridge hill at 2.3 kHz (euphonics.org, 5.3), left the
+    /// model 8–11 dB too strong at 1.3–1.8 kHz; the recordings show the
+    /// strongest radiation lower, at 300–400 Hz (see `BODY`).
+    const HILLS: [Hill; 4] = [
+        Hill {
+            frequency: 1256.0,
+            width: 0.3,
+            gain: -0.7,
+        },
+        Hill {
+            frequency: 2833.0,
+            width: 0.3,
+            gain: -0.9,
+        },
+        Hill {
+            frequency: 3525.0,
+            width: 0.3,
+            gain: 2.27,
+        },
+        Hill {
+            frequency: 6024.0,
+            width: 0.3,
+            gain: 1.86,
+        },
+    ];
 
-    /// The dense modes start among the B1 modes; the level falls above the
-    /// bridge hill.
+    /// The dense modes start at 300 Hz, between A0 and CBR: with the four
+    /// listed modes alone the body passed 300–400 Hz 20–30 dB weaker than
+    /// the recorded notes had it (they started at 500 Hz). The seed is the
+    /// best of twelve for the fit.
     pub const BODY: BodySpec = BodySpec {
         modes: &SIGNATURE_MODES,
         dense: DenseModes {
-            from: 500.0,
+            from: 300.0,
             to: 10000.0,
-            count: 60,
+            count: 70,
             damping: 0.03,
-            level: 0.35,
-            rolloff: 5000.0,
+            level: 0.424,
+            rolloff: 2721.0,
             hills: &HILLS,
-            seed: 0x5eed_f1d1,
+            seed: 0x5eed_f1d7,
         },
     };
 
@@ -226,7 +249,9 @@ pub mod violin {
         quiet_ease: 0.0,
         // Matched to the cello's median level on the example scales (the
         // violin strings' impedance is a third of the cello's); not yet by ear.
-        output_gain: 0.5,
+        // 0.5 until the body was fitted to recordings, which made it 6.2 dB
+        // quieter.
+        output_gain: 1.02,
         seat: Placement::VIOLINS,
     };
 }
@@ -278,50 +303,72 @@ pub mod viola {
     /// air modes at 230 Hz (A0) and 330–360 Hz, body modes around 350 and
     /// 440 Hz, which we take as B1− and B1+ (the violin's are at 462 and 551
     /// Hz). The CBR mode sits below B1− at the violin's ratio (407/462). As
-    /// on the violin, damping, signs and levels are estimates.
+    /// on the violin, damping and signs are estimates and the levels fitted
+    /// to the recorded notes (PLAN.md "The body fitted to recordings").
     const SIGNATURE_MODES: [BodyMode; 4] = [
         BodyMode {
             frequency: 230.0,
             damping: 0.02,
-            gain: 0.8,
+            gain: 0.2,
         },
         BodyMode {
             frequency: 310.0,
             damping: 0.02,
-            gain: 0.3,
+            gain: 1.15,
         },
         BodyMode {
             frequency: 350.0,
             damping: 0.015,
-            gain: 1.0,
+            gain: 0.25,
         },
         BodyMode {
             frequency: 440.0,
             damping: 0.015,
-            gain: -1.2,
+            gain: -4.32,
         },
     ];
 
-    /// The bridge hill, a little below the violin's 2.3 kHz (a larger
-    /// bridge): an estimate.
-    const HILLS: [Hill; 1] = [Hill {
-        frequency: 2000.0,
-        width: 0.6,
-        gain: 2.0,
-    }];
+    /// The dense modes' envelope, fitted to the recorded notes (`fit-body`):
+    /// a dip at 800 Hz and a rise toward 10 kHz. It replaced an estimated
+    /// bridge hill at 2 kHz, which left the model 10–15 dB too weak below
+    /// 300 Hz, relative to the rest.
+    const HILLS: [Hill; 4] = [
+        Hill {
+            frequency: 811.0,
+            width: 0.3,
+            gain: -0.59,
+        },
+        Hill {
+            frequency: 3277.0,
+            width: 0.3,
+            gain: 0.69,
+        },
+        Hill {
+            frequency: 5718.0,
+            width: 0.3,
+            gain: 1.47,
+        },
+        Hill {
+            frequency: 12000.0,
+            width: 0.3,
+            gain: 3.91,
+        },
+    ];
 
-    /// The dense modes start among the B1 modes, as on the violin.
+    /// The dense modes start at 200 Hz, below A0, to fill the low end the
+    /// recordings have (they started at 400 Hz). The seed is the best of
+    /// twelve for the fit.
     pub const BODY: BodySpec = BodySpec {
         modes: &SIGNATURE_MODES,
         dense: DenseModes {
-            from: 400.0,
+            from: 200.0,
             to: 10000.0,
-            count: 60,
+            count: 73,
             damping: 0.03,
-            level: 0.35,
-            rolloff: 4500.0,
+            level: 1.722,
+            rolloff: 1282.0,
             hills: &HILLS,
-            seed: 0x5eed_7107,
+            seed: 0x5eed_710e,
         },
     };
 
@@ -420,8 +467,9 @@ pub mod viola {
         // their pitch (the seed sweep failed 14 checks).
         quiet_ease: 0.0,
         // Matched to the cello's median level on the example scales; not yet
-        // by ear.
-        output_gain: 0.4,
+        // by ear. 0.4 until the body was fitted to recordings, which made it
+        // 6.5 dB louder.
+        output_gain: 0.19,
         seat: Placement::VIOLAS,
     };
 }
@@ -627,41 +675,52 @@ pub mod cello {
         },
     ];
 
-    /// A broad rise around 250 Hz, then two "bridge hills": the in-situ
-    /// bridge resonance at 1.2–1.5 kHz (Zhang et al.) and a second rise at
-    /// 2–2.3 kHz (euphonics.org, 5.3). The 250 Hz rise is not from
-    /// data: with the listed modes alone the body passed only 5–10% of the
-    /// power of D3 and A3 below 300 Hz, and low notes sounded light (30–50%
-    /// with it). To be judged by ear.
-    const HILLS: [Hill; 3] = [
+    /// The dense modes' envelope, fitted to the recorded notes' spectra
+    /// (`strings-render compare`, then `fit-body`; PLAN.md "The body fitted
+    /// to recordings"): a broad rise around 270 Hz, the bridge hill at
+    /// 1.5 kHz, a stronger rise at 2.5 kHz and air up to 10 kHz. The earlier
+    /// estimates (a 1.3 kHz hill three times the base level, a 2.2 kHz one
+    /// and a rolloff at 3.5 kHz) left the model 8–13 dB too strong around
+    /// 0.8–1.3 kHz and 4–8 dB weak above 5 kHz. The 270 Hz rise began as an
+    /// estimate that gave low notes their weight (PLAN.md "Phase 3 notes:
+    /// tuning and first listening"); the fit kept the body below 250 Hz as it
+    /// was (`fit-body --keep-below 250`).
+    const HILLS: [Hill; 4] = [
         Hill {
-            frequency: 250.0,
-            width: 0.6,
-            gain: 1.5,
+            frequency: 267.0,
+            width: 0.93,
+            gain: 1.54,
         },
         Hill {
-            frequency: 1300.0,
-            width: 0.8,
-            gain: 2.0,
+            frequency: 1498.0,
+            width: 0.3,
+            gain: 0.6,
         },
         Hill {
-            frequency: 2200.0,
-            width: 0.6,
-            gain: 1.2,
+            frequency: 2496.0,
+            width: 0.3,
+            gain: 2.19,
+        },
+        Hill {
+            frequency: 9000.0,
+            width: 0.3,
+            gain: 0.83,
         },
     ];
 
     /// The dense modes start at 150 Hz, among the listed ones: a real body has
-    /// many more modes there than the six measured ones.
+    /// many more modes there than the six measured ones. They reach 9.9 kHz:
+    /// the first 59 end at 6 kHz, and the fit added 8 at the same spacing,
+    /// which leaves those 59 where they were.
     pub const BODY: BodySpec = BodySpec {
         modes: &SIGNATURE_MODES,
         dense: DenseModes {
             from: 150.0,
-            to: 6000.0,
-            count: 59,
+            to: 9894.0,
+            count: 67,
             damping: 0.03,
-            level: 0.35,
-            rolloff: 3500.0,
+            level: 0.304,
+            rolloff: 8343.0,
             hills: &HILLS,
             seed: 0x5eed_c0de,
         },
@@ -775,7 +834,9 @@ pub mod cello {
         // Quiet strokes ease down the band once going: a darker pp
         // (PLAN.md "Soft, dark pp").
         quiet_ease: 0.5,
-        output_gain: 0.065,
+        // 0.065 until the body was fitted to recordings, which made it 2.3 dB
+        // quieter.
+        output_gain: 0.085,
         seat: Placement::CELLOS,
     };
 }
@@ -853,52 +914,68 @@ pub mod bass {
     /// Brown, "Acoustical studies on the flat-backed and round-backed
     /// double bass", dissertation, mdw Vienna 2004, 6.2): A0 at 65–67 Hz,
     /// the coupled T1/A1 at 115 Hz (among the strongest radiators) and A2 at
-    /// 150–158 Hz. Damping, signs and levels are estimates, set like the
-    /// cello's.
+    /// 150–158 Hz. Damping and signs are estimates, set like the cello's;
+    /// the levels are fitted to the recorded notes (PLAN.md "The body fitted
+    /// to recordings"), which took A0 and T1 down to a quarter against the
+    /// dense modes.
     const SIGNATURE_MODES: [BodyMode; 3] = [
         BodyMode {
             frequency: 66.0,
             damping: 0.025,
-            gain: 0.7,
+            gain: 0.17,
         },
         BodyMode {
             frequency: 115.0,
             damping: 0.02,
-            gain: 1.2,
+            gain: 0.3,
         },
         BodyMode {
             frequency: 155.0,
             damping: 0.02,
-            gain: -0.6,
+            gain: -2.4,
         },
     ];
 
-    /// A broad rise between A0 and T1, as the cello's at 250 Hz (not from
-    /// data), and a bridge hill scaled from the cello's (1.3 kHz) by the
-    /// size of the bridge: estimates. Brown finds the radiation falling
-    /// steeply above 1 kHz.
-    const HILLS: [Hill; 2] = [
+    /// The dense modes' envelope, fitted to the recorded notes (`fit-body`):
+    /// a rise around 100 Hz, a broad dip centred on 450 Hz and a rise at
+    /// 1.4 kHz. It replaced estimates (a rise at 90 Hz and a bridge hill at
+    /// 700 Hz, with the level rolling off from 1.5 kHz, as Brown finds the
+    /// radiation falling steeply above 1 kHz), which left the model 12–17 dB
+    /// too strong at 400–800 Hz and 10–20 dB too weak above 4 kHz.
+    const HILLS: [Hill; 4] = [
         Hill {
-            frequency: 90.0,
-            width: 0.6,
-            gain: 1.5,
+            frequency: 104.0,
+            width: 0.39,
+            gain: 1.29,
         },
         Hill {
-            frequency: 700.0,
-            width: 0.8,
-            gain: 2.0,
+            frequency: 456.0,
+            width: 1.5,
+            gain: -0.44,
+        },
+        Hill {
+            frequency: 1369.0,
+            width: 0.45,
+            gain: 0.71,
+        },
+        Hill {
+            frequency: 2614.0,
+            width: 0.34,
+            gain: -0.41,
         },
     ];
 
+    /// The dense modes reach 9.5 kHz: the first 59 end at 4 kHz, and the fit
+    /// added 13 at the same spacing, which leaves those 59 where they were.
     pub const BODY: BodySpec = BodySpec {
         modes: &SIGNATURE_MODES,
         dense: DenseModes {
             from: 80.0,
-            to: 4000.0,
-            count: 59,
+            to: 9471.0,
+            count: 72,
             damping: 0.03,
-            level: 0.35,
-            rolloff: 1500.0,
+            level: 2.006,
+            rolloff: 4593.0,
             hills: &HILLS,
             seed: 0x5eed_ba55,
         },
@@ -1033,8 +1110,9 @@ pub mod bass {
         // As the cello's.
         quiet_ease: 0.5,
         // Matched to the cello's median level on the example scales; not yet
-        // by ear.
-        output_gain: 0.06,
+        // by ear. 0.06 until the body was fitted to recordings, which made it
+        // 10.9 dB louder.
+        output_gain: 0.017,
         seat: Placement::BASSES,
     };
 }

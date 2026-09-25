@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use strings_dsp::analysis::{cents, measure_frequency};
 use strings_dsp::{InstrumentSpec, Performer, PerformerSettings, ThermalFriction};
 
-use crate::Family;
+use crate::{Family, envelope};
 
 /// Envelope hop and window (s).
 const HOP: f32 = 0.005;
@@ -114,7 +114,7 @@ pub struct Options {
 }
 
 /// What both the recording and the model are measured for.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Features {
     /// Median sustain level (dBFS of the 10 ms RMS).
     level: f32,
@@ -139,6 +139,10 @@ struct Features {
     /// The noise's spectrum: power halfway between the partials in
     /// `NOISE_BANDS`, dB relative to all harmonic power.
     noise: [f32; 4],
+    /// Every partial up to `TOP`: frequency (Hz), level (dB relative to all
+    /// harmonic power) and how far it stands above the noise halfway to its
+    /// neighbours (dB). For the spectral envelope (`envelope`).
+    partials: Vec<(f32, f32, f32)>,
     /// Samples of the attack's start and the ring's end.
     span: (usize, usize),
 }
@@ -333,6 +337,7 @@ pub fn run(opts: &Options) -> Result<(), Box<dyn std::error::Error>> {
         write_wav(&path, &listening, fs)?;
     }
     summary(&pairs);
+    envelope_summary(&pairs, &opts.out.join("envelope.csv"))?;
     if let (Some(path), Some(csv)) = (&opts.csv, csv) {
         std::fs::write(path, csv)?;
         println!("wrote {}", path.display());
@@ -408,6 +413,80 @@ fn summary(pairs: &[(&str, Features, Features)]) {
                 .join(" ")
         );
     }
+}
+
+/// The spectral envelope, recording − model, per dynamic and over all of
+/// them (`envelope`): the distance before and after taking it off, and the
+/// envelope itself in third octaves. Every sixth-octave bin goes to `path`.
+fn envelope_summary(
+    pairs: &[(&str, Features, Features)],
+    path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let points = |rec: &Features, model: &Features| -> envelope::Points {
+        rec.partials
+            .iter()
+            .zip(&model.partials)
+            .filter(|(r, m)| r.2 >= envelope::MIN_SNR && m.2 >= envelope::MIN_SNR)
+            .map(|(r, m)| (r.0, r.1 - m.1))
+            .collect()
+    };
+    let mut fits = Vec::new();
+    for dynamic in DYNAMICS.iter().map(|d| d.0).chain(["all"]) {
+        let notes: Vec<_> = pairs
+            .iter()
+            .filter(|p| dynamic == "all" || p.0 == dynamic)
+            .map(|p| points(&p.1, &p.2))
+            .collect();
+        if !notes.is_empty() {
+            fits.push((dynamic, envelope::fit(&notes)));
+        }
+    }
+    println!(
+        "\nspectral envelope, recording − model (dB, mean 0; per-note distance: median RMS \
+         over sixth octaves, as is / after taking the envelope off):"
+    );
+    let shown: Vec<usize> = (0..envelope::BINS).step_by(2).collect();
+    print!("{:<3} {:>11} |", "dyn", "distance");
+    for &b in &shown {
+        let f = envelope::centre(b);
+        if f < 1000.0 {
+            print!("{:>5.0}", f);
+        } else {
+            print!("{:>4.1}k", f / 1000.0);
+        }
+    }
+    println!();
+    for (dynamic, fit) in &fits {
+        print!(
+            "{:<3} {:>4.1} / {:>4.1} |",
+            dynamic, fit.distance, fit.residual
+        );
+        for &b in &shown {
+            match fit.h[b] {
+                Some(h) => print!("{:>+5.0}", h),
+                None => print!("{:>5}", "."),
+            }
+        }
+        println!();
+    }
+    let mut csv = String::from("hz");
+    for (dynamic, _) in &fits {
+        csv.push_str(&format!(",{dynamic},{dynamic}_notes"));
+    }
+    csv.push('\n');
+    for b in 0..envelope::BINS {
+        csv.push_str(&format!("{:.1}", envelope::centre(b)));
+        for (_, fit) in &fits {
+            match fit.h[b] {
+                Some(h) => csv.push_str(&format!(",{h:.2},{}", fit.notes[b])),
+                None => csv.push_str(&format!(",,{}", fit.notes[b])),
+            }
+        }
+        csv.push('\n');
+    }
+    std::fs::write(path, csv)?;
+    println!("wrote {}", path.display());
+    Ok(())
 }
 
 fn find_takes(
@@ -621,7 +700,7 @@ fn analyze(x: &[f32], fs: f32, nominal: f32) -> Option<Features> {
         coarse
     };
     let (vibrato_depth, vibrato_rate) = vibrato(&pitch_track(sustain, fs, lo, hi, 0.01), f0);
-    let (bands, centroid, hnr, noise) = spectrum(sustain, fs, f0);
+    let (bands, centroid, hnr, noise, partials) = spectrum(sustain, fs, f0);
     Some(Features {
         level,
         attack: t(attacked - onset),
@@ -634,6 +713,7 @@ fn analyze(x: &[f32], fs: f32, nominal: f32) -> Option<Features> {
         centroid,
         hnr,
         noise,
+        partials,
         span: (
             onset * hop,
             (ended * hop + (WINDOW * fs) as usize).min(x.len()),
@@ -729,18 +809,22 @@ fn vibrato(track: &[f32], f0: f32) -> (f32, f32) {
 
 /// Harmonic band levels (dB relative to all harmonic power), the mean
 /// partial number weighted by power, the harmonic-to-noise ratio (dB) and the
-/// noise's spectrum (see [`Features::noise`]), over Hann frames 6 periods
-/// long, each at its own fundamental.
+/// noise's spectrum (see [`Features::noise`]) and the partials (see
+/// [`Features::partials`]), over Hann frames 6 periods long, each at its own
+/// fundamental.
 ///
 /// The noise is measured halfway between partials: in a Hann window 6
 /// periods long those frequencies sit on the window's zeros for every
 /// partial, so the partials don't leak into them.
-fn spectrum(x: &[f32], fs: f32, f0: f32) -> ([f32; 5], f32, f32, [f32; 4]) {
+#[allow(clippy::type_complexity)]
+fn spectrum(x: &[f32], fs: f32, f0: f32) -> ([f32; 5], f32, f32, [f32; 4], Vec<(f32, f32, f32)>) {
     let len = (6.0 * fs / f0) as usize;
     let hop = len / 3;
     let partials = ((TOP.min(0.45 * fs)) / f0) as usize;
     let mut power = vec![0.0f64; partials + 1];
     let mut between = [0.0f64; 4];
+    // Power halfway below each partial, and above the last.
+    let mut halfway = vec![0.0f64; partials + 2];
     let mut hnrs = Vec::new();
     let w: Vec<f32> = (0..len)
         .map(|i| 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / len as f32).cos())
@@ -767,14 +851,17 @@ fn spectrum(x: &[f32], fs: f32, f0: f32) -> ([f32; 5], f32, f32, [f32; 4]) {
             *p += pw as f64;
             harmonic += pw;
             let mid = (n as f32 - 0.5) * local;
+            let a = windowed_amplitude(frame, &w, fs, mid);
+            halfway[n] += (a * a / 2.0) as f64;
             if let Some(b) = NOISE_BANDS
                 .iter()
                 .position(|&(lo, hi)| (lo..hi).contains(&mid))
             {
-                let a = windowed_amplitude(frame, &w, fs, mid);
                 between[b] += (a * a / 2.0) as f64;
             }
         }
+        let a = windowed_amplitude(frame, &w, fs, (partials as f32 + 0.5) * local);
+        halfway[partials + 1] += (a * a / 2.0) as f64;
         // Capped at 60 dB: the model has no noise at all.
         hnrs.push(10.0 * (harmonic / (total - harmonic).max(1e-6 * total)).log10());
         k += hop;
@@ -797,7 +884,14 @@ fn spectrum(x: &[f32], fs: f32, f0: f32) -> ([f32; 5], f32, f32, [f32; 4]) {
         .sum::<f64>()
         / all;
     let noise = between.map(|p| 10.0 * ((p / all).max(1e-12)).log10() as f32);
-    (bands, centroid as f32, median(hnrs), noise)
+    let db = |p: f64| 10.0 * p.max(1e-30).log10() as f32;
+    let partials = (1..=partials)
+        .map(|n| {
+            let floor = 0.5 * (halfway[n] + halfway[n + 1]);
+            (n as f32 * f0, db(power[n] / all), db(power[n]) - db(floor))
+        })
+        .collect();
+    (bands, centroid as f32, median(hnrs), noise, partials)
 }
 
 /// Amplitude of the component at `frequency` in a frame already weighed by

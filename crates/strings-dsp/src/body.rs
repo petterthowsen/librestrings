@@ -105,6 +105,12 @@ impl BodyTuning {
         &self.hills[..self.hill_count.min(MAX_HILLS)]
     }
 
+    /// The dense modes' level at `f` before their scatter: the base level,
+    /// the hills and the rolloff.
+    pub fn dense_envelope(&self, f: f32) -> f32 {
+        self.dense.envelope(self.hills(), f)
+    }
+
     /// Calls `f(frequency, damping, gain)` for every resonator below 0.45 ×
     /// the sample rate: the listed modes, then the seeded dense modes.
     fn each_resonator(&self, sample_rate: f32, mut f: impl FnMut(f32, f32, f32)) {

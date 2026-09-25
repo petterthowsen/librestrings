@@ -7,8 +7,10 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 
+mod body_fit;
 mod calibrate;
 mod compare;
+mod envelope;
 mod guettler;
 mod measured;
 mod score;
@@ -239,6 +241,36 @@ enum Command {
         /// stretches μ(T)'s temperature axis (default 1).
         #[arg(long, num_args = 0..=1, default_missing_value = "1")]
         thermal: Option<f32>,
+    },
+    /// Refit a body's hills, level and rolloff to the spectral envelope that
+    /// `compare` wrote (envelope.csv), and print the new values.
+    FitBody {
+        #[arg(long, default_value = "cello")]
+        instrument: Family,
+        /// The envelope file from `compare`.
+        #[arg(long, default_value = "out/compare/envelope.csv")]
+        envelope: PathBuf,
+        /// Which of its columns to fit: pp, mf, ff or all.
+        #[arg(long, default_value = "all")]
+        column: String,
+        /// Below this frequency (Hz) the body is kept as it is (the cello's
+        /// low end was fitted note by note: 250).
+        #[arg(long, default_value_t = 0.0)]
+        keep_below: f32,
+        /// Fit the listed modes' levels too (not their frequencies).
+        #[arg(long)]
+        listed: bool,
+        /// Start the dense modes at this frequency (Hz), at their density.
+        #[arg(long)]
+        dense_from: Option<f32>,
+        /// Try this many dense-mode seeds (the body's, then the next ones)
+        /// and keep the best fit.
+        #[arg(long, default_value_t = 1)]
+        seeds: u32,
+        #[arg(long, default_value_t = 48_000.0)]
+        sample_rate: f32,
+        #[arg(long, default_value_t = 20_000)]
+        iterations: usize,
     },
     /// Compare the model with a measured Schelleng diagram (mdw cello string A T1),
     /// point by point. Fetch the data with scripts/fetch-reference-data.sh.
@@ -690,6 +722,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             calibrate::run(&spec, sample_rate)
         }
+        Command::FitBody {
+            instrument,
+            envelope,
+            column,
+            keep_below,
+            listed,
+            dense_from,
+            seeds,
+            sample_rate,
+            iterations,
+        } => body_fit::run(
+            instrument.instrument(),
+            &body_fit::Options {
+                envelope: &envelope,
+                column: &column,
+                keep_below,
+                listed,
+                dense_from,
+                seeds,
+                sample_rate,
+                iterations,
+            },
+        )?,
         Command::Measured {
             data,
             loss_lowpass,

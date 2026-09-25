@@ -908,7 +908,10 @@ mod tests {
         engine.apply_tuning(&shared);
         let player = engine.section.player(0);
         assert_eq!(player.instrument().spec().friction.mu_s, 0.8);
-        assert_eq!(player.settings().output_gain, 0.5);
+        assert_eq!(
+            player.settings().output_gain,
+            InstrumentParam::Violin.spec().output_gain
+        );
     }
 
     #[test]

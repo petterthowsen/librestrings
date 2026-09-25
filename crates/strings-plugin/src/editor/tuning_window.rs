@@ -706,7 +706,7 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
                     Box::new(move |t: &mut Tuning, v| t.live.body.modes[i].gain = v),
                 ),
             )
-            .range(-2.0, 2.0)
+            .range(-6.0, 6.0)
             .help("Peak gain; the sign sets the polarity, so neighbors can cancel."),
         );
     }
@@ -732,7 +732,7 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
         Knob::new(Body, "Dense damping", field!(live.body.dense.damping))
             .log(0.005, 0.1)
             .unit(" ζ"),
-        Knob::new(Body, "Dense level", field!(live.body.dense.level)).range(0.0, 1.5),
+        Knob::new(Body, "Dense level", field!(live.body.dense.level)).range(0.0, 3.0),
         Knob::new(Body, "Roll-off above", field!(live.body.dense.rolloff))
             .log(500.0, 10000.0)
             .unit(" Hz"),
@@ -766,7 +766,7 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
                     Box::new(move |t: &mut Tuning, v| t.live.body.hills[i].frequency = v),
                 ),
             )
-            .log(50.0, 8000.0)
+            .log(50.0, 12000.0)
             .unit(" Hz")
             .help("A broad rise in the dense modes' level."),
         );
@@ -793,12 +793,12 @@ fn knobs(spec: &InstrumentSpec, defaults: &Tuning) -> Vec<Knob> {
                     Box::new(move |t: &mut Tuning, v| t.live.body.hills[i].gain = v),
                 ),
             )
-            .range(0.0, 5.0),
+            .range(-0.9, 6.0),
         );
     }
     k.extend([
         Knob::new(Body, "Output gain", field!(live.performer.output_gain))
-            .log(0.01, 0.5)
+            .log(0.005, 2.0)
             .help("After the body, before expression and volume."),
         Knob::new(Section, "Detune", field!(live.humanization.detune))
             .range(0.0, 15.0)

@@ -29,7 +29,10 @@ The A/B renders (`out/ab-attack-friction/`) were listened to (September 2026): t
 
 The bass now follows the cello's μs 0.9 (item 64; PLAN.md "Attacks against measured data"), with its band recalibrated and slower quiet attacks (`pp_attack` 2.2); its seed sweep passes all 1296 checks. The A/B renders (`out/ab-bass-friction/`) were listened to (September 2026): the change sounds good.
 
-1. **The violin and viola friction** (item 64): whether they follow the cello's μs.
+All four bodies are now fitted to the recorded notes' spectral envelope (item 65; PLAN.md "The body fitted to recordings"): `compare` measures the envelope and `fit-body` refits the body to it. The envelope distance to the recordings fell from 7.4–10.3 dB to 6.3–6.7 dB on every instrument.
+
+1. **Play the refitted bodies** (item 65): all four instruments sound different, the bass and viola most.
+2. **The violin and viola friction** (item 64): whether they follow the cello's μs.
 
 Each now has its own recorded set to re-run `compare --instrument <name>` against (item 61; the viola needs `--file-rate 96000`), and the model is compared with each instrument's own bow positions, speed and band. The recordings' attacks are slow swells, so they can't set μs the way the Guettler diagrams set the cello's: the change has to be judged by ear, plus a band recalibration and a seed sweep per instrument.
 
@@ -77,7 +80,7 @@ The two model rows include the constant-Q torsional loss (PLAN.md "Constant-Q to
 13. **The damping data is digitized from a small plot** (Fig. 1, A T1 panel). Mode 3 has a wide spread and is left out of the fit.
 14. **Only one measured string.** The cello C, D and A strings take their tension from a published set but borrow the G string's damping, bending stiffness and torsion. The comparison itself rests on one G string on a monochord (rigid terminations, no body).
 15. **The instrument damping is partly estimated.** The cello presets add ζ = 7e-4 to the measured monochord damping for energy lost into the body (open G: about 11 s to −60 dB). The finger's damping (0.015 Np per reflection, 0.095 once the note is over) is a guess, and the same at every frequency; a real fingertip damps the upper partials more.
-16. **The body is only partly sourced.** The six low mode frequencies are from the literature; their damping and levels, the bridge-hill shapes and the dense-mode statistics are estimates, and so are the rise at 250 Hz that gives low notes their weight (PLAN.md "Phase 3 notes: tuning and first listening") and the modes at 118 and 144 Hz, fitted to the recorded notes' fundamentals (PLAN.md "The body's low end"). There is no measured cello bridge admittance or radiation data yet.
+16. **The body is only partly sourced.** The six low mode frequencies are from the literature. Their damping and signs, and the dense modes' damping and density, are estimates. The modes at 118 and 144 Hz are fitted to the recorded notes' fundamentals (PLAN.md "The body's low end"). The dense modes' envelope (hills, level, rolloff) is fitted to the recorded notes' spectral envelope (item 65), so it describes one cello heard through one microphone, not a bridge admittance. There is no measured cello bridge admittance or radiation data yet.
 
 ## Model limits
 
@@ -126,7 +129,7 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 40. **The spectrum doesn't follow the dynamics.** Recorded notes brighten from pp to ff by 7–11 dB in partials 4–7 and 9–14 dB in partials 8–15; the model's spectrum stays about the same. The bow's width darkened pp on the low strings above partial 8 (C string −8 → −14 dB, recorded −32; centroid 4.7 → 3.0, recorded 1.3) and brought up the C string's pp fundamental (−10 → −5 dB, recorded −1), but partials 4–7 at pp are still about 13–15 dB too strong on the C and G strings, and at mf–ff the A string is now 13 dB too dark above partial 8 (−36 against −23). Easing quiet held notes down the band (`quiet_ease`, cello and bass) brought the C string's pp partials 8–15 from −15 to −18.5 dB and 4–7 from −5.5 to −6.6 (PLAN.md "Soft, dark pp"); the A/B files in `out/ab-quiet-ease/` sound good (September 2026). **The model can't get much darker than an ideal sawtooth:** once settled, even far below the band a pp note's bridge force keeps partials 4–7 near −9 dB, and no bow width, hair or friction-curve setting tried goes further. Real strings round the Helmholtz corner at low force (Cremer); the model's friction curve keeps sharpening it. Thermal friction (item 63) takes pp partials 4–7 from −9 to −13 dB and 8–15 from −24 to −28 (recorded −19, −32), inaudibly in `compare`; it is off by default.
 42. **Bow noise is in, and sounds good** (September 2026). Friction noise while the string slips (PLAN.md "Bow noise") brings the HNR to 31–32.5 dB at pp–ff (recorded 27–32; 43–49 before). Still open:
    - pp is 2–6 dB cleaner than the recording;
-   - the noise is 6–8 dB too strong at 1–2 kHz and 2–5 dB weak at 4–8 kHz, partly the estimated 1.3 kHz bridge hill (item 16);
+   - the noise spectrum is within 3 dB of the recording's since the fitted body, except 5 dB weak at 4–8 kHz at pp (item 65; it was 6–8 dB too strong at 1–2 kHz and 2–5 dB weak at 4–8 kHz, from the estimated 1.3 kHz bridge hill);
    - the attack's noise against the recorded mf onset isn't measured (`compare` measures the sustain only);
    - the seed sweeps fail a few more quiet attacks (violin 4 → 6; the bass's went 0 → 9 of 1296, and back to 0 with μs 0.9 and slower quiet attacks), within the 1% limit.
    The level is fitted to one recorded cello and used on all four instruments.
@@ -143,7 +146,7 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 
 ## Viola and double bass
 
-55. **The viola and the double bass have had one listening** (September 2026: the renders in `out/viola/` and `out/bass/` sound good). As on the violin, everything that shapes the sound is a first guess: the bodies' damping, signs and levels (only the mode frequencies are from data; the viola's CBR, both bridge hills and the bass's 90 Hz rise are estimates), the viola strings' decay times, the output gains (matched to the cello's level, not by ear) and the performer's timings, which are the cello's.
+55. **The viola and the double bass have had one listening** (September 2026: the renders in `out/viola/` and `out/bass/` sound good). As on the violin, much of what shapes the sound is a first guess: the bodies' damping and signs (the mode frequencies are from data, the levels and the dense modes' envelope are fitted to the recorded notes since item 65; the viola's CBR frequency is an estimate), the viola strings' decay times, the output gains (matched to the cello's level, not by ear) and the performer's timings, which are the cello's.
 56. **The bass strings are not measured.** The bending stiffness (EI 5e-3, B ≈ 1.4e-4) is an estimate from core size; the damping curve and the torsion are the cello's. Real bass strings (steel rope cores) may be less stiff. Dispersion is accurate only to about 2.5 kHz (item 18), about partial 60 of the open E, which the body's rolloff above 1.5 kHz mostly hides.
 57. **The bass E string's Helmholtz band is narrow** (PLAN.md "Phase 5: viola and double bass"): found in 22 of 48 calibration columns, one or two force rows deep; prompt Helmholtz motion at band positions 0.5–0.8 in 79–88% of cells. No string or bow parameter tried widens it. The performer's range checks pass on it, but a bass-specific bow (more hair, heavier), fitted to a measured bass string, is open.
 58. **The bass plays slower and farther from the bridge:** at most 0.3 m/s at ff (the others 0.5) and 0.032 m per kg/s from the bridge (the others 0.024), fitted to where high positions fail, not to players. Notes 18–23 semitones up the E string hold multiple slips at pp (the bow sits near the middle of the string there) and are left out of the checks; the seed sweep failed 4 of 1152 checks, ff thumb-position notes 33–72 cents flat; with the bow's width it fails none of 1296.
@@ -174,3 +177,13 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 ## Open decisions
 
 The rest is in PLAN.md "Open questions": CC64 vs CC68 for legato, and renaming the crates.
+
+## The body fitted to recordings
+
+65. **All four bodies are fitted to the recorded notes' spectral envelope** (PLAN.md "The body fitted to recordings"). The envelope distance (per-note RMS over sixth octaves, recording − model) fell to 6.5 / 6.5 / 6.3 / 6.7 dB for cello / violin / viola / bass (7.7 / 7.4 / 8.0 / 10.3 before). Still open:
+   - **Not heard yet.** The output gains were corrected to keep each instrument's level (cello +2.3 dB, violin +6.2, viola −6.5, bass −10.9), from `compare`'s median sustain level, not by ear.
+   - **5.6–5.9 dB of it is note-to-note detail** that a smooth body can't remove (this body's modes against the recorded instrument's, and item 40). Single bins stand out: cello 320 Hz (+7 dB, +16 at pp–mf), violin 400 Hz (+8), viola 200 Hz (+8), bass 63 Hz (+12) and 320 Hz (+7).
+   - **Several listed modes' levels hit the fit's 4× limit** (violin B1−, viola A0 and B1+, bass A0, T1 and A2). The dense modes now carry most of those instruments' low end.
+   - **One recording per instrument.** The fit includes that recording's microphone position and room. A second set (another player or microphone) would show how much of the envelope is the instrument.
+   - **The viola is darker than its recording at mf–ff** in partials 4–7 (−16 against −11 dB; −9 to −10 before).
+
