@@ -56,13 +56,14 @@ pub fn midi_note(frequency: f32) -> u8 {
     (69.0 + 12.0 * (frequency / 440.0).log2()).round() as u8
 }
 
-/// The first keyswitch: the highest C that keeps all four keyswitches below
-/// the instrument's lowest note (violin: C3, viola: C2, cello: C1, bass: C0,
-/// below its open E1). The white keys from there set the bow lift (C and D)
-/// and the bow direction (E and F).
+/// The first keyswitch: the highest C that keeps all seven white keys (C, D,
+/// E, F, G, A, B) below the instrument's lowest note (violin and viola: C2,
+/// cello: C1, bass: C0, below its open E1). The white keys from there set the
+/// bow lift (C and D), the bow direction (E and F) and the polyphony (G, A
+/// and B).
 pub fn keyswitch_base(spec: &InstrumentSpec) -> u8 {
     let lowest = midi_note(spec.strings[0].frequency);
-    (lowest - 6) / 12 * 12
+    (lowest - 12) / 12 * 12
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -70,6 +71,7 @@ pub enum Keyswitch {
     BowLift(BowLiftParam),
     /// Down-bow (1) or up-bow (-1): a bow change now, or the next stroke.
     Bow(f32),
+    Polyphony(PolyphonyParam),
 }
 
 /// What a keyswitch note does, if it is one.
@@ -80,6 +82,9 @@ pub fn keyswitch(spec: &InstrumentSpec, note: u8) -> Option<Keyswitch> {
         2 => Some(Keyswitch::BowLift(BowLiftParam::OnString)),
         4 => Some(Keyswitch::Bow(1.0)),
         5 => Some(Keyswitch::Bow(-1.0)),
+        7 => Some(Keyswitch::Polyphony(PolyphonyParam::Mono)),
+        9 => Some(Keyswitch::Polyphony(PolyphonyParam::DoubleStops)),
+        11 => Some(Keyswitch::Polyphony(PolyphonyParam::Divisi)),
         _ => None,
     }
 }
@@ -400,6 +405,7 @@ impl Engine {
         match keyswitch(self.spec(), note) {
             Some(Keyswitch::BowLift(bow_lift)) => self.section.set_bow_lift(bow_lift.into()),
             Some(Keyswitch::Bow(direction)) => self.section.set_bow_direction(direction, velocity),
+            Some(Keyswitch::Polyphony(polyphony)) => self.section.set_polyphony(polyphony.into()),
             None => self.section.note_on(note, velocity),
         }
     }
@@ -416,6 +422,7 @@ impl Engine {
             GuiEvent::NoteOff { note } => self.note_off(note),
             GuiEvent::BowLift(b) => self.section.set_bow_lift(b.into()),
             GuiEvent::Sustain(on) => self.section.set_sustain(on),
+            GuiEvent::Polyphony(p) => self.section.set_polyphony(p.into()),
         }
     }
 
@@ -540,6 +547,10 @@ impl Engine {
         }
         let bow_lift = BowLiftParam::from(p.bow_lift());
         t.bow_lift.store(bow_lift as u32, Relaxed);
+        t.polyphony.store(
+            PolyphonyParam::from(self.section.polyphony()) as u32,
+            Relaxed,
+        );
 
         self.level = [0.0; 4];
         self.peak = 0.0;
@@ -810,34 +821,53 @@ mod tests {
         );
         assert_eq!(keyswitch(cello, 28), Some(Keyswitch::Bow(1.0)));
         assert_eq!(keyswitch(cello, 29), Some(Keyswitch::Bow(-1.0)));
-        assert_eq!(keyswitch(cello, 31), None);
+        assert_eq!(
+            keyswitch(cello, 31),
+            Some(Keyswitch::Polyphony(PolyphonyParam::Mono))
+        );
+        assert_eq!(
+            keyswitch(cello, 33),
+            Some(Keyswitch::Polyphony(PolyphonyParam::DoubleStops))
+        );
+        assert_eq!(
+            keyswitch(cello, 35),
+            Some(Keyswitch::Polyphony(PolyphonyParam::Divisi))
+        );
+        assert_eq!(keyswitch(cello, 30), None);
         assert_eq!(keyswitch(cello, 25), None);
         assert_eq!(keyswitch(cello, 36), None);
     }
 
-    /// The violin's keyswitches are C3 and D3, below its open G3 (PLAN.md 4.1).
+    /// The violin's keyswitches are C2 and D2, below its open G3 (PLAN.md 4.1);
+    /// they moved down an octave from C3 when the polyphony keyswitches (G, A,
+    /// B) joined the block.
     #[test]
-    fn violin_keyswitches_are_the_white_keys_from_c3() {
+    fn violin_keyswitches_are_the_white_keys_from_c2() {
         let violin = InstrumentParam::Violin.spec();
-        assert_eq!(keyswitch_base(violin), 48);
+        assert_eq!(keyswitch_base(violin), 36);
         assert_eq!(
-            keyswitch(violin, 48),
+            keyswitch(violin, 36),
             Some(Keyswitch::BowLift(BowLiftParam::OffString))
         );
         assert_eq!(
-            keyswitch(violin, 50),
+            keyswitch(violin, 38),
             Some(Keyswitch::BowLift(BowLiftParam::OnString))
         );
-        assert_eq!(keyswitch(violin, 52), Some(Keyswitch::Bow(1.0)));
+        assert_eq!(keyswitch(violin, 40), Some(Keyswitch::Bow(1.0)));
+        assert_eq!(keyswitch(violin, 41), Some(Keyswitch::Bow(-1.0)));
+        assert_eq!(
+            keyswitch(violin, 47),
+            Some(Keyswitch::Polyphony(PolyphonyParam::Divisi))
+        );
         assert_eq!(keyswitch(violin, 55), None);
     }
 
-    /// Every instrument's keyswitches sit below its lowest note: the bass's
-    /// E and F keyswitches would otherwise be its open E1 and F1.
+    /// Every instrument's keyswitches sit below its lowest note: seven white
+    /// keys (the last of them B) fit under each instrument's lowest note.
     #[test]
     fn keyswitches_stay_below_every_instrument() {
         let bases = InstrumentParam::ALL.map(|i| keyswitch_base(i.spec()));
-        assert_eq!(bases, [48, 36, 24, 12]);
+        assert_eq!(bases, [36, 36, 24, 12]);
         for instrument in InstrumentParam::ALL {
             let spec = instrument.spec();
             let lowest = midi_note(spec.strings[0].frequency);
@@ -980,6 +1010,23 @@ mod tests {
         // The unchanged parameter doesn't take it back.
         engine.apply_params(&params);
         assert_eq!(engine.section.player(0).bow_lift(), BowLift::OnString);
+    }
+
+    /// The B1 keyswitch sets the polyphony without playing, and the unchanged
+    /// parameter doesn't take it back.
+    #[test]
+    fn keyswitch_changes_the_polyphony_without_playing() {
+        let params = StringsParams::default();
+        let t = Telemetry::default();
+        let mut engine = Engine::new(FS, InstrumentParam::Cello);
+        engine.apply_params(&params);
+        engine.midi_event(note_on(35));
+        run(&mut engine, &t, 0.05);
+        assert_eq!(t.note(), None);
+        assert_eq!(t.polyphony(), PolyphonyParam::Divisi);
+        assert_eq!(engine.section.polyphony(), strings_dsp::Polyphony::Divisi);
+        engine.apply_params(&params);
+        assert_eq!(engine.section.polyphony(), strings_dsp::Polyphony::Divisi);
     }
 
     /// CC64 holds the stroke after the key is up, and the E1 keyswitch sets

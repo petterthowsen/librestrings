@@ -310,9 +310,9 @@ pub struct Section {
     settings: PerformerSettings,
     body: BodyTuning,
     humanization: Humanization,
-    /// Divisi: the notes of a chord are divided among the players
-    /// ([`Polyphony::Divisi`]).
-    divisi: bool,
+    /// The section's polyphony: with [`Polyphony::Divisi`] a chord's notes
+    /// are divided among the players.
+    polyphony: Polyphony,
     /// The players are seated on the chord's notes, one each (a section of
     /// more than one player): evenly divided ([`Section::divide`]) when there
     /// are no more notes than players, and with the new notes taking the
@@ -400,7 +400,7 @@ impl Section {
             settings,
             body: BodyTuning::from(&spec.body),
             humanization,
-            divisi: false,
+            polyphony: Polyphony::Mono,
             dividing: false,
             chord: Chord::EMPTY,
             pending: Pending::EMPTY,
@@ -419,6 +419,12 @@ impl Section {
     /// Active players.
     pub fn players(&self) -> usize {
         self.count
+    }
+
+    /// The section's polyphony mode ([`Polyphony::Divisi`] divides a chord's
+    /// notes among the players).
+    pub fn polyphony(&self) -> Polyphony {
+        self.polyphony
     }
 
     /// Switches players on or off (1–[`MAX_PLAYERS`]). Real-time safe. Players
@@ -543,10 +549,10 @@ impl Section {
     /// notes already sounding stay where they are.
     pub fn set_polyphony(&mut self, polyphony: Polyphony) {
         let divisi = polyphony == Polyphony::Divisi;
-        if divisi != self.divisi {
-            self.divisi = divisi;
+        if divisi != (self.polyphony == Polyphony::Divisi) {
             self.forget_chord();
         }
+        self.polyphony = polyphony;
         // A player of a divisi section still plays the two notes it must when
         // the section can't divide (one player, or more notes than players).
         let played = if divisi {
@@ -576,7 +582,7 @@ impl Section {
     /// a chord wait for the sample they came in on and are then divided
     /// among the players ([`Section::flush`]).
     pub fn note_on(&mut self, note: u8, velocity: f32) {
-        if !self.divisi {
+        if self.polyphony != Polyphony::Divisi {
             self.schedule(Event::NoteOn(note, velocity));
             return;
         }
@@ -589,7 +595,7 @@ impl Section {
 
     pub fn note_off(&mut self, note: u8) {
         let note_off = Event::NoteOff(note);
-        if !self.divisi {
+        if self.polyphony != Polyphony::Divisi {
             self.schedule(note_off);
             return;
         }

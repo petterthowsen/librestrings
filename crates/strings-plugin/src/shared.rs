@@ -12,7 +12,7 @@ use crossbeam_queue::ArrayQueue;
 use nih_plug::prelude::AtomicF32;
 use strings_dsp::ARTICULATIONS;
 
-use crate::params::{BowLiftParam, InstrumentParam};
+use crate::params::{BowLiftParam, InstrumentParam, PolyphonyParam};
 use crate::tuning::{LiveTuning, StringsUpdate};
 
 #[derive(Clone, Copy, Debug)]
@@ -29,6 +29,9 @@ pub enum GuiEvent {
     BowLift(BowLiftParam),
     /// The pedal button: the sustain pedal down or up, as CC64.
     Sustain(bool),
+    /// Clicked in the editor, as [`GuiEvent::BowLift`]: the parameter only
+    /// acts when it changes, and a keyswitch may have set it since.
+    Polyphony(PolyphonyParam),
 }
 
 #[derive(Default)]
@@ -108,6 +111,9 @@ pub struct Telemetry {
     pub vibrato: AtomicF32,
     pub pressure: AtomicF32,
     pub bow_lift: AtomicU32,
+    /// The live polyphony mode (an index into `PolyphonyParam::ALL`), which a
+    /// keyswitch may have set away from the parameter.
+    pub polyphony: AtomicU32,
 }
 
 impl Telemetry {
@@ -118,6 +124,10 @@ impl Telemetry {
 
     pub fn bow_lift(&self) -> BowLiftParam {
         BowLiftParam::ALL[self.bow_lift.load(Relaxed) as usize % 2]
+    }
+
+    pub fn polyphony(&self) -> PolyphonyParam {
+        PolyphonyParam::ALL[self.polyphony.load(Relaxed) as usize % PolyphonyParam::ALL.len()]
     }
 
     pub fn note(&self) -> Option<u8> {

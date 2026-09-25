@@ -128,6 +128,16 @@ impl From<PolyphonyParam> for Polyphony {
     }
 }
 
+impl From<Polyphony> for PolyphonyParam {
+    fn from(p: Polyphony) -> Self {
+        match p {
+            Polyphony::Mono => Self::Mono,
+            Polyphony::DoubleStops => Self::DoubleStops,
+            Polyphony::Divisi => Self::Divisi,
+        }
+    }
+}
+
 /// Where the left hand plays (SWAM's fingering modes).
 #[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FingeringParam {

@@ -188,18 +188,31 @@ fn selection_row(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter
     });
     ui.horizontal(|ui| {
         ui.label("Polyphony");
-        enum_combo(
-            ui,
-            setter,
-            &params.polyphony,
-            &PolyphonyParam::ALL,
-            PolyphonyParam::name,
-            110.0,
-        )
-        .on_hover_text(
-            "Double stops: a note held with another plays with it on the next string, \
-             where one hand can play both. Otherwise it plays legato.",
-        );
+        let live = shared.telemetry.polyphony();
+        let base = keyswitch_base(shared.telemetry.instrument().spec());
+        for (i, p) in PolyphonyParam::ALL.into_iter().enumerate() {
+            let key = keyboard::note_name(base + 7 + 2 * i as u8);
+            let what = match p {
+                PolyphonyParam::Mono => "Overlapping notes play legato: one note at a time.",
+                PolyphonyParam::DoubleStops => {
+                    "A note held with another plays with it on the next string, where one \
+                     hand can play both. Otherwise it plays legato."
+                }
+                PolyphonyParam::Divisi => {
+                    "A section divides a chord's notes among its players, one each. A solo \
+                     plays the double stops it can."
+                }
+            };
+            let response = ui
+                .selectable_label(live == p, p.name())
+                .on_hover_text(format!("{what}\nKeyswitch {key}"));
+            if response.clicked() {
+                setter.begin_set_parameter(&params.polyphony);
+                setter.set_parameter(&params.polyphony, p);
+                setter.end_set_parameter(&params.polyphony);
+                shared.send(GuiEvent::Polyphony(p));
+            }
+        }
         ui.add_space(12.0);
         ui.label("Fingering");
         enum_combo(

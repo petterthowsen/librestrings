@@ -6,8 +6,9 @@
 //! taken by physical position, so the layout works with any keymap.
 //!
 //! The piano plays with the mouse: the lower on a key, the louder; dragging
-//! across keys plays legato. Keyswitches (the white keys from C1) set the
-//! bow lift (C, D) and the bow direction (E down, F up).
+//! across keys plays legato. Keyswitches (the white keys from the first C
+//! below the instrument) set the bow lift (C, D), the bow direction (E down,
+//! F up) and the polyphony (G mono, A double stops, B divisi).
 
 use std::sync::atomic::Ordering::Relaxed;
 
@@ -46,7 +47,7 @@ const RELEASE_DEBOUNCE: f64 = 0.02;
 /// Transpose range in octaves around C3.
 const TRANSPOSE: (i32, i32) = (-2, 3);
 /// Range of the on-screen keyboard: five octaves from the keyswitches (violin
-/// C3–C8, viola C2–C7, cello C1–C6, bass C0–C5).
+/// and viola C2–C7, cello C1–C6, bass C0–C5).
 fn range(spec: &InstrumentSpec) -> (u8, u8) {
     let lowest = keyswitch_base(spec);
     (lowest, lowest + 60)
@@ -248,6 +249,7 @@ pub fn piano(
 
     let sounding = |note: u8| t.is_sounding(note);
     let bow_lift = t.bow_lift();
+    let polyphony = t.polyphony();
     let direction = t.bow_direction.load(Relaxed);
     let first = first_mapped(params);
     let computer = params.computer_keys.load(Relaxed);
@@ -278,6 +280,7 @@ pub fn piano(
             switch_color(match k {
                 Keyswitch::BowLift(b) => b == bow_lift,
                 Keyswitch::Bow(d) => d == direction,
+                Keyswitch::Polyphony(p) => p == polyphony,
             })
         } else if playable(spec, note) {
             Color32::from_gray(235)
