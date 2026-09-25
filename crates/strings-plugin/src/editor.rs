@@ -1,7 +1,8 @@
 //! The editor (ROADMAP.md "Plugin GUI"): a status row, instrument and
-//! ensemble selection, a view of the instrument with the performer's state,
-//! and at the bottom an on-screen keyboard and faders, so the plugin can be
-//! played without a MIDI controller.
+//! ensemble selection, a view of the instrument with the performer's state
+//! (or of the stage, with the room's settings), and at the bottom an
+//! on-screen keyboard and faders, so the plugin can be played without a MIDI
+//! controller.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
@@ -11,16 +12,15 @@ use nih_plug_egui::egui::{self, Color32, RichText};
 use nih_plug_egui::{EguiState, create_egui_editor};
 
 use crate::keyswitch_base;
-use crate::params::{
-    AbsorptionParam, BowLiftParam, FingeringParam, InstrumentParam, PolyphonyParam, RoomParam,
-    StringsParams,
-};
+use crate::params::{BowLiftParam, FingeringParam, InstrumentParam, PolyphonyParam, StringsParams};
 use crate::shared::{GuiEvent, Shared, Telemetry};
+use crate::sync::Link;
 
 mod fader;
 mod instrument_view;
 mod keyboard;
 mod performer_status;
+mod stage_view;
 mod tuning_window;
 
 /// Editor-only state, kept while the window is open.
@@ -28,10 +28,15 @@ mod tuning_window;
 struct EditorState {
     keyboard: keyboard::KeyboardState,
     view: instrument_view::ViewState,
+    stage: stage_view::StageState,
     tuning: tuning_window::TuningState,
 }
 
-pub fn create(params: Arc<StringsParams>, shared: Arc<Shared>) -> Option<Box<dyn Editor>> {
+pub fn create(
+    params: Arc<StringsParams>,
+    shared: Arc<Shared>,
+    link: Arc<Link>,
+) -> Option<Box<dyn Editor>> {
     let egui_state: Arc<EguiState> = params.editor_state.clone();
     create_egui_editor(
         egui_state,
@@ -46,7 +51,6 @@ pub fn create(params: Arc<StringsParams>, shared: Arc<Shared>) -> Option<Box<dyn
                 .show(ctx, |ui| status_row(ui, &params, t, &mut state.tuning.open));
             egui::TopBottomPanel::top("selection").show(ctx, |ui| {
                 selection_row(ui, &params, setter, &shared);
-                stage_row(ui, &params, setter);
             });
             egui::TopBottomPanel::bottom("controls")
                 .exact_height(190.0)
@@ -59,15 +63,28 @@ pub fn create(params: Arc<StringsParams>, shared: Arc<Shared>) -> Option<Box<dyn
                         fader::faders(ui, &params, setter, t);
                     });
                 });
-            egui::SidePanel::right("readout")
-                .exact_width(230.0)
-                .resizable(false)
-                .show(ctx, |ui| readout(ui, &params, t));
-            egui::CentralPanel::default().show(ctx, |ui| {
-                let size = ui.available_size() - egui::vec2(0.0, performer_status::HEIGHT);
-                ui.allocate_ui(size, |ui| instrument_view::show(ui, t, &mut state.view));
-                performer_status::show(ui, t, &shared);
-            });
+            if params.stage_view.load(Relaxed) {
+                let others = stage_view::others(&link);
+                egui::SidePanel::right("stage-settings")
+                    .exact_width(250.0)
+                    .resizable(false)
+                    .show(ctx, |ui| {
+                        stage_view::panel(ui, &params, setter, &link, &others, &mut state.stage);
+                    });
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    stage_view::view(ui, &params, &link, &others, &mut state.stage);
+                });
+            } else {
+                egui::SidePanel::right("readout")
+                    .exact_width(230.0)
+                    .resizable(false)
+                    .show(ctx, |ui| readout(ui, &params, t));
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let size = ui.available_size() - egui::vec2(0.0, performer_status::HEIGHT);
+                    ui.allocate_ui(size, |ui| instrument_view::show(ui, t, &mut state.view));
+                    performer_status::show(ui, t, &shared);
+                });
+            }
             if state.tuning.open {
                 state.tuning.window(ctx, t);
             }
@@ -185,6 +202,9 @@ fn selection_row(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter
                 shared.send(GuiEvent::BowLift(b));
             }
         }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            stage_view::toggle(ui, params);
+        });
     });
     ui.horizontal(|ui| {
         ui.label("Polyphony");
@@ -259,116 +279,6 @@ fn players(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter) {
     );
     if ui.add_enabled(n < max, egui::Button::new("›")).clicked() {
         set(n + 1);
-    }
-}
-
-/// Where the section sits and the room it plays in, until the stage view
-/// (docs/SECTIONS.md Phase B). Every instance should have the same room and
-/// mics.
-fn stage_row(ui: &mut egui::Ui, params: &StringsParams, setter: &ParamSetter) {
-    ui.horizontal(|ui| {
-        let mut on = params.stage.value();
-        if ui
-            .checkbox(&mut on, "Stage")
-            .on_hover_text(
-                "On: the players sit on a stage in a room, picked up by a stereo mic \
-                 pair, with early reflections (the late reverb is left to your reverb). \
-                 Off: dry and mono.",
-            )
-            .changed()
-        {
-            setter.begin_set_parameter(&params.stage);
-            setter.set_parameter(&params.stage, on);
-            setter.end_set_parameter(&params.stage);
-        }
-        ui.add_enabled_ui(on, |ui| {
-            ui.add_space(8.0);
-            ui.label("x");
-            param_drag(ui, setter, &params.stage_x, -12.0..=12.0, " m")
-                .on_hover_text("To the audience's right (m); 0 is the middle");
-            ui.label("y");
-            param_drag(ui, setter, &params.stage_y, 0.0..=12.0, " m")
-                .on_hover_text("Upstage from the front of the stage (m)");
-            ui.label("Size");
-            param_drag(ui, setter, &params.stage_width, 0.0..=12.0, " m")
-                .on_hover_text("Width of the area the section fills (m)");
-            ui.label("×");
-            param_drag(ui, setter, &params.stage_depth, 0.0..=8.0, " m")
-                .on_hover_text("Depth of the area the section fills (m)");
-            ui.add_space(12.0);
-            ui.label("Room");
-            enum_combo(
-                ui,
-                setter,
-                &params.room,
-                &RoomParam::ALL,
-                RoomParam::name,
-                110.0,
-            )
-            .on_hover_text("Set the same room in every instance");
-            enum_combo(
-                ui,
-                setter,
-                &params.absorption,
-                &AbsorptionParam::ALL,
-                AbsorptionParam::name,
-                70.0,
-            )
-            .on_hover_text("How much the walls absorb");
-            ui.label("Mics");
-            param_drag(ui, setter, &params.mic_distance, 0.5..=20.0, " m")
-                .on_hover_text("Distance of the mics in front of the stage: close to far");
-            ui.label("Reflections");
-            let r = &params.reflections;
-            let mut percent = 100.0 * r.value();
-            let response = ui.add(
-                egui::DragValue::new(&mut percent)
-                    .speed(1.0)
-                    .range(0.0..=100.0)
-                    .suffix(" %"),
-            );
-            edit_param(setter, r, &response, percent / 100.0);
-        });
-    });
-}
-
-/// A number field for a parameter, dragged or typed.
-fn param_drag(
-    ui: &mut egui::Ui,
-    setter: &ParamSetter,
-    param: &FloatParam,
-    range: std::ops::RangeInclusive<f32>,
-    suffix: &str,
-) -> egui::Response {
-    let mut value = param.value();
-    let response = ui.add(
-        egui::DragValue::new(&mut value)
-            .speed(0.05)
-            .range(range)
-            .fixed_decimals(1)
-            .suffix(suffix),
-    );
-    edit_param(setter, param, &response, value);
-    response
-}
-
-/// Sets `param` from a drag value's `response`: one gesture per drag, or
-/// one for a typed value.
-fn edit_param(setter: &ParamSetter, param: &FloatParam, response: &egui::Response, value: f32) {
-    if response.drag_started() {
-        setter.begin_set_parameter(param);
-    }
-    if response.changed() {
-        if response.dragged() {
-            setter.set_parameter(param, value);
-        } else {
-            setter.begin_set_parameter(param);
-            setter.set_parameter(param, value);
-            setter.end_set_parameter(param);
-        }
-    }
-    if response.drag_stopped() {
-        setter.end_set_parameter(param);
     }
 }
 

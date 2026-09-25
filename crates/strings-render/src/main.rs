@@ -153,6 +153,9 @@ enum Command {
         /// Distance of the mics in front of the stage (m).
         #[arg(long, default_value_t = StageSettings::default().mic_distance)]
         mic_distance: f32,
+        /// The mics' place across the room (m, to the audience's right).
+        #[arg(long, default_value_t = 0.0, allow_negative_numbers = true)]
+        mic_x: f32,
         /// Early reflections, 0 (off) to 1.
         #[arg(long, default_value_t = 1.0)]
         reflections: f32,
@@ -607,6 +610,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             room,
             absorption,
             mic_distance,
+            mic_x,
             reflections,
             bow_width,
             bow_noise,
@@ -658,6 +662,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     room,
                     absorption,
                     mic_distance,
+                    mic_x,
                     reflections,
                 };
                 play_section(

@@ -191,6 +191,7 @@ fn a_section_never_allocates() {
             room: RoomPreset::ConcertHall,
             absorption: Absorption::High,
             mic_distance: 12.0,
+            mic_x: 0.0,
             reflections: 0.5,
         });
         stage.reset();

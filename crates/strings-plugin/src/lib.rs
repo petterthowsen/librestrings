@@ -32,12 +32,15 @@ use strings_dsp::{
 };
 
 mod editor;
+pub mod layout;
 pub mod params;
 pub mod shared;
+pub mod sync;
 pub mod tuning;
 
 use params::{BowLiftParam, FingeringParam, InstrumentParam, PolyphonyParam, StringsParams};
 use shared::{GuiEvent, Shared, Telemetry};
+use sync::LinkOwner;
 use tuning::{LiveTuning, StringsUpdate};
 
 /// Numbers each engine, so the editor notices a new one.
@@ -92,6 +95,8 @@ pub fn keyswitch(spec: &InstrumentSpec, note: u8) -> Option<Keyswitch> {
 pub struct Strings {
     params: Arc<StringsParams>,
     shared: Arc<Shared>,
+    /// This instance on the shared stage.
+    link: LinkOwner,
     engine: Option<Box<Engine>>,
     builds: Arc<Builds>,
     /// The instrument whose engine is being built, if one is.
@@ -103,6 +108,7 @@ impl Default for Strings {
         Self {
             params: Arc::new(StringsParams::default()),
             shared: Arc::new(Shared::default()),
+            link: LinkOwner::default(),
             engine: None,
             builds: Arc::new(Builds::default()),
             building: None,
@@ -302,18 +308,8 @@ impl Engine {
         }
         let stage = (
             params.stage.value(),
-            StageSettings {
-                room: params.room.value().into(),
-                absorption: params.absorption.value().into(),
-                mic_distance: params.mic_distance.value(),
-                reflections: params.reflections.value(),
-            },
-            Placement {
-                x: params.stage_x.value(),
-                y: params.stage_y.value(),
-                width: params.stage_width.value(),
-                depth: params.stage_depth.value(),
-            },
+            params.layout.settings(),
+            params.layout.placement(),
         );
         if self.applied.stage != Some(stage) {
             let (staged, settings, placement) = stage;
@@ -654,7 +650,13 @@ impl Plugin for Strings {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        editor::create(self.params.clone(), self.shared.clone())
+        // The stage view shows the others even before the host activates this one.
+        self.link.start(self.params.clone());
+        editor::create(self.params.clone(), self.shared.clone(), self.link.clone())
+    }
+
+    fn filter_state(state: &mut PluginState) {
+        layout::migrate(state);
     }
 
     fn initialize(
@@ -663,6 +665,7 @@ impl Plugin for Strings {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
+        self.link.start(self.params.clone());
         let fs = buffer_config.sample_rate;
         let instrument = self.params.instrument.value();
         // `initialize` may be called again with nothing changed; building the

@@ -3,7 +3,7 @@
 Plan for playing the cello as a section of up to 12 players, placed on a shared stage with early reflections, and later a stage view that shows every LibreStrings instance in the project. The design background is PLAN.md §5 (Sections); this file is the working checklist. Update PLAN.md's phase table and STATUS.md as the items land.
 
 **Phase A** gives a section that sounds right in Bitwig: players, humanization, placement and early reflections, set by ordinary parameters.
-**Phase B** adds the stage view and instance sync. It is only a UI and a transport over the same numbers, so Phase A has to use the right numbers from the start (see "Design rules").
+**Phase B** adds the stage view and instance sync. It is only a UI and a transport over the same numbers, so Phase A has to use the right numbers from the start (see "Design rules"). Built, not yet tried in a host.
 
 ## Design rules
 
@@ -98,28 +98,32 @@ Renders (`out/ab-stage/`, stereo): `phrase-solo-front` (a solo at the centre fro
 
 ### B1. Instance sync
 
-- [ ] Registry: a fixed table of slots (up to 32 instances) in a named shared-memory file under `$XDG_RUNTIME_DIR`, so it works whether the host runs all plugins in one process or each in its own (Bitwig's plugin hosting modes). Each slot has an instance ID, a heartbeat, a name, the instrument, the players and the section's position, written with a seqlock.
-- [ ] A stage-wide block (room, absorption, mic distance, ER level) with a generation counter: the most recent change wins, and every instance copies it.
-- [ ] A background thread per instance (started in `initialize`, never touched by `process`) keeps its slot and heartbeat up to date and copies changes into the engine through atomics. Slots whose heartbeat stops (the instance was removed or the host crashed) are freed after a few seconds.
-- [ ] Moving another instance's circle writes a request into its slot, and that instance applies it, so each instance still owns its own parameters.
-- [ ] Project recall: every instance saves the stage-wide block too. On load, the newest one wins.
-- [ ] Stage name (default "Main"), so two projects or two separate orchestras don't share a stage.
-- [ ] Decide which values stay automatable host parameters and which become persisted state set by the sync (a background thread can't set host parameters). Suggestion: keep `players` a parameter and make the stage values persisted state.
+Built (September 2026): `strings-plugin/src/sync.rs` and `layout.rs`, tests `sync::tests` (two instances in one process, through the file) and `layout::tests`. Not yet tried in a host.
+
+- [x] Registry: a fixed table of 32 slots in a memory-mapped file, `librestrings-stage-<name>.v1` under `$XDG_RUNTIME_DIR` (or the temp dir), so it works whether the host runs all plugins in one process or each in its own. Each slot has the instance's random ID, a heartbeat, its name, instrument, players, whether it is on the stage, and its placement; every value is an atomic, each group written under a seqlock whose version also marks a change. A writer that died mid-write only delays the next one.
+- [x] A stage-wide block (room, absorption, mic distance, mic x, reflections, and when it last changed). Every instance copies it when it changes.
+- [x] A thread per instance (started in `initialize` or when the editor opens, never touched by `process`, stopped with the plugin) looks every 40 ms: it keeps its slot and heartbeat up to date, publishes its own changes, and copies other instances' changes into its `Layout` (atomics the audio thread reads once per block). Slots whose heartbeat is 2 s old are no longer shown, and freed after 5 s; an instance whose slot was freed (a stalled host) claims one again.
+- [x] Moving another instance's section writes its slot's placement, and that instance takes it over, so each instance still owns its placement (and saves it).
+- [x] Project recall: every instance saves the room with the time it last changed. On joining a stage, an instance's room wins if it is newer than the stage's, or if no other instance is on it (the file outlives the instances); otherwise it takes the stage's. Projects from 0.2.0 get their stage parameters moved into the layout (`filter_state`), dated older than any change since.
+- [x] Stage name (default "Main"; the file name is its letters and digits, lowercased), so two projects or two separate orchestras don't share a stage.
+- [x] Parameters: `players`, `stage` (on/off) and everything else stay host parameters; the placement and the room are persisted state (`stage-layout`) set by the editor and the sync, no longer automatable.
 
 ### B2. The stage view
 
-- [ ] A button in the header that swaps the instrument view for the stage view and back.
-- [ ] A top-down stage: the room outline, the stage area and the mic pair, drawn in code in the editor's clean, minimal style.
-- [ ] Each instance is a circle labelled with its name ("Celli", "Violas", "Solo cello"), sized by its player count; this instance is highlighted. Drag to move; drag the edge to change the section's width.
-- [ ] A close ↔ far mic fader.
-- [ ] Room preset and absorption drop-downs.
-- [ ] An editable instance name (defaults to the instrument, plural for a section).
+Built (September 2026): `editor/stage_view.rs`. Seen with a standalone and four sections from another process; the dragging is covered by unit tests (`stage_view::tests`), not yet by hand.
+
+- [x] A "Stage" button in the selection row swaps the instrument view and its readout for the stage view and its settings (persisted with the editor state). The keyboard and faders stay, so a section can be moved while it plays.
+- [x] A top-down stage, the audience at the bottom: the room's walls, the stage with a metre grid, its front edge and the centre line, the hall down to a little in front of the mics, a scale bar, and the room's name and size. Drawn in code in the editor's style.
+- [x] Each instance is a box (its area) with its name and players centred on it, and its players drawn as dots where they sit; colored by instrument (violin amber, viola green, cello blue, bass violet); this instance's is outlined and on top, a dry one dashed. Drag a box to move it, its sides or corners to resize it (handles on the sides under the pointer), snapped to 10 cm and kept between the walls and between the front of the stage and its back wall. The numbers of what the pointer is on show bottom right.
+- [x] The mic pair (two capsules aimed ±55°) is dragged across and toward or away from the stage; the view holds its scale while dragging. `StageSettings::mic_x` is new: the pair can move off the centre line (0 renders byte-identical to before).
+- [x] Beside it: the section's name (defaults to "Solo cello", "Celli", "Violins"…), on stage or dry, and its position and size in numbers; the room, absorption, reflections and mic position, shared by the stage; the stage name and how many other instances are on it.
 
 ### B3. Checks
 
 - [ ] Tested with Bitwig's plugin hosting set to "together" and "individually"; in Reaper too.
-- [ ] Removing an instance clears its circle from the others' stage view within a few seconds.
+- [ ] Removing an instance clears its box from the others' stage view within a few seconds (tested in-process: leaving frees the slot at once).
 - [ ] Loading a saved project restores every position and the shared room.
+- [ ] Sections dragged by hand, in both directions between two instances.
 
 ## Later
 

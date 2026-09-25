@@ -188,3 +188,4 @@ The rest is in PLAN.md "Open questions": CC64 vs CC68 for legato, and renaming t
    - **One recording per instrument.** The fit includes that recording's microphone position and room. A second set (another player or microphone) would show how much of the envelope is the instrument.
    - **The viola is darker than its recording at mf–ff** in partials 4–7 (−16 against −11 dB; −9 to −10 before).
 
+66. **The stage view and instance sync are built but not tried in a host** (docs/SECTIONS.md Phase B). Open: Bitwig with plugin hosting "together" and "individually", Reaper, reloading a project with several instances, and dragging sections by hand between two instances. The placement and the room are no longer host parameters (another instance can move a section, and its sync thread can't set parameters), so they can't be automated; 0.2.0 projects are migrated. Only instances on one computer share a stage.

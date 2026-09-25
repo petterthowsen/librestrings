@@ -10,9 +10,9 @@ use std::sync::atomic::{AtomicBool, AtomicI32};
 use nih_plug::prelude::*;
 use nih_plug_egui::EguiState;
 use strings_dsp::presets::{bass, cello, viola, violin};
-use strings_dsp::{
-    Absorption, BowLift, Fingering, InstrumentSpec, MAX_PLAYERS, Polyphony, RoomPreset,
-};
+use strings_dsp::{BowLift, Fingering, InstrumentSpec, MAX_PLAYERS, Polyphony};
+
+use crate::layout::Layout;
 
 /// The instrument the plugin plays. Not automatable: changing it builds a new
 /// engine on a background thread (tens of milliseconds), which then replaces
@@ -171,67 +171,6 @@ impl From<FingeringParam> for Fingering {
     }
 }
 
-#[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RoomParam {
-    Studio,
-    #[name = "Chamber hall"]
-    ChamberHall,
-    #[name = "Concert hall"]
-    ConcertHall,
-    #[name = "Scoring stage"]
-    ScoringStage,
-}
-
-impl RoomParam {
-    pub const ALL: [Self; 4] = [
-        Self::Studio,
-        Self::ChamberHall,
-        Self::ConcertHall,
-        Self::ScoringStage,
-    ];
-
-    pub fn name(self) -> &'static str {
-        RoomPreset::from(self).name()
-    }
-}
-
-impl From<RoomParam> for RoomPreset {
-    fn from(r: RoomParam) -> Self {
-        match r {
-            RoomParam::Studio => RoomPreset::Studio,
-            RoomParam::ChamberHall => RoomPreset::ChamberHall,
-            RoomParam::ConcertHall => RoomPreset::ConcertHall,
-            RoomParam::ScoringStage => RoomPreset::ScoringStage,
-        }
-    }
-}
-
-/// How much the room's walls absorb.
-#[derive(Enum, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AbsorptionParam {
-    Low,
-    Medium,
-    High,
-}
-
-impl AbsorptionParam {
-    pub const ALL: [Self; 3] = [Self::Low, Self::Medium, Self::High];
-
-    pub fn name(self) -> &'static str {
-        Absorption::from(self).name()
-    }
-}
-
-impl From<AbsorptionParam> for Absorption {
-    fn from(a: AbsorptionParam) -> Self {
-        match a {
-            AbsorptionParam::Low => Absorption::Low,
-            AbsorptionParam::Medium => Absorption::Medium,
-            AbsorptionParam::High => Absorption::High,
-        }
-    }
-}
-
 #[derive(Params)]
 pub struct StringsParams {
     #[persist = "editor-state"]
@@ -244,6 +183,9 @@ pub struct StringsParams {
     pub computer_keys: Arc<AtomicBool>,
     #[persist = "debug-view"]
     pub debug_view: Arc<AtomicBool>,
+    /// The editor shows the stage instead of the instrument.
+    #[persist = "stage-view"]
+    pub stage_view: Arc<AtomicBool>,
     /// Velocity (MIDI units) of notes played from the computer keyboard.
     #[persist = "key-velocity"]
     pub key_velocity: Arc<AtomicI32>,
@@ -272,32 +214,10 @@ pub struct StringsParams {
     /// Off: the players' sum, dry and mono, as before the stage.
     #[id = "stage"]
     pub stage: BoolParam,
-    /// The section's centre (m): x to the audience's right, y upstage from the
-    /// front of the stage; and the area its players fill.
-    #[id = "stage-x"]
-    pub stage_x: FloatParam,
-    #[id = "stage-y"]
-    pub stage_y: FloatParam,
-    #[id = "stage-width"]
-    pub stage_width: FloatParam,
-    #[id = "stage-depth"]
-    pub stage_depth: FloatParam,
-    /// Shared by every instance on the stage (by hand, until instances sync).
-    #[id = "room"]
-    pub room: EnumParam<RoomParam>,
-    #[id = "absorption"]
-    pub absorption: EnumParam<AbsorptionParam>,
-    #[id = "mic-distance"]
-    pub mic_distance: FloatParam,
-    #[id = "reflections"]
-    pub reflections: FloatParam,
-}
-
-fn metres(name: &str, default: f32, min: f32, max: f32) -> FloatParam {
-    FloatParam::new(name, default, FloatRange::Linear { min, max })
-        .with_step_size(0.1)
-        .with_unit(" m")
-        .with_value_to_string(formatters::v2s_f32_rounded(1))
+    /// Where the section sits and the room, shared with the other instances
+    /// on the stage (`layout`, `sync`).
+    #[persist = "stage-layout"]
+    pub layout: Arc<Layout>,
 }
 
 fn unit(name: &str, default: f32) -> FloatParam {
@@ -314,6 +234,7 @@ impl Default for StringsParams {
             transpose: Arc::new(AtomicI32::new(0)),
             computer_keys: Arc::new(AtomicBool::new(true)),
             debug_view: Arc::new(AtomicBool::new(false)),
+            stage_view: Arc::new(AtomicBool::new(false)),
             key_velocity: Arc::new(AtomicI32::new(90)),
 
             instrument: EnumParam::new("Instrument", InstrumentParam::Cello).non_automatable(),
@@ -346,15 +267,7 @@ impl Default for StringsParams {
                 },
             ),
             stage: BoolParam::new("Stage", true),
-            // A new instance is a soloist at the front, in the middle.
-            stage_x: metres("Stage x", 0.0, -12.0, 12.0),
-            stage_y: metres("Stage y", 1.5, 0.0, 12.0),
-            stage_width: metres("Section width", 4.0, 0.0, 12.0),
-            stage_depth: metres("Section depth", 3.0, 0.0, 8.0),
-            room: EnumParam::new("Room", RoomParam::ChamberHall),
-            absorption: EnumParam::new("Absorption", AbsorptionParam::Medium),
-            mic_distance: metres("Mic distance", 4.0, 0.5, 20.0),
-            reflections: unit("Reflections", 1.0),
+            layout: Arc::new(Layout::default()),
         }
     }
 }

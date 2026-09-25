@@ -3,8 +3,8 @@
 //!
 //! Coordinates are metres on one stage shared by every instance: `x` to the
 //! right as the audience sees it, `y` upstage from the front edge of the stage,
-//! `z` up from the floor. The mics stand on the centre line, `mic_distance` in
-//! front of the stage. Two instances with the same room and mics are on the
+//! `z` up from the floor. The mics stand on the centre line (or `mic_x` to one
+//! side of it), `mic_distance` in front of the stage. Two instances with the same room and mics are on the
 //! same stage, so their sections sit where their positions say.
 //!
 //! The mics are a near-coincident pair (as ORTF): two cardioids 17 cm apart,
@@ -135,6 +135,9 @@ pub struct StageSettings {
     pub absorption: Absorption,
     /// Distance of the mic pair in front of the stage (m): close to far.
     pub mic_distance: f32,
+    /// The mic pair's place across the room (m, to the audience's right): 0 is
+    /// the centre line.
+    pub mic_x: f32,
     /// Level of the early reflections: 0 is off, 1 as the room gives them.
     pub reflections: f32,
 }
@@ -145,6 +148,7 @@ impl Default for StageSettings {
             room: RoomPreset::default(),
             absorption: Absorption::default(),
             mic_distance: 4.0,
+            mic_x: 0.0,
             reflections: 1.0,
         }
     }
@@ -198,6 +202,20 @@ impl Placement {
     /// Where a section of `spec` sits.
     pub fn for_instrument(spec: &crate::InstrumentSpec) -> Self {
         spec.seat
+    }
+
+    /// Where player `i` of `n` sits (x, y in m), before the stage's offset
+    /// from the seat and its walls: rows across the area, front to back. One
+    /// player sits at the centre.
+    pub fn seat(&self, n: usize, i: usize) -> (f32, f32) {
+        let (w, d) = (self.width.max(0.0), self.depth.max(0.0));
+        let cols = ((n as f32 * w / d.max(0.1)).sqrt().ceil() as usize).clamp(1, n.max(1));
+        let rows = n.div_ceil(cols);
+        let (row, col) = (i / cols, i % cols);
+        let in_row = cols.min(n - row * cols);
+        let x = self.x + w * ((col as f32 + 0.5) / in_row as f32 - 0.5);
+        let y = self.y + d * ((row as f32 + 0.5) / rows as f32 - 0.5);
+        (x, y)
     }
 }
 
@@ -437,16 +455,9 @@ impl Stage {
     /// back, each player a little off its seat. One player sits at the centre.
     fn seat(&mut self, n: usize) {
         let room = self.room();
-        let p = self.placement;
-        let (w, d) = (p.width.max(0.0), p.depth.max(0.0));
-        let cols = ((n as f32 * w / d.max(0.1)).sqrt().ceil() as usize).clamp(1, n.max(1));
-        let rows = n.div_ceil(cols);
         let half_w = 0.5 * room.width - WALL_MARGIN;
         for i in 0..n {
-            let (row, col) = (i / cols, i % cols);
-            let in_row = cols.min(n - row * cols);
-            let mut x = p.x + w * ((col as f32 + 0.5) / in_row as f32 - 0.5);
-            let mut y = p.y + d * ((row as f32 + 0.5) / rows as f32 - 0.5);
+            let (mut x, mut y) = self.placement.seat(n, i);
             if n > 1 {
                 let mut rng = (self.seed ^ (i as u32 + 1).wrapping_mul(0x9e37_79b9)).max(1);
                 x += SEAT_JITTER * signed(&mut rng);
@@ -470,24 +481,26 @@ impl Stage {
         let fs = self.fs;
         let front = room.back - room.length + WALL_MARGIN;
         let mic_y = (-s.mic_distance).clamp(front, -WALL_MARGIN);
+        let half_w = 0.5 * room.width - WALL_MARGIN;
+        let mic_x = s.mic_x.clamp(-half_w, half_w);
         let mics = [-1.0, 1.0].map(|side| Point {
-            x: side * MIC_HALF_SPACING,
+            x: mic_x + side * MIC_HALF_SPACING,
             y: mic_y,
             z: MIC_HEIGHT,
         });
         let axes = [-1.0f32, 1.0].map(|side| (side * MIC_ANGLE.sin(), MIC_ANGLE.cos()));
         // Every path is shortened by the distance to the front of the stage
-        // on the centre line, and its level is relative to a player 3 m
+        // straight ahead of the mics, and its level is relative to a player 3 m
         // upstage there: moving the mics changes the balance, not the level.
         let centre = Point {
-            x: 0.0,
+            x: mic_x,
             y: mic_y,
             z: MIC_HEIGHT,
         };
         let height = MIC_HEIGHT - SOURCE_HEIGHT;
         let reference = (mic_y.powi(2) + height.powi(2) + MIC_HALF_SPACING.powi(2)).sqrt();
         let unit = centre.distance(Point {
-            x: 0.0,
+            x: mic_x,
             y: 3.0,
             z: SOURCE_HEIGHT,
         });
