@@ -944,37 +944,37 @@ pub mod bass {
 
     /// Fitted by `strings-render calibrate --instrument bass --sample-rate
     /// 96000`, as for the cello (see [`super::cello`]), with the hair's width.
-    /// Band positions 0.5–0.8 give prompt Helmholtz motion in 71–100% of
-    /// checked cases, the extended string lowest: open C 71–92%, stopped at E
-    /// 79–88% ([`EXTENSION`]). The E string's band was found in only 20 of 48
-    /// columns, the open C's in 16 (the G string's in 44), and it is narrow,
+    /// Recalibrated with the cello's μs 0.9: band positions 0.5–0.8 give
+    /// prompt Helmholtz motion in 79–100% of checked cases (71–100% at μs
+    /// 0.8), the lowest β worst. The E string's band was found in only 15 of 48
+    /// columns ([`EXTENSION`]), the open C's in 13 (the G string's in 42), and it is narrow,
     /// one or two rows of the map. That holds without torsion or stiffness, with the one-pole loss,
     /// and with stiffer or softer bow hair (PLAN.md "Phase 5: viola and
     /// double bass").
     const FORCE_LIMITS: [ForceLimits; 4] = [
         ForceLimits {
-            lower: 2.410,
-            lower_exponent: -0.694,
-            upper: 5.056,
-            upper_exponent: -0.618,
+            lower: 2.035,
+            lower_exponent: -0.668,
+            upper: 4.163,
+            upper_exponent: -0.597,
         },
         ForceLimits {
-            lower: 1.742,
-            lower_exponent: -0.801,
-            upper: 5.548,
-            upper_exponent: -0.569,
+            lower: 1.393,
+            lower_exponent: -0.824,
+            upper: 4.480,
+            upper_exponent: -0.582,
         },
         ForceLimits {
-            lower: 1.083,
-            lower_exponent: -0.994,
-            upper: 6.368,
-            upper_exponent: -0.547,
+            lower: 1.046,
+            lower_exponent: -0.943,
+            upper: 5.427,
+            upper_exponent: -0.540,
         },
         ForceLimits {
-            lower: 0.972,
-            lower_exponent: -1.038,
-            upper: 8.074,
-            upper_exponent: -0.493,
+            lower: 0.932,
+            lower_exponent: -0.969,
+            upper: 6.929,
+            upper_exponent: -0.477,
         },
     ];
 
@@ -986,18 +986,20 @@ pub mod bass {
     const EXTENSION: Extension = Extension {
         semitones: 4.0,
         force_limits: ForceLimits {
-            lower: 1.708,
-            lower_exponent: -0.802,
-            upper: 4.264,
-            upper_exponent: -0.644,
+            lower: 1.332,
+            lower_exponent: -0.812,
+            upper: 4.500,
+            upper_exponent: -0.540,
         },
     };
 
     pub const INSTRUMENT: InstrumentSpec = InstrumentSpec {
         name: "bass",
         strings: STRINGS,
+        // The cello's μs, fitted to its measured attacks (PLAN.md "Attacks
+        // against measured data"); the bass has no attack data of its own.
         friction: FrictionParams {
-            mu_s: 0.8,
+            mu_s: 0.9,
             mu_d: 0.3,
             v0: 0.1,
         },
@@ -1024,7 +1026,10 @@ pub mod bass {
         bow_distance: 0.032,
         tasto: 0.0,
         flautando: crate::performer::PRESSURE_FLAUTANDO,
-        pp_attack: 1.6,
+        // Slower than the cello's (0.6): with μs 0.9, faster quiet attacks
+        // on C1–E1 take 0.2–0.8 s to settle (seed sweep failures: 15 of 1296
+        // at 1.6, 0 at 2.2, 2 ff attacks at 3.0).
+        pp_attack: 2.2,
         // As the cello's.
         quiet_ease: 0.5,
         // Matched to the cello's median level on the example scales; not yet

@@ -27,7 +27,9 @@ The attacks were compared with the measured Guettler diagrams (item 44; PLAN.md 
 
 The A/B renders (`out/ab-attack-friction/`) were listened to (September 2026): the change sounds good.
 
-1. **The violin, viola and bass friction** (item 64): whether they follow the cello's μs.
+The bass now follows the cello's μs 0.9 (item 64; PLAN.md "Attacks against measured data"), with its band recalibrated and slower quiet attacks (`pp_attack` 2.2); its seed sweep passes all 1296 checks. The A/B renders (`out/ab-bass-friction/`) were listened to (September 2026): the change sounds good.
+
+1. **The violin and viola friction** (item 64): whether they follow the cello's μs.
 
 Each now has its own recorded set to re-run `compare --instrument <name>` against (item 61; the viola needs `--file-rate 96000`), and the model is compared with each instrument's own bow positions, speed and band. The recordings' attacks are slow swells, so they can't set μs the way the Guettler diagrams set the cello's: the change has to be judged by ear, plus a band recalibration and a seed sweep per instrument.
 
@@ -126,7 +128,7 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
    - pp is 2–6 dB cleaner than the recording;
    - the noise is 6–8 dB too strong at 1–2 kHz and 2–5 dB weak at 4–8 kHz, partly the estimated 1.3 kHz bridge hill (item 16);
    - the attack's noise against the recorded mf onset isn't measured (`compare` measures the sustain only);
-   - the seed sweeps fail a few more quiet attacks (bass 0 → 9 of 1296, violin 4 → 6), within the 1% limit.
+   - the seed sweeps fail a few more quiet attacks (violin 4 → 6; the bass's went 0 → 9 of 1296, and back to 0 with μs 0.9 and slower quiet attacks), within the 1% limit.
    The level is fitted to one recorded cello and used on all four instruments.
 43. **The low strings' fundamental is mostly fixed.** The body lost it, not the string (`compare --bridge`). Two fitted modes (118 and 144 Hz) fill the gap between A0 and the dense modes. On the C string A2–D3 went from −6 to −31 dB to −1 to −8 at mf–ff (recorded −1 to −5), and to −3 to −15 at pp, and the G string's median from −5 to −2.5 dB (recorded −2.2) at mf (PLAN.md "The body's low end"). Still weak: G2–Ab2 (−7 to −17 against −1 to −2) and, on the C string, Ab3–C4 around 220 Hz (−10 to −13 against 0 to −2). The A/B renders (`out/ab-body-low-end/`) were listened to (September 2026): the change sounds good.
 44. **One recorded player and one microphone.** The Iowa notes have no vibrato and one way of starting (a slow swell at pp–mf), and the player plays a median 15 cents sharp. Attack times and rings compare how the notes were played as much as the instrument. For what the string can do, `strings-render guettler` compares attacks from rest with the mdw Guettler diagrams (four G strings on a monochord at one β, constant force and acceleration; PLAN.md "Attacks against measured data"): with μs 0.9 the successful region's right edge is F = 1.28–1.65·a (measured 0.91–1.63), success and failure agree in 83–84% of strokes, and the model is too willing at low force and slow acceleration (0.5–1 N), where the real strings fail. The data has no other β, speeds above 0.7 m/s, or the grip and bite the performer adds.
@@ -167,7 +169,7 @@ From `strings-render compare` against the Iowa cello notes (PLAN.md "Phase 4: co
 
 ## Attacks
 
-64. **Only the cello has the new friction.** The cello's μs went from 0.8 to 0.9 and its `pp_attack` from 1.6 to 0.6 (PLAN.md "Attacks against measured data"); the A/B renders sound good (September 2026), with `attack`, `attack_bite`, `grip_attack` and `bite` unchanged. The violin, viola and bass keep μs 0.8: there is no attack data for them (the Iowa notes item 61 now compares are slow swells, which can't set μs), and a change means recalibrating each band and running its seed sweep. The bass is built like the cello and plays with its bow hair, so it is the first candidate.
+64. **Only the cello and bass have the new friction.** The cello's μs went from 0.8 to 0.9 and its `pp_attack` from 1.6 to 0.6 (PLAN.md "Attacks against measured data"); the A/B renders sound good (September 2026), with `attack`, `attack_bite`, `grip_attack` and `bite` unchanged. The bass followed (μs 0.9, band recalibrated, `pp_attack` 1.6 → 2.2: its extension's quiet attacks settle late when faster); its A/B renders sound good (September 2026). The violin and viola keep μs 0.8: there is no attack data for them (the Iowa notes item 61 now compares are slow swells, which can't set μs), and a change means recalibrating each band and running its seed sweep.
 
 ## Open decisions
 
