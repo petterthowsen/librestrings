@@ -2359,11 +2359,11 @@ dependencies = [
 
 [[package]]
 name = "strings-dsp"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "strings-plugin"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "crossbeam-queue",
  "nih_plug",
@@ -2373,7 +2373,7 @@ dependencies = [
 
 [[package]]
 name = "strings-render"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "claxon",
@@ -3153,7 +3153,7 @@ checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nih_plug_xtask",
 ]

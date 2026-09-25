@@ -6,7 +6,7 @@ A free bowed-string synthesizer in Rust, built on physical modeling rather than 
 
 Disclaimer: Vibe-coded as an experiment with Claude. I honestly have no idea how it works, but it would be cool if anyone more skilled in DSP/Physical Modeling takes a look at it.
 
-You can download the CLAP plugin for linux here: https://github.com/petterthowsen/librestrings/releases/tag/v0.1.0 
+You can download the CLAP plugin for linux here: https://github.com/petterthowsen/librestrings/releases/latest
 
 ## How it works
 
